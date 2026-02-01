@@ -54,6 +54,16 @@ def setup_driver():
     stealth(driver, languages=["en-US", "en"], vendor="Google Inc.", platform="Win32", webgl_vendor="Intel Inc.", renderer="Intel Iris OpenGL Engine", fix_hairline=True)
     return driver
 
+def convert_time_to_sgt(date_str, time_str):
+    if not time_str or any(x in time_str for x in ["All Day", "Tentative"]): return time_str
+    try:
+        current_year = datetime.now().year
+        dt_str = f"{date_str} {current_year} {time_str}"
+        dt_obj = datetime.strptime(dt_str, "%a %b %d %Y %I:%M%p")
+        sgt_time = dt_obj + timedelta(hours=13)
+        return sgt_time.strftime("%H:%M")
+    except: return time_str
+
 # ===== SCRAPERS =====
 def scrape_cb_rates():
     print("🕷️ Scraping Central Bank rates...")
@@ -62,9 +72,15 @@ def scrape_cb_rates():
         driver = setup_driver()
         driver.get("https://www.investing.com/central-banks/")
         
-        # SKEPTICAL WAIT: Wait for the specific Federal Reserve link inside the table
-        WebDriverWait(driver, 35).until(EC.presence_of_element_located((By.XPATH, "//a[contains(@href, 'federal-reserve')]")))
+        # Wait for visibility of the table to ensure JS has rendered text
+        wait = WebDriverWait(driver, 30)
+        table_selector = "table.genTbl.noFooter.boldButtons.currTable"
         
+        try:
+            table = wait.until(EC.visibility_of_element_located((By.CSS_SELECTOR, table_selector)))
+        except:
+            table = wait.until(EC.visibility_of_element_located((By.ID, "curr_table")))
+
         rates = {}
         name_map = {
             "Federal Reserve": "Fed", "European Central Bank": "ECB", "Bank of England": "BoE", 
@@ -72,13 +88,7 @@ def scrape_cb_rates():
             "Reserve Bank of New Zealand": "RBNZ", "Swiss National Bank": "SNB"
         }
 
-        # Try to find table rows within the specific ID provided
-        rows = driver.find_elements(By.CSS_SELECTOR, "table#curr_table tbody tr")
-        
-        # If CSS fails (sometimes IDs are hidden/dynamic), fallback to XPATH
-        if not rows:
-            rows = driver.find_elements(By.XPATH, "//table[contains(@class, 'genTbl')]//tr")
-
+        rows = table.find_elements(By.TAG_NAME, "tr")
         for row in rows:
             cols = row.find_elements(By.TAG_NAME, "td")
             if len(cols) < 3: continue
@@ -86,7 +96,7 @@ def scrape_cb_rates():
             row_text = row.text
             for full_name, short_name in name_map.items():
                 if full_name in row_text:
-                    # Column 2 (index 2) is the Current Rate
+                    # Index 2 is the Policy Rate
                     rates[short_name] = cols[2].text.strip()
         return rates
     except Exception as e:
@@ -95,16 +105,16 @@ def scrape_cb_rates():
         if driver: driver.quit()
 
 def scrape_forex_factory():
-    print("📅 Scraping ForexFactory...")
+    print("📅 Scraping ForexFactory (Today)...")
     driver = None
     releases = []
     try:
         driver = setup_driver()
-        driver.get("https://www.forexfactory.com/calendar?week=this")
+        # CHANGED: day=today to focus results
+        driver.get("https://www.forexfactory.com/calendar?day=today")
         
-        # STEP-SCROLL: Triggering lazy-load rows for mid-week events
-        for i in range(1, 7):
-            driver.execute_script(f"window.scrollTo(0, document.body.scrollHeight * {i/6});")
+        for i in range(1, 4):
+            driver.execute_script(f"window.scrollTo(0, document.body.scrollHeight * {i/3});")
             time.sleep(1.5)
         
         rows = driver.find_elements(By.CSS_SELECTOR, "tr.calendar__row")
@@ -129,16 +139,15 @@ def scrape_forex_factory():
                 if not time_str: time_str = last_valid_time
                 else: last_valid_time = time_str
                 
+                sgt_time = convert_time_to_sgt(current_date_str, time_str)
                 act = row.find_element(By.CSS_SELECTOR, "td.calendar__actual").text.strip()
                 cons = row.find_element(By.CSS_SELECTOR, "td.calendar__forecast").text.strip()
                 prev = row.find_element(By.CSS_SELECTOR, "td.calendar__previous").text.strip()
 
                 flag_map = {"USD":"🇺🇸", "EUR":"🇪🇺", "GBP":"🇬🇧", "JPY":"🇯🇵", "CAD":"🇨🇦", "AUD":"🇦🇺", "NZD":"🇳🇿", "CHF":"🇨🇭"}
                 releases.append({
-                    "date": current_date_str, 
-                    "flag": flag_map.get(currency, "🌍"),
-                    "title": f"{currency} {event}", 
-                    "time_raw": time_str,
+                    "date": current_date_str, "flag": flag_map.get(currency, "🌍"),
+                    "title": f"{currency} {event}", "time_sgt": sgt_time,
                     "act": act or "-", "cons": cons or "-", "prev": prev or "-"
                 })
             except: continue
@@ -210,12 +219,12 @@ for base, pairs in groups.items():
         lines.append("\n".join(seg) + "\n")
 
 lines.append("---")
-lines.append("📅 *Economic Calendar (Central Time)*")
+lines.append("📅 *ForexFactory: High Impact Today*")
 if calendar_events:
     for e in calendar_events:
-        lines.append(f"[{e['date']}] {e['flag']} {e['title']} | {e['time_raw']}")
-        if e['act'] != "-": lines.append(f"   Act: {e['act']} | C: {e['cons']} | P: {e['prev']}")
-else: lines.append("⚠️ _Fetch Error (Lazy Load)_")
+        lines.append(f"[{e['date']}] {e['flag']} {e['title']} | {e['time_sgt']}")
+        if e['act'] != "-": lines.append(f"    Act: {e['act']} | C: {e['cons']} | P: {e['prev']}")
+else: lines.append("No high impact events today.")
 
 lines.append("\n---")
 lines.append("🏛 *Central Bank Policy Rates*")
