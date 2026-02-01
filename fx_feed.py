@@ -10,17 +10,16 @@ from selenium.webdriver.common.by import By
 from webdriver_manager.chrome import ChromeDriverManager
 from selenium_stealth import stealth
 
-# ===== TELEGRAM CONFIG =====
+# ===== CONFIGURATION =====
 TELEGRAM_TOKEN = "7649050168:AAHNIYnrHzLOTcjNuMpeKgyUbfJB9x9an3c"
 CHAT_ID = "876384974"
 FORCE_SEND = True 
 
-# ===== SGT TIME =====
 SGT = timezone(timedelta(hours=8))
 now = datetime.now(SGT)
 
-# ===== MAPPING FOR G8 BANKS =====
-# Keys match the website text, Values are your desired abbreviation
+# ===== G8 MAPPING =====
+# Matches the exact HTML text content to your shorthand
 G8_MAP = {
     "Federal Reserve": "Fed",
     "European Central Bank": "ECB",
@@ -65,22 +64,27 @@ economic_releases = [
     {"flag":"🇬🇧","title":"UK GDP MoM","time":"16:30 SGT","prev":"0.0%","cons":"0.1%"}
 ]
 
-# ===== STEALTH SCRAPER =====
+# ===== ROBUST SCRAPER =====
 def scrape_cb_rates():
     chrome_options = Options()
-    chrome_options.add_argument("--headless")
+    # "New" headless mode is harder to detect
+    chrome_options.add_argument("--headless=new")
     chrome_options.add_argument("--no-sandbox")
     chrome_options.add_argument("--disable-dev-shm-usage")
     chrome_options.add_argument("--window-size=1920,1080")
     
-    # Use a real browser user agent
-    user_agent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
-    chrome_options.add_argument(f"user-agent={user_agent}")
+    # Anti-detection flags
+    chrome_options.add_argument("--disable-blink-features=AutomationControlled")
+    chrome_options.add_experimental_option("excludeSwitches", ["enable-automation"])
+    chrome_options.add_experimental_option("useAutomationExtension", False)
+    
+    # Generic User Agent
+    chrome_options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36")
 
     try:
         driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=chrome_options)
         
-        # Apply Stealth to hide automation flags
+        # Apply Stealth
         stealth(driver,
             languages=["en-US", "en"],
             vendor="Google Inc.",
@@ -90,46 +94,48 @@ def scrape_cb_rates():
             fix_hairline=True,
         )
 
-        # UPDATED LINK
+        # LINK: Direct to the Central Banks page
         driver.get("https://www.investing.com/central-banks/")
         
-        # Give it a substantial wait to bypass JS challenges
-        time.sleep(15) 
+        # Wait for Cloudflare/JS checks
+        time.sleep(20) 
         
         rates = {}
-        # Based on your HTML, ID is "curr_table"
+        
+        # Attempt to find the table by ID
         try:
             table = driver.find_element(By.ID, "curr_table")
         except:
-            # Fallback
+            # Fallback for if ID changes
             table = driver.find_element(By.CSS_SELECTOR, "table.genTbl")
 
         rows = table.find_elements(By.TAG_NAME, "tr")[1:]
+        
         for row in rows:
             cells = row.find_elements(By.TAG_NAME, "td")
             if len(cells) >= 3:
-                # Name is in index 1. It looks like "Federal Reserve (FED)"
-                # We split by '(' to get just "Federal Reserve"
-                raw_name = cells[1].text.split('(')[0].strip()
-                rate = cells[2].text.strip()
+                # IMPORTANT: Use get_attribute('textContent') for hidden/headless elements
+                # "Federal Reserve (FED)" -> split -> "Federal Reserve"
+                raw_text = cells[1].get_attribute("textContent").strip()
+                name_clean = raw_text.split('(')[0].strip()
                 
-                # Check if this name is in our G8 list
-                if raw_name in G8_MAP:
-                    short_name = G8_MAP[raw_name]
-                    rates[short_name] = rate
+                rate_val = cells[2].get_attribute("textContent").strip()
+                
+                if name_clean in G8_MAP:
+                    short_name = G8_MAP[name_clean]
+                    rates[short_name] = rate_val
         
         driver.quit()
-        if not rates: raise Exception("No matching G8 data found in table")
         return rates
 
     except Exception as e:
-        print(f"Scrape Error: {e}")
-        return {} # Return empty dict instead of error object to handle gracefully
+        print(f"Scrape Error details: {e}")
+        return None
 
-# Get rates
+# Fetch Data
 central_bank_rates = scrape_cb_rates()
 
-# ===== BUILD MESSAGE =====
+# ===== BUILD TELEGRAM MESSAGE =====
 lines = [f"📊 G8 FX & Macro Update — {now.strftime('%H:%M')} SGT\n"]
 lines.append("🔥 Top Movers")
 for c, vals in top_movers.items():
@@ -137,11 +143,14 @@ for c, vals in top_movers.items():
 
 lines.append("\n---\n")
 for segment in ["AUD","CAD","CHF","EUR","GBP","NZD","USD"]:
-    for pair in sorted(fx_pairs.get(segment, {})):
+    # Sort pairs alphabetically
+    segment_pairs = sorted(fx_pairs.get(segment, {}))
+    for pair in segment_pairs:
         spot, dd, ww = fx_pairs[segment][pair]
         rate_str = f"{spot:.2f}" if "JPY" in pair else f"{spot:.4f}"
         lines.append(f"{pair} {rate_str}  {dd:+} d/d | {ww:+} w/w")
-    lines.append("")
+    if segment_pairs:
+        lines.append("")
 
 lines.append("---\nToday — Key Economic Releases")
 for e in economic_releases:
@@ -149,13 +158,14 @@ for e in economic_releases:
 
 lines.append("\n---\nCentral Bank Policy Rates")
 if central_bank_rates:
-    # Print in specific G8 order
+    # Print in standard G8 order
     g8_order = ["Fed", "ECB", "BoE", "BoJ", "BoC", "RBA", "RBNZ", "SNB"]
     for bank in g8_order:
         if bank in central_bank_rates:
             lines.append(f"{bank}: {central_bank_rates[bank]}")
 else:
-    lines.append("⚠️ Could not fetch live rates (check site connection)")
+    # Fallback message if scraper is blocked
+    lines.append("⚠️ Could not fetch live rates (Site blocked)")
 
 lines.append("\n---\nRates Outlook")
 for k, v in rates_outlook.items():
@@ -163,9 +173,10 @@ for k, v in rates_outlook.items():
 
 message = "\n".join(lines)
 
-# ===== SEND =====
+# ===== SEND TO TELEGRAM =====
 url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
 payload = {"chat_id": CHAT_ID, "text": message}
 response = requests.post(url, data=payload)
 
-print(f"Telegram Response: {response.json()}")
+print(f"Sent to Telegram. Status: {response.status_code}")
+print(response.json())
