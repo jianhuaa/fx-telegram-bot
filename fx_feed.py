@@ -5,7 +5,7 @@ import yfinance as yf
 from bs4 import BeautifulSoup
 from datetime import datetime, timedelta, timezone
 
-# Selenium Imports
+# Selenium Imports (Kept for ForexFactory dynamic scrolling)
 from selenium import webdriver
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.chrome.options import Options
@@ -32,15 +32,16 @@ TARGET_PAIRS = {
     "USDCAD": "USDCAD=X", "USDCHF": "USDCHF=X", "USDJPY": "USDJPY=X"
 }
 
-rates_outlook = {
-    "Fed":  ["🔴⬇️65%", "🟡➡️35%", "18 Mar 26"],
-    "ECB":  ["🔴⬇️45%", "🟡➡️55%", "05 Feb 26"],
-    "BoE":  ["🔴⬇️30%", "🟢⬆️15%", "05 Feb 26"],
-    "BoJ":  ["🔴⬇️20%", "🟢⬆️30%", "19 Mar 26"],
-    "SNB":  ["🔴⬇️55%", "🟡➡️45%", "19 Mar 26"],
-    "RBA":  ["🟢⬆️40%", "🟡➡️60%", "03 Feb 26"],
-    "BoC":  ["🔴⬇️35%", "🟡➡️65%", "18 Mar 26"],
-    "RBNZ": ["🔴⬇️25%", "🟢⬆️20%", "18 Feb 26"]
+# Probabilities are static/manual for now, but Dates will be dynamic
+base_outlook = {
+    "Fed":  ["🔴⬇️65%", "🟡➡️35%"],
+    "ECB":  ["🔴⬇️45%", "🟡➡️55%"],
+    "BoE":  ["🔴⬇️30%", "🟢⬆️15%"],
+    "BoJ":  ["🔴⬇️20%", "🟢⬆️30%"],
+    "SNB":  ["🔴⬇️55%", "🟡➡️45%"],
+    "RBA":  ["🟢⬆️40%", "🟡➡️60%"],
+    "BoC":  ["🔴⬇️35%", "🟡➡️65%"],
+    "RBNZ": ["🔴⬇️25%", "🟢⬆️20%"]
 }
 
 # ===== HELPERS =====
@@ -51,7 +52,6 @@ def setup_driver():
     options.add_argument("--disable-dev-shm-usage")
     options.add_argument("--window-size=1920,1080")
     
-    # Block popups and Google One-Tap at the browser level
     prefs = {
         "credentials_enable_service": False,
         "profile.password_manager_enabled": False,
@@ -77,57 +77,142 @@ def convert_time_to_sgt(date_str, time_str):
         return sgt_time.strftime("%H:%M")
     except: return time_str
 
-# ===== SCRAPERS =====
-def scrape_cb_rates():
-    print("🏛️ Scraping Central Bank rates (BeautifulSoup)...")
-    driver = None
+# ===== NEW SCRAPERS (CBRates.com) =====
+
+def scrape_cbrates_current():
+    print("🏛️ Scraping Current Rates (cbrates.com)...")
+    url = "https://www.cbrates.com/"
+    rates = {}
+    
+    # Mapping cbrates.com country names to our codes
+    # Note: Keys must match the text found on cbrates.com exactly
+    country_map = {
+        "United States": "Fed",
+        "Euro Area": "ECB",
+        "Eurozone": "ECB", # Fallback
+        "Britain": "BoE",
+        "United Kingdom": "BoE", # Fallback
+        "Japan": "BoJ",
+        "Canada": "BoC",
+        "Australia": "RBA",
+        "New Zealand": "RBNZ",
+        "Switzerland": "SNB"
+    }
+
     try:
-        driver = setup_driver()
-        driver.get("https://www.investing.com/central-banks/")
+        r = requests.get(url, headers={'User-Agent': 'Mozilla/5.0'})
+        soup = BeautifulSoup(r.text, 'html.parser')
         
-        # 1. Wait for table presence
-        wait = WebDriverWait(driver, 30)
-        wait.until(EC.presence_of_element_located((By.ID, "curr_table")))
-
-        # 2. Parse with BeautifulSoup (Robust Method)
-        soup = BeautifulSoup(driver.page_source, 'html.parser')
-        table = soup.find('table', id='curr_table')
+        # Finding the main table (usually standard table class or just the first big one)
+        # cbrates usually has a table with flag images
+        rows = soup.find_all('tr')
         
-        if not table:
-            print("⚠️ Table ID 'curr_table' not found in source.")
-            return None
-
-        rates = {}
-        # Map full names to your short codes
-        name_map = {
-            "Federal Reserve": "Fed", "European Central Bank": "ECB", "Bank of England": "BoE", 
-            "Bank of Japan": "BoJ", "Bank of Canada": "BoC", "Reserve Bank of Australia": "RBA", 
-            "Reserve Bank of New Zealand": "RBNZ", "Swiss National Bank": "SNB"
-        }
-
-        # 3. Manual Extraction
-        rows = table.find_all('tr')
         for row in rows:
-            cells = row.find_all('td')
-            # Ensure we have at least Name (1) and Rate (2) columns
-            if len(cells) < 3: continue 
+            text = row.get_text(" ", strip=True)
             
-            bank_name = cells[1].get_text(strip=True)
-            rate_text = cells[2].get_text(strip=True)
-
-            for full_name, short_name in name_map.items():
-                if full_name in bank_name:
-                    # Clean up the rate (e.g. "5.50%" -> "5.50%")
-                    rates[short_name] = rate_text
-                    break 
-        
+            for country, code in country_map.items():
+                if country in text:
+                    # Found a row. Now find the rate percentage.
+                    # Logic: Look for the last '%' in the row, or handle US range.
+                    cells = row.find_all('td')
+                    if len(cells) < 2: continue
+                    
+                    # Extract text from the cell that likely holds the rate (usually last or 2nd)
+                    # We grab all text in row and look for % patterns
+                    row_text = row.get_text()
+                    
+                    # Special Logic for US Fed "3.50 - 3.75"
+                    if code == "Fed" and "-" in row_text:
+                        # Extract the range, take the second number
+                        # Example: "United States USD 3.50 - 3.75"
+                        try:
+                            # Split by hyphen, take the part after it
+                            parts = row_text.split('-')
+                            # The higher number is in the last part (e.g. " 3.75")
+                            # We need to clean it of extra text
+                            high_part = parts[-1].replace('%', '').strip()
+                            # Sometimes it might have extra chars, extract float
+                            import re
+                            match = re.search(r"(\d+\.\d+)", high_part)
+                            if match:
+                                rates[code] = f"{match.group(1)}%"
+                            else:
+                                rates[code] = high_part + "%"
+                        except:
+                            pass
+                    else:
+                        # Standard Logic: Find the % value
+                        import re
+                        # Find all numbers like 4.25 or 0.10
+                        matches = re.findall(r"(\d+\.\d{2})", row_text)
+                        if matches:
+                            # Usually the rate is the first distinct number associated with the country
+                            # But cbrates lists Previous | Current sometimes. 
+                            # We assume the table shows current.
+                            rates[code] = f"{matches[0]}%"
+                    
+                    # Break loop for this row if found to avoid double matching
+                    if code in rates: break
+                    
         return rates
 
     except Exception as e:
-        print(f"⚠️ CB Scraping Failed: {e}")
+        print(f"⚠️ CBRates Rates Failed: {e}")
         return None
-    finally:
-        if driver: driver.quit()
+
+def scrape_cbrates_meetings():
+    print("🗓️ Scraping Meeting Dates (cbrates.com/meetings)...")
+    url = "https://www.cbrates.com/meetings.htm"
+    meetings = {}
+    
+    country_map = {
+        "United States": "Fed",
+        "Euro Area": "ECB",
+        "Eurozone": "ECB",
+        "Britain": "BoE",
+        "United Kingdom": "BoE",
+        "Japan": "BoJ",
+        "Canada": "BoC",
+        "Australia": "RBA",
+        "New Zealand": "RBNZ",
+        "Switzerland": "SNB"
+    }
+
+    try:
+        r = requests.get(url, headers={'User-Agent': 'Mozilla/5.0'})
+        soup = BeautifulSoup(r.text, 'html.parser')
+        
+        # The meetings page is usually a list of rows with Country | Date
+        rows = soup.find_all('tr')
+        
+        for row in rows:
+            row_text = row.get_text(" ", strip=True)
+            
+            for country, code in country_map.items():
+                if country in row_text:
+                    # We found the country. Now extract the date.
+                    # cbrates meetings format is typically: "United States : Dec 18, 2025"
+                    # We look for the date pattern.
+                    import re
+                    # Regex for "Mmm DD, YYYY" or "DD Mmm YYYY"
+                    # cbrates often uses "Dec 18" or "Dec 18, 2025"
+                    
+                    # Clean out the country name to leave the date
+                    date_text = row_text.replace(country, "").replace(":", "").strip()
+                    
+                    # Basic cleanup
+                    if date_text:
+                         # Store specifically if it looks like a date (contains a month)
+                         months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
+                         if any(m in date_text for m in months):
+                             meetings[code] = date_text
+                             break # Found
+
+        return meetings
+
+    except Exception as e:
+        print(f"⚠️ CBRates Meetings Failed: {e}")
+        return None
 
 def scrape_forex_factory():
     print("📅 Scraping ForexFactory (Today)...")
@@ -137,6 +222,7 @@ def scrape_forex_factory():
         driver = setup_driver()
         driver.get("https://www.forexfactory.com/calendar?day=today")
         
+        # Scroll to load dynamic content
         for i in range(1, 4):
             driver.execute_script(f"window.scrollTo(0, document.body.scrollHeight * {i/3});")
             time.sleep(1.5)
@@ -152,6 +238,7 @@ def scrape_forex_factory():
                 continue
             
             impact = row.find_elements(By.CSS_SELECTOR, "td.calendar__impact span.icon")
+            # Only get high impact (Red) events
             if not impact or "icon--ff-impact-red" not in impact[0].get_attribute("class"):
                 continue
 
@@ -222,7 +309,8 @@ def calculate_base_movers(fx_data):
 
 # ===== EXECUTION =====
 fx_results = fetch_fx_data()
-scraped_rates = scrape_cb_rates()
+scraped_rates = scrape_cbrates_current() 
+scraped_meetings = scrape_cbrates_meetings()
 calendar_events = scrape_forex_factory()
 base_movers = calculate_base_movers(fx_results)
 
@@ -271,11 +359,16 @@ if scraped_rates:
         rate = scraped_rates.get(bank, "N/A")
         lines.append(f"{bank}: {rate}")
 else: 
-    lines.append("⚠️ _Table Scraping Failed_")
+    lines.append("⚠️ _Scraping Failed_")
 
-lines.append("\n🔮 *Rates Outlook (Static)*")
-for bank, outlook in rates_outlook.items():
-    lines.append(f"{bank}: {outlook[0]} | {outlook[1]} | {outlook[2]}")
+lines.append("\n🔮 *Rates Outlook*")
+# Merge static probabilities with dynamic dates
+order = ["Fed", "ECB", "BoE", "BoJ", "SNB", "RBA", "BoC", "RBNZ"]
+for bank in order:
+    probs = base_outlook.get(bank, ["-", "-"])
+    # Get dynamic date if available, else placeholder
+    date_str = scraped_meetings.get(bank, "TBA")
+    lines.append(f"{bank}: {probs[0]} | {probs[1]} | {date_str}")
 
 # Send
 print("Sending to Telegram...")
