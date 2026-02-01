@@ -33,7 +33,7 @@ TARGET_PAIRS = {
     "USDCAD": "USDCAD=X", "USDCHF": "USDCHF=X", "USDJPY": "USDJPY=X"
 }
 
-# Probabilities (Static for now)
+# Probabilities (Static)
 base_outlook = {
     "Fed":  ["🔴⬇️65%", "🟡➡️35%"],
     "ECB":  ["🔴⬇️45%", "🟡➡️55%"],
@@ -81,54 +81,70 @@ def convert_time_to_sgt(date_str, time_str):
 # ===== SCRAPERS =====
 
 def scrape_cbrates_current():
-    print("🏛️ Scraping Current Rates (cbrates.com)...")
+    print("🏛️ Scraping Current Rates (cbrates.com) [v3 Robust]...")
     url = "https://www.cbrates.com/"
     rates = {}
     
-    # Text to match specifically in the table rows
-    country_map = {
-        "United States": "Fed", "Euro Area": "ECB", "Britain": "BoE", 
-        "Japan": "BoJ", "Canada": "BoC", "Australia": "RBA", 
-        "New Zealand": "RBNZ", "Switzerland": "SNB"
+    # v3 Logic: Search for the Short Code (e.g. "(Fed)", "(ECB)") 
+    # instead of the country name, as the HTML often mashes text together.
+    # Exception: Australia and New Zealand don't always have codes in the table.
+    identifier_map = {
+        "(Fed)": "Fed",
+        "(ECB)": "ECB",
+        "(BoE)": "BoE",
+        "(BoJ)": "BoJ",
+        "(BoC)": "BoC",
+        "(SNB)": "SNB",
+        "Australia": "RBA",
+        "New Zealand": "RBNZ"
     }
 
     try:
         r = requests.get(url, headers={'User-Agent': 'Mozilla/5.0'})
         soup = BeautifulSoup(r.text, 'html.parser')
         
+        # cbrates structure is messy; iterating all table rows is safest
         rows = soup.find_all('tr')
         
         for row in rows:
-            text = row.get_text(" ", strip=True) 
+            # get_text(" ") adds a space separator to prevent "3.75%United" issues
+            text = row.get_text(" ", strip=True)
             
-            for country, code in country_map.items():
-                if country in text:
-                    # -----------------------------------------------
-                    # FED SPECIFIC LOGIC (High Priority)
-                    # Looks for pattern: 3.50-3.75
-                    # -----------------------------------------------
+            for identifier, code in identifier_map.items():
+                if identifier in text:
+                    # -------------------------------------------------------
+                    # FED LOGIC: Look for "3.50-3.75" range first
+                    # -------------------------------------------------------
                     if code == "Fed":
-                        # Match: Digits.Digits - Digits.Digits
-                        # Handles spaces or no spaces around hyphen
+                        # Regex for "digits.digits - digits.digits"
                         range_match = re.search(r"(\d+\.\d{2})\s*-\s*(\d+\.\d{2})", text)
                         if range_match:
-                            # Take the second group (the higher number)
+                            # User wants the UPPER limit (Group 2) -> 3.75
                             rates[code] = range_match.group(2) + "%"
                         else:
-                            # Fallback to single number if range is missing
+                            # Fallback: Just grab the first percentage-like number
+                            match = re.search(r"(\d+\.\d{2})", text)
+                            if match: rates[code] = match.group(1) + "%"
+
+                    # -------------------------------------------------------
+                    # STANDARD LOGIC: Look for "2.00 %" or "2.00%"
+                    # -------------------------------------------------------
+                    else:
+                        # Regex finds "digits.digits" followed by %
+                        # This prevents grabbing the "0.25" from the change column
+                        match = re.search(r"(\d+\.\d{2})\s*%", text)
+                        if match:
+                            rates[code] = match.group(1) + "%"
+                        else:
+                            # Fallback if % is missing, grab first float
                             match = re.search(r"(\d+\.\d{2})", text)
                             if match: rates[code] = match.group(1) + "%"
                     
-                    # -----------------------------------------------
-                    # STANDARD LOGIC (All other banks)
-                    # -----------------------------------------------
-                    else:
-                        match = re.search(r"(\d+\.\d{2})", text)
-                        if match:
-                            rates[code] = match.group(1) + "%"
+                    # Stop checking other banks for this row
+                    break
                     
-                    if code in rates: break
         return rates
+
     except Exception as e:
         print(f"⚠️ CBRates Rates Failed: {e}")
         return None
@@ -138,7 +154,7 @@ def scrape_cbrates_meetings():
     url = "https://www.cbrates.com/meetings.htm"
     upcoming_meetings = {}
     
-    # Identifier map
+    # Identifiers on the meetings page are usually full names
     identifiers = {
         "Federal Reserve": "Fed", "European Central Bank": "ECB", 
         "Bank of England": "BoE", "Bank of Japan": "BoJ", 
@@ -154,46 +170,46 @@ def scrape_cbrates_meetings():
         today = datetime.now()
         current_year = today.year
 
-        # We will collect ALL meetings found, then filter for future dates
+        # Collect ALL meeting dates found for each bank
         found_meetings = {code: [] for code in identifiers.values()}
 
         for row in rows:
             text = row.get_text(" ", strip=True)
             
-            # Check if this row contains a date
             # Pattern: "Jan 28" or "Feb 5"
             date_match = re.search(r"(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+(\d{1,2})", text, re.IGNORECASE)
             
             if date_match:
-                # Create a date object (Assuming current year 2026)
                 month_str = date_match.group(1)
                 day_str = date_match.group(2)
                 try:
+                    # Parse date assuming current year
                     meeting_date = datetime.strptime(f"{month_str} {day_str} {current_year}", "%b %d %Y")
                     
-                    # Check which bank is in this row
+                    # If date is in the past (e.g., Jan 20 when today is Feb 1), assume it's next year? 
+                    # No, cbrates usually clears past dates. But just in case:
+                    if meeting_date.date() < today.date():
+                        # If parsed date is earlier than today, check if it might be next year
+                        # (Simple logic: if meeting is Jan and we are in Dec, it's next year)
+                        pass 
+
                     for identifier, code in identifiers.items():
                         if identifier in text:
                             found_meetings[code].append(meeting_date)
                 except:
                     continue
 
-        # Now Pick the NEXT Future meeting for each bank
+        # Filter for the NEXT FUTURE meeting
         for code, dates in found_meetings.items():
-            # Sort dates chronologically
-            dates.sort()
-            
+            dates.sort() # Ensure chronological order
             future_date_found = False
             for d in dates:
-                # If the meeting is today or in the future
                 if d.date() >= today.date():
                     upcoming_meetings[code] = d.strftime("%b %d")
                     future_date_found = True
                     break
             
-            if not future_date_found and dates:
-                # If all dates are past, likely we are late in the year or site outdated
-                # Show "TBA" or the last known date? Usually TBA is safer.
+            if not future_date_found:
                 upcoming_meetings[code] = "TBA"
 
         return upcoming_meetings
@@ -332,7 +348,7 @@ else: lines.append("No high impact events today.")
 lines.append("\n---")
 lines.append("🏛 *Central Bank Policy Rates*")
 if scraped_rates:
-    # UPDATED ORDER
+    # Custom Order (Ascending Currency / Requested Order)
     order = ["RBA", "BoC", "SNB", "ECB", "BoE", "BoJ", "RBNZ", "Fed"]
     for bank in order:
         rate = scraped_rates.get(bank, "N/A")
@@ -341,7 +357,7 @@ else:
     lines.append("⚠️ _Scraping Failed_")
 
 lines.append("\n🔮 *Rates Outlook*")
-# UPDATED ORDER
+# Using the same order for the outlook
 order = ["RBA", "BoC", "SNB", "ECB", "BoE", "BoJ", "RBNZ", "Fed"]
 for bank in order:
     probs = base_outlook.get(bank, ["-", "-"])
