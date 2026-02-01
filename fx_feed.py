@@ -1,5 +1,4 @@
 import os
-import json
 import time
 import requests
 from datetime import datetime, timedelta, timezone
@@ -10,7 +9,7 @@ from selenium.webdriver.common.by import By
 from webdriver_manager.chrome import ChromeDriverManager
 from selenium_stealth import stealth
 
-# ===== CONFIG =====
+# ===== CONFIGURATION =====
 TELEGRAM_TOKEN = "7649050168:AAHNIYnrHzLOTcjNuMpeKgyUbfJB9x9an3c"
 CHAT_ID = "876384974"
 FORCE_SEND = True 
@@ -18,7 +17,7 @@ FORCE_SEND = True
 SGT = timezone(timedelta(hours=8))
 now = datetime.now(SGT)
 
-# G8 Mapping for shorthand labels
+# Mapping Website Full Names to your G8 shorthand
 G8_MAP = {
     "Federal Reserve": "Fed",
     "European Central Bank": "ECB",
@@ -30,7 +29,7 @@ G8_MAP = {
     "Swiss National Bank": "SNB"
 }
 
-# ===== STATIC DATA =====
+# ===== STATIC DATA SECTIONS =====
 fx_pairs = {
     "AUD": {"AUDCAD": [0.8920, +9, +21], "AUDCHF": [0.5821, +12, +25], "AUDJPY": [97.85, -5, -13], "AUDNZD": [1.0830, +10, +15], "AUDUSD": [0.6624, +22, +41]},
     "CAD": {"CADCHF": [0.6521, -6, -20], "CADJPY": [109.73, -12, -49], "USDCAD": [1.3486, -17, -66]},
@@ -63,44 +62,48 @@ economic_releases = [
     {"flag":"🇬🇧","title":"UK GDP MoM","time":"16:30 SGT","prev":"0.0%","cons":"0.1%"}
 ]
 
-# ===== STEALTH SCRAPER =====
-def scrape_cb_rates():
+# ===== G8 STEALTH SCRAPER =====
+def scrape_g8_rates():
     chrome_options = Options()
-    chrome_options.add_argument("--headless")
+    chrome_options.add_argument("--headless=new")
     chrome_options.add_argument("--no-sandbox")
     chrome_options.add_argument("--disable-dev-shm-usage")
     chrome_options.add_argument("--window-size=1920,1080")
-    chrome_options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+    chrome_options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36")
 
     try:
         driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=chrome_options)
         stealth(driver, languages=["en-US", "en"], vendor="Google Inc.", platform="Win32", fix_hairline=True)
 
-        driver.get("https://www.investing.com/central-banks/world-central-banks")
-        time.sleep(15) # Wait for table to load
+        driver.get("https://www.investing.com/central-banks/")
+        
+        # Give the JS and anti-bot checks plenty of time to clear
+        time.sleep(20) 
         
         g8_rates = {}
+        # Locate the table by ID from your HTML snippet
         table = driver.find_element(By.ID, "curr_table")
-        rows = table.find_elements(By.TAG_NAME, "tr")[1:]
+        rows = table.find_elements(By.TAG_NAME, "tr")[1:] # Skip header
         
         for row in rows:
             cells = row.find_elements(By.TAG_NAME, "td")
             if len(cells) >= 3:
-                # Cleaning name (removes "(FED)" etc.)
-                full_name = cells[1].text.split('(')[0].strip()
-                rate = cells[2].text.strip()
+                # cells[1] is the Name column, cells[2] is the Rate column
+                raw_name = cells[1].text.split('(')[0].strip()
+                rate_val = cells[2].text.strip()
                 
-                if full_name in G8_MAP:
-                    g8_rates[G8_MAP[full_name]] = rate
+                if raw_name in G8_MAP:
+                    g8_rates[G8_MAP[raw_name]] = rate_val
         
         driver.quit()
-        return g8_rates
+        return g8_rates if g8_rates else None
+
     except Exception as e:
-        print(f"Scrape Error: {e}")
+        print(f"DEBUG: Scrape failed with error: {e}")
         return None
 
-# ===== BUILD MESSAGE =====
-central_bank_rates = scrape_cb_rates()
+# ===== MESSAGE BUILDING =====
+live_rates = scrape_g8_rates()
 
 lines = [f"📊 G8 FX & Macro Update — {now.strftime('%H:%M')} SGT\n"]
 
@@ -110,24 +113,26 @@ for c, vals in top_movers.items():
 
 lines.append("\n---\n")
 for segment in ["AUD","CAD","CHF","EUR","GBP","NZD","USD"]:
-    for pair in sorted(fx_pairs.get(segment, {})):
+    pairs_in_segment = sorted(fx_pairs.get(segment, {}))
+    for pair in pairs_in_segment:
         spot, dd, ww = fx_pairs[segment][pair]
         rate_str = f"{spot:.2f}" if "JPY" in pair else f"{spot:.4f}"
         lines.append(f"{pair} {rate_str}  {dd:+} d/d | {ww:+} w/w")
-    lines.append("")
+    if pairs_in_segment: lines.append("")
 
 lines.append("---\nToday — Key Economic Releases")
 for e in economic_releases:
     lines.append(f"{e['flag']} {e['title']} | {e['time']} | P: {e['prev']} | C: {e['cons']}")
 
 lines.append("\n---\nCentral Bank Policy Rates")
-if central_bank_rates:
-    order = ["Fed", "ECB", "BoE", "BoJ", "BoC", "RBA", "RBNZ", "SNB"]
-    for bank in order:
-        if bank in central_bank_rates:
-            lines.append(f"{bank}: {central_bank_rates[bank]}")
+if live_rates:
+    # Set the order to G8 standard
+    g8_order = ["Fed", "ECB", "BoE", "BoJ", "BoC", "RBA", "RBNZ", "SNB"]
+    for bank in g8_order:
+        if bank in live_rates:
+            lines.append(f"{bank}: {live_rates[bank]}")
 else:
-    lines.append("⚠️ Could not fetch live G8 rates.")
+    lines.append("⚠️ Note: Could not fetch live G8 rates.")
 
 lines.append("\n---\nRates Outlook — Next Meeting")
 for k, v in rates_outlook.items():
@@ -135,8 +140,12 @@ for k, v in rates_outlook.items():
 
 message = "\n".join(lines)
 
-# ===== SEND =====
+# ===== TELEGRAM DISPATCH =====
 url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
 payload = {"chat_id": CHAT_ID, "text": message}
 response = requests.post(url, data=payload)
-print(f"Status: {response.status_code}")
+
+if response.status_code == 200:
+    print("Feed sent successfully!")
+else:
+    print(f"Error: {response.text}")
