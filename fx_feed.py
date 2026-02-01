@@ -11,8 +11,11 @@ FORCE_SEND = True  # Set True to send even weekends for testing
 SGT = timezone(timedelta(hours=8))
 now = datetime.now(SGT)
 weekday = now.weekday()  # 0=Mon ... 6=Sun
+
+# Skip weekends if not forcing send
 if not FORCE_SEND and weekday in [5, 6]:
-    exit()
+    print("Weekend — skipping FX update")
+    exit(0)
 
 # ===== FX TICKERS (Yahoo Finance) — All 28 G8 Crosses =====
 tickers = [
@@ -51,6 +54,10 @@ for t in tickers:
     dd_pips = calc_pips(t, latest_close, prev_close)
     ww_pips = calc_pips(t, latest_close, week_close)
     data[t.replace("=X","")] = [latest_close, dd_pips, ww_pips]
+
+if not data:
+    print("No FX data fetched — exiting")
+    exit(0)
 
 # ===== Top Movers (Weighted Average Across Crosses) =====
 currs = ["AUD","CAD","CHF","EUR","GBP","JPY","NZD","USD"]
