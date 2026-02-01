@@ -5,13 +5,16 @@ from datetime import datetime, timezone, timedelta
 TELEGRAM_TOKEN = "7649050168:AAHNIYnrHzLOTcjNuMpeKgyUbfJB9x9an3c"
 CHAT_ID = "876384974"
 
+# ====== FORCE SEND FLAG ======
+FORCE_SEND = True  # Set True to send even on weekends
+
 # ====== SGT TIMEZONE ======
 SGT = timezone(timedelta(hours=8))
 now = datetime.now(SGT)
 weekday = now.weekday()  # 0=Mon, 6=Sun
 
-# Skip weekends (Sat=5, Sun=6)
-if weekday in [5, 6]:
+# Skip weekends unless FORCE_SEND is True
+if not FORCE_SEND and weekday in [5, 6]:
     print("Weekend — skipping FX update")
     exit()
 
@@ -85,7 +88,7 @@ economic_releases = [
 
 # ====== FORMAT MESSAGE ======
 msg_lines = []
-msg_lines.append("📊 G8 FX & Macro Update — 14:15 SGT\n")
+msg_lines.append(f"📊 G8 FX & Macro Update — {now.strftime('%H:%M')} SGT\n")
 
 # Top Movers
 msg_lines.append("🔥 Top Movers (Weighted Avg across crosses)")
