@@ -2,7 +2,6 @@ import time
 import requests
 import pandas as pd
 import yfinance as yf
-import random
 from datetime import datetime, timedelta, timezone
 
 # Selenium Imports
@@ -45,28 +44,19 @@ rates_outlook = {
     "RBNZ": ["🔴⬇️25%", "🟢⬆️20%", "03 Mar 26"]
 }
 
-# ===== HELPER: SETUP DRIVER (Anti-Detection) =====
+# ===== HELPER: SETUP DRIVER =====
 def setup_driver():
     options = Options()
     options.add_argument("--headless=new")
     options.add_argument("--no-sandbox")
     options.add_argument("--disable-dev-shm-usage")
     options.add_argument("--window-size=1920,1080")
-    
-    # 🛑 Anti-Bot Flags 🛑
     options.add_argument("--disable-blink-features=AutomationControlled")
     options.add_experimental_option("excludeSwitches", ["enable-automation"])
     options.add_experimental_option("useAutomationExtension", False)
-    # Random User Agent to look more human
-    user_agents = [
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
-        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36"
-    ]
-    options.add_argument(f"user-agent={random.choice(user_agents)}")
-
+    
     driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=options)
     
-    # Apply Stealth
     stealth(driver,
         languages=["en-US", "en"],
         vendor="Google Inc.",
@@ -91,20 +81,13 @@ def convert_time_to_sgt(date_str, time_str):
     except:
         return time_str
 
-# ===== 1. SCRAPER: CENTRAL BANKS (INVESTING.COM) =====
+# ===== 1. SCRAPER: CENTRAL BANKS (Original Logic) =====
 def scrape_cb_rates():
     print("🕷️ Scraping Central Bank rates (Investing.com)...")
     driver = None
     try:
         driver = setup_driver()
-        
-        # Clear cookies before starting
-        driver.delete_all_cookies()
-        
         driver.get("https://www.investing.com/central-banks/")
-        
-        # Random sleep to mimic human latency
-        time.sleep(random.uniform(5, 8))
         
         # Wait for table
         WebDriverWait(driver, 20).until(
@@ -120,7 +103,7 @@ def scrape_cb_rates():
             "Reserve Bank of New Zealand": "RBNZ", "Swiss National Bank": "SNB"
         }
 
-        # Select rows in table#curr_table
+        # Original Selector that worked
         rows = driver.find_elements(By.CSS_SELECTOR, "table#curr_table tbody tr")
         
         for row in rows:
@@ -150,11 +133,11 @@ def scrape_cb_rates():
     finally:
         if driver: driver.quit()
 
-# ===== 2. SCRAPER: FOREX FACTORY (TODAY) =====
+# ===== 2. SCRAPER: FOREX FACTORY (Weekly) =====
 def scrape_forex_factory():
-    print("📅 Scraping ForexFactory (Today)...")
-    # Switched back to TODAY
-    url = "https://www.forexfactory.com/calendar?day=today"
+    print("📅 Scraping ForexFactory (Weekly)...")
+    # Switched back to WEEKLY to ensure data visibility
+    url = "https://www.forexfactory.com/calendar?week=this"
     
     driver = None
     releases = []
@@ -321,14 +304,14 @@ for base, pairs in groups.items():
 
 lines.append("---")
 
-# 3. Economic Releases (TODAY)
-lines.append("📅 *ForexFactory: High Impact (Today)*")
+# 3. Economic Releases (WEEKLY)
+lines.append("📅 *ForexFactory: High Impact (Weekly)*")
 lines.append("_(Times in SGT)_")
 
 if calendar_events is None:
     lines.append("⚠️ _Scraper Error / Blocked_")
 elif not calendar_events:
-    lines.append("_No Red Impact events today_")
+    lines.append("_No Red Impact events found this week_")
 else:
     for e in calendar_events:
         lines.append(f"[{e['date']}] {e['flag']} {e['title']} | {e['time_sgt']}")
