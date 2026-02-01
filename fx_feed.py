@@ -85,36 +85,42 @@ def scrape_cbrates_current():
     url = "https://www.cbrates.com/"
     rates = {}
     
-    # Mapping exact text from cbrates to our codes
+    # Text to match specifically in the table rows
     country_map = {
-        "United States": "Fed", "Euro Area": "ECB", "Eurozone": "ECB", 
-        "Britain": "BoE", "United Kingdom": "BoE", "Japan": "BoJ", 
-        "Canada": "BoC", "Australia": "RBA", "New Zealand": "RBNZ", "Switzerland": "SNB"
+        "United States": "Fed", "Euro Area": "ECB", "Britain": "BoE", 
+        "Japan": "BoJ", "Canada": "BoC", "Australia": "RBA", 
+        "New Zealand": "RBNZ", "Switzerland": "SNB"
     }
 
     try:
         r = requests.get(url, headers={'User-Agent': 'Mozilla/5.0'})
         soup = BeautifulSoup(r.text, 'html.parser')
+        
+        # We look for rows that contain our country names
         rows = soup.find_all('tr')
         
         for row in rows:
-            text = row.get_text(" ", strip=True)
+            text = row.get_text(" ", strip=True) # Flatten row text
             
             for country, code in country_map.items():
                 if country in text:
-                    # Logic 1: Check for Range "3.50 - 3.75" (Fed Logic)
-                    # We capture both numbers, then take the second (higher) one
-                    range_match = re.search(r"(\d+\.\d{2})\s*-\s*(\d+\.\d{2})", text)
+                    # 1. Fed Logic: Look for range "3.50 - 3.75"
+                    if code == "Fed":
+                        # Regex to find "number hyphen number"
+                        range_match = re.search(r"(\d+\.\d+)\s*-\s*(\d+\.\d+)", text)
+                        if range_match:
+                            # Take the second group (the higher number)
+                            rates[code] = range_match.group(2) + "%"
+                        else:
+                            # Fallback if they stop using ranges
+                            match = re.search(r"(\d+\.\d{2})", text)
+                            if match: rates[code] = match.group(1) + "%"
                     
-                    if range_match:
-                        # Found a range (e.g. 3.50 - 3.75) -> Take 3.75
-                        rates[code] = f"{range_match.group(2)}%"
+                    # 2. Standard Logic for others
                     else:
-                        # Logic 2: Standard single percentage
-                        # Find the first valid percentage (e.g. 5.25)
-                        single_match = re.search(r"(\d+\.\d{2})", text)
-                        if single_match:
-                            rates[code] = f"{single_match.group(1)}%"
+                        match = re.search(r"(\d+\.\d{2})", text)
+                        if match:
+                            rates[code] = match.group(1) + "%"
                     
                     if code in rates: break
         return rates
@@ -127,32 +133,37 @@ def scrape_cbrates_meetings():
     url = "https://www.cbrates.com/meetings.htm"
     meetings = {}
     
-    country_map = {
-        "United States": "Fed", "Euro Area": "ECB", "Eurozone": "ECB",
-        "Britain": "BoE", "United Kingdom": "BoE", "Japan": "BoJ",
-        "Canada": "BoC", "Australia": "RBA", "New Zealand": "RBNZ", "Switzerland": "SNB"
+    # Keys identifying the row
+    identifiers = {
+        "Federal Reserve": "Fed", "European Central Bank": "ECB", 
+        "Bank of England": "BoE", "Bank of Japan": "BoJ", 
+        "Reserve Bank of Australia": "RBA", "Swiss National Bank": "SNB", 
+        "Reserve Bank of New Zealand": "RBNZ", "Bank of Canada": "BoC"
     }
 
     try:
         r = requests.get(url, headers={'User-Agent': 'Mozilla/5.0'})
         soup = BeautifulSoup(r.text, 'html.parser')
+        
+        # Get all text from table rows
         rows = soup.find_all('tr')
         
         for row in rows:
             text = row.get_text(" ", strip=True)
             
-            for country, code in country_map.items():
-                if country in text:
-                    # Look for date pattern like "Jan 28" or "Feb 05"
-                    # Regex: (Month) + Space + (1 or 2 digits)
+            for identifier, code in identifiers.items():
+                if identifier in text:
+                    # Found the bank row. Now look for the date.
+                    # Pattern: Month Name + Space + 1-2 Digits (e.g., "Jan 28" or "Feb 5")
                     date_match = re.search(r"(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+(\d{1,2})", text, re.IGNORECASE)
                     
                     if date_match:
-                        # Reconstruct "Mmm DD"
                         date_str = f"{date_match.group(1)} {date_match.group(2)}"
                         meetings[code] = date_str
-                        break 
+                        # Found it, move to next bank
+                        break
         return meetings
+
     except Exception as e:
         print(f"⚠️ CBRates Meetings Failed: {e}")
         return None
@@ -287,7 +298,7 @@ else: lines.append("No high impact events today.")
 lines.append("\n---")
 lines.append("🏛 *Central Bank Policy Rates*")
 if scraped_rates:
-    # UPDATED ORDER as requested
+    # Custom Order as requested
     order = ["RBA", "BoC", "SNB", "ECB", "BoE", "BoJ", "RBNZ", "Fed"]
     for bank in order:
         rate = scraped_rates.get(bank, "N/A")
@@ -296,7 +307,7 @@ else:
     lines.append("⚠️ _Scraping Failed_")
 
 lines.append("\n🔮 *Rates Outlook*")
-# Using the same order for the outlook
+# Using the same order for outlook
 order = ["RBA", "BoC", "SNB", "ECB", "BoE", "BoJ", "RBNZ", "Fed"]
 for bank in order:
     probs = base_outlook.get(bank, ["-", "-"])
