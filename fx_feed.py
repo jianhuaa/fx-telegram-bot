@@ -50,7 +50,7 @@ def setup_driver():
     options.add_argument("--disable-dev-shm-usage")
     options.add_argument("--window-size=1920,1080")
     
-    # NEW: Block popups and Google One-Tap at the browser level
+    # Block popups and Google One-Tap at the browser level
     prefs = {
         "credentials_enable_service": False,
         "profile.password_manager_enabled": False,
@@ -78,52 +78,53 @@ def convert_time_to_sgt(date_str, time_str):
 
 # ===== SCRAPERS =====
 def scrape_cb_rates():
-    print("🏛️ Scraping Central Bank rates...")
+    print("🏛️ Scraping Central Bank rates (Pandas Method)...")
     driver = None
     try:
         driver = setup_driver()
         driver.get("https://www.investing.com/central-banks/")
         
-        # POPUP KILLER: Kill the general overlay and email signup boxes immediately
-        # This prevents the "ElementInterceptedException"
-        driver.execute_script("""
-            var overlays = document.querySelectorAll('.js-general-overlay, .secondaryOverlay, .email-popup, #adFreeSalePopup');
-            overlays.forEach(el => el.remove());
-            document.body.classList.remove('no-scroll');
-        """)
-        
-        # Wait for the table rows to render
-        wait = WebDriverWait(driver, 20)
-        wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, "#curr_table tbody tr")))
+        # 1. Wait specifically for the table ID to be present in the DOM
+        # We increase timeout to 30s to account for heavy loading
+        wait = WebDriverWait(driver, 30)
+        wait.until(EC.presence_of_element_located((By.ID, "curr_table")))
 
+        # 2. Grab the raw source immediately
+        html_source = driver.page_source
+        
+        # 3. Use Pandas to parse the HTML string
+        # This bypasses Selenium's element interaction issues
+        dfs = pd.read_html(html_source, attrs={"id": "curr_table"})
+        
+        if not dfs:
+            print("⚠️ Table not found via Pandas")
+            return None
+
+        df = dfs[0] # The first table matching id="curr_table"
+        
+        rates = {}
         name_map = {
             "Federal Reserve": "Fed", "European Central Bank": "ECB", "Bank of England": "BoE", 
             "Bank of Japan": "BoJ", "Bank of Canada": "BoC", "Reserve Bank of Australia": "RBA", 
             "Reserve Bank of New Zealand": "RBNZ", "Swiss National Bank": "SNB"
         }
 
-        # JS-Based Scrape: Immune to invisible overlays or popups blocking the pointer
-        raw_data = driver.execute_script("""
-            var rows = document.querySelectorAll('#curr_table tbody tr');
-            return Array.from(rows).map(row => {
-                var cells = row.querySelectorAll('td');
-                if (cells.length >= 3) {
-                    return {
-                        name: cells[1].innerText,
-                        rate: cells[2].innerText
-                    };
-                }
-                return null;
-            }).filter(item => item !== null);
-        """)
+        # Iterate through the DataFrame (Column 1 is Bank Name, Column 2 is Rate)
+        # We use strict column index accessing to avoid header naming issues
+        for index, row in df.iterrows():
+            # Adjust indices if necessary. Usually: col 1 is Name, col 2 is Rate
+            bank_name_cell = str(row.iloc[1]) 
+            rate_cell = str(row.iloc[2])
 
-        rates = {}
-        for item in raw_data:
             for full_name, short_name in name_map.items():
-                if full_name in item['name']:
-                    rates[short_name] = item['rate'].strip()
+                if full_name in bank_name_cell:
+                    # Clean the rate string (remove % and whitespace)
+                    clean_rate = rate_cell.replace('%', '').strip()
+                    if clean_rate and clean_rate != 'nan':
+                         rates[short_name] = clean_rate + "%"
         
-        return rates if rates else None
+        return rates
+
     except Exception as e:
         print(f"⚠️ CB Scraping Failed: {e}")
         return None
@@ -185,8 +186,20 @@ def scrape_forex_factory():
 # ===== CALCULATIONS =====
 def fetch_fx_data():
     tickers = list(TARGET_PAIRS.values())
+    # Downloading data
     data = yf.download(tickers, period="1mo", progress=False)
-    closes = data.xs('Close', level=0, axis=1) if isinstance(data.columns, pd.MultiIndex) else data['Close']
+    
+    # Handle MultiIndex columns (yfinance structure changes frequently)
+    if isinstance(data.columns, pd.MultiIndex):
+        try:
+            # Try to get Close prices. If 'Close' is level 0
+            closes = data.xs('Close', level=0, axis=1)
+        except KeyError:
+             # Fallback if structure is different (e.g. Ticker as level 0)
+             closes = data['Close']
+    else:
+        closes = data['Close']
+        
     results = {}
     for pair, ticker in TARGET_PAIRS.items():
         if ticker in closes.columns:
@@ -254,7 +267,9 @@ else: lines.append("No high impact events today.")
 lines.append("\n---")
 lines.append("🏛 *Central Bank Policy Rates*")
 if scraped_rates:
-    for bank in ["Fed", "ECB", "BoE", "BoJ", "SNB", "RBA", "BoC", "RBNZ"]:
+    # Preferred order of display
+    order = ["Fed", "ECB", "BoE", "BoJ", "SNB", "RBA", "BoC", "RBNZ"]
+    for bank in order:
         rate = scraped_rates.get(bank, "N/A")
         lines.append(f"{bank}: {rate}")
 else: 
@@ -265,5 +280,10 @@ for bank, outlook in rates_outlook.items():
     lines.append(f"{bank}: {outlook[0]} | {outlook[1]} | {outlook[2]}")
 
 # Send
-requests.post(f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage", 
-              data={"chat_id": CHAT_ID, "text": "\n".join(lines), "parse_mode": "Markdown"})
+print("Sending to Telegram...")
+try:
+    response = requests.post(f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage", 
+                             data={"chat_id": CHAT_ID, "text": "\n".join(lines), "parse_mode": "Markdown"})
+    print(f"Status Code: {response.status_code}")
+except Exception as e:
+    print(f"Error sending message: {e}")
