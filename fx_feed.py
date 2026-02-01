@@ -45,7 +45,7 @@ fx_pairs = {
     "USD": {"USDJPY": [147.90, -34, -205]}
 }
 
-# ===== Top Movers (Weighted Avg across crosses) =====
+# ===== Top Movers =====
 top_movers = {
     "AUD": [+21, +56],
     "CAD": [-15, -62],
@@ -57,25 +57,25 @@ top_movers = {
     "USD": [-34, -205]
 }
 
-# ===== Central Bank Rates =====
+# ===== Central Bank Rates (static) =====
 central_bank_rates = {
     "Fed":"5.25–5.50%", "ECB":"4.00%", "BoE":"5.25%", "BoJ":"0.10%",
     "SNB":"1.75%", "RBA":"4.35%", "BoC":"5.00%", "RBNZ":"5.50%"
 }
 
-# ===== Rates Outlook — Colored Arrows =====
+# ===== Rates Outlook — Colored Arrows (shortened year) =====
 rates_outlook = {
-    "Fed":["🔴⬇️65%","🟡➡️35%","22 Feb 2026"],
-    "ECB":["🔴⬇️45%","🟡➡️55%","08 Mar 2026"],
-    "BoE":["🔴⬇️30%","🟢⬆️15%","20 Mar 2026"],
-    "BoJ":["🔴⬇️20%","🟢⬆️30%","10 Mar 2026"],
-    "SNB":["🔴⬇️55%","🟡➡️45%","16 Mar 2026"],
-    "RBA":["🟢⬆️40%","🟡➡️60%","05 Mar 2026"],
-    "BoC":["🔴⬇️35%","🟡➡️65%","11 Mar 2026"],
-    "RBNZ":["🔴⬇️25%","🟢⬆️20%","03 Mar 2026"]
+    "Fed":["🔴⬇️65%","🟡➡️35%","22 Feb 26"],
+    "ECB":["🔴⬇️45%","🟡➡️55%","08 Mar 26"],
+    "BoE":["🔴⬇️30%","🟢⬆️15%","20 Mar 26"],
+    "BoJ":["🔴⬇️20%","🟢⬆️30%","10 Mar 26"],
+    "SNB":["🔴⬇️55%","🟡➡️45%","16 Mar 26"],
+    "RBA":["🟢⬆️40%","🟡➡️60%","05 Mar 26"],
+    "BoC":["🔴⬇️35%","🟡➡️65%","11 Mar 26"],
+    "RBNZ":["🔴⬇️25%","🟢⬆️20%","03 Mar 26"]
 }
 
-# ===== Economic Releases (Static) =====
+# ===== Economic Releases (Static, time on next line) =====
 economic_releases = [
     {"flag":"🇺🇸","title":"US CPI (High)","time":"20:30 SGT","prev":"3.4%","cons":"3.2%"},
     {"flag":"🇪🇺","title":"EZ Industrial Prod","time":"16:00 SGT","prev":"-0.6%","cons":"-0.3%"},
@@ -85,9 +85,10 @@ economic_releases = [
 # ===== Format Telegram Message =====
 lines = []
 lines.append(f"📊 G8 FX & Macro Update — {datetime.now(SGT).strftime('%H:%M')} SGT\n")
+
 lines.append("🔥 Top Movers (Weighted Avg across crosses)")
 for c, vals in top_movers.items():
-    lines.append(f"{c}: {vals[0]:+} pips d/d | {vals[1]:+} pips w/w")
+    lines.append(f"{c}: {vals[0]:+} pips d/d | {vals[1]:+} w/w")
 lines.append("\n---\n")
 
 for segment in ["AUD","CAD","CHF","EUR","GBP","NZD","USD"]:
@@ -99,7 +100,8 @@ for segment in ["AUD","CAD","CHF","EUR","GBP","NZD","USD"]:
 
 lines.append("---\nToday — Key Economic Releases")
 for e in economic_releases:
-    lines.append(f"{e['flag']} {e['title']:<22} | {e['time']} | Prev {e['prev']} | Cons {e['cons']}")
+    lines.append(f"{e['flag']} {e['title']}")
+    lines.append(f"Time {e['time']} | Prev {e['prev']} | Cons {e['cons']}")
 
 lines.append("\n---\nCentral Bank Policy Rates")
 for k, v in central_bank_rates.items():
