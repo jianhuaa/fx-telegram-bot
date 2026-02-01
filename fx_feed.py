@@ -62,8 +62,8 @@ def scrape_cb_rates():
         driver = setup_driver()
         driver.get("https://www.investing.com/central-banks/")
         
-        # SKEPTICAL WAIT: Wait for the specific Federal Reserve link inside the table
-        WebDriverWait(driver, 35).until(EC.presence_of_element_located((By.XPATH, "//a[contains(@href, 'federal-reserve')]")))
+        # Wait for the table row containing "Federal Reserve"
+        WebDriverWait(driver, 35).until(EC.presence_of_element_located((By.XPATH, "//tr[contains(., 'Federal Reserve')]")))
         
         rates = {}
         name_map = {
@@ -72,10 +72,8 @@ def scrape_cb_rates():
             "Reserve Bank of New Zealand": "RBNZ", "Swiss National Bank": "SNB"
         }
 
-        # Try to find table rows within the specific ID provided
+        # Targeted search for the table content
         rows = driver.find_elements(By.CSS_SELECTOR, "table#curr_table tbody tr")
-        
-        # If CSS fails (sometimes IDs are hidden/dynamic), fallback to XPATH
         if not rows:
             rows = driver.find_elements(By.XPATH, "//table[contains(@class, 'genTbl')]//tr")
 
@@ -86,7 +84,6 @@ def scrape_cb_rates():
             row_text = row.text
             for full_name, short_name in name_map.items():
                 if full_name in row_text:
-                    # Column 2 (index 2) is the Current Rate
                     rates[short_name] = cols[2].text.strip()
         return rates
     except Exception as e:
@@ -95,17 +92,23 @@ def scrape_cb_rates():
         if driver: driver.quit()
 
 def scrape_forex_factory():
-    print("📅 Scraping ForexFactory...")
+    print("📅 Scraping ForexFactory (Hardened)...")
     driver = None
     releases = []
     try:
         driver = setup_driver()
         driver.get("https://www.forexfactory.com/calendar?day=today")
         
-        # STEP-SCROLL: Triggering lazy-load rows for mid-week events
-        for i in range(1, 7):
-            driver.execute_script(f"window.scrollTo(0, document.body.scrollHeight * {i/6});")
+        # 1. Wait for the table to appear in the DOM
+        WebDriverWait(driver, 20).until(EC.presence_of_element_located((By.CLASS_NAME, "calendar__table")))
+        
+        # 2. Incremental scrolling to trigger lazy loading
+        for _ in range(3):
+            driver.execute_script("window.scrollBy(0, 500);")
             time.sleep(1.5)
+        
+        # 3. Buffer for AJAX to finish
+        time.sleep(3)
         
         rows = driver.find_elements(By.CSS_SELECTOR, "tr.calendar__row")
         current_date_str, last_valid_time = "", ""
@@ -117,8 +120,8 @@ def scrape_forex_factory():
                 if val: current_date_str = val
                 continue
             
-            impact = row.find_elements(By.CSS_SELECTOR, "td.calendar__impact span.icon")
-            if not impact or "icon--ff-impact-red" not in impact[0].get_attribute("class"):
+            impact_spans = row.find_elements(By.CSS_SELECTOR, "td.calendar__impact span.icon")
+            if not impact_spans or "icon--ff-impact-red" not in impact_spans[0].get_attribute("class"):
                 continue
 
             try:
@@ -215,7 +218,8 @@ if calendar_events:
     for e in calendar_events:
         lines.append(f"[{e['date']}] {e['flag']} {e['title']} | {e['time_raw']}")
         if e['act'] != "-": lines.append(f"   Act: {e['act']} | C: {e['cons']} | P: {e['prev']}")
-else: lines.append("⚠️ _Fetch Error (Lazy Load)_")
+else:
+    lines.append("_No Red Impact Events for Today_")
 
 lines.append("\n---")
 lines.append("🏛 *Central Bank Policy Rates*")
@@ -223,12 +227,13 @@ if scraped_rates:
     for bank in ["Fed", "ECB", "BoE", "BoJ", "SNB", "RBA", "BoC", "RBNZ"]:
         rate = scraped_rates.get(bank, "N/A")
         lines.append(f"{bank}: {rate}")
-else: lines.append("⚠️ _Table Layout Intermittent Fail_")
+else:
+    lines.append("⚠️ _Table Layout Intermittent Fail_")
 
-lines.append("\n🔮 *Rates Outlook*")
+lines.append("\n🔮 *Rates Outlook (Static)*")
 for bank, outlook in rates_outlook.items():
     lines.append(f"{bank}: {outlook[0]} | {outlook[1]} | {outlook[2]}")
 
-# Send
+# Final Send
 requests.post(f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage", 
               data={"chat_id": CHAT_ID, "text": "\n".join(lines), "parse_mode": "Markdown"})
