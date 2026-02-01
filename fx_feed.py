@@ -2,6 +2,7 @@ import time
 import requests
 import pandas as pd
 import yfinance as yf
+from bs4 import BeautifulSoup
 from datetime import datetime, timedelta, timezone
 
 # Selenium Imports
@@ -78,50 +79,47 @@ def convert_time_to_sgt(date_str, time_str):
 
 # ===== SCRAPERS =====
 def scrape_cb_rates():
-    print("🏛️ Scraping Central Bank rates (Pandas Method)...")
+    print("🏛️ Scraping Central Bank rates (BeautifulSoup)...")
     driver = None
     try:
         driver = setup_driver()
         driver.get("https://www.investing.com/central-banks/")
         
-        # 1. Wait specifically for the table ID to be present in the DOM
-        # We increase timeout to 30s to account for heavy loading
+        # 1. Wait for table presence
         wait = WebDriverWait(driver, 30)
         wait.until(EC.presence_of_element_located((By.ID, "curr_table")))
 
-        # 2. Grab the raw source immediately
-        html_source = driver.page_source
+        # 2. Parse with BeautifulSoup (Robust Method)
+        soup = BeautifulSoup(driver.page_source, 'html.parser')
+        table = soup.find('table', id='curr_table')
         
-        # 3. Use Pandas to parse the HTML string
-        # This bypasses Selenium's element interaction issues
-        dfs = pd.read_html(html_source, attrs={"id": "curr_table"})
-        
-        if not dfs:
-            print("⚠️ Table not found via Pandas")
+        if not table:
+            print("⚠️ Table ID 'curr_table' not found in source.")
             return None
 
-        df = dfs[0] # The first table matching id="curr_table"
-        
         rates = {}
+        # Map full names to your short codes
         name_map = {
             "Federal Reserve": "Fed", "European Central Bank": "ECB", "Bank of England": "BoE", 
             "Bank of Japan": "BoJ", "Bank of Canada": "BoC", "Reserve Bank of Australia": "RBA", 
             "Reserve Bank of New Zealand": "RBNZ", "Swiss National Bank": "SNB"
         }
 
-        # Iterate through the DataFrame (Column 1 is Bank Name, Column 2 is Rate)
-        # We use strict column index accessing to avoid header naming issues
-        for index, row in df.iterrows():
-            # Adjust indices if necessary. Usually: col 1 is Name, col 2 is Rate
-            bank_name_cell = str(row.iloc[1]) 
-            rate_cell = str(row.iloc[2])
+        # 3. Manual Extraction
+        rows = table.find_all('tr')
+        for row in rows:
+            cells = row.find_all('td')
+            # Ensure we have at least Name (1) and Rate (2) columns
+            if len(cells) < 3: continue 
+            
+            bank_name = cells[1].get_text(strip=True)
+            rate_text = cells[2].get_text(strip=True)
 
             for full_name, short_name in name_map.items():
-                if full_name in bank_name_cell:
-                    # Clean the rate string (remove % and whitespace)
-                    clean_rate = rate_cell.replace('%', '').strip()
-                    if clean_rate and clean_rate != 'nan':
-                         rates[short_name] = clean_rate + "%"
+                if full_name in bank_name:
+                    # Clean up the rate (e.g. "5.50%" -> "5.50%")
+                    rates[short_name] = rate_text
+                    break 
         
         return rates
 
