@@ -2,7 +2,6 @@ import time
 import requests
 import pandas as pd
 import yfinance as yf
-import random
 from datetime import datetime, timedelta, timezone
 
 # Selenium Imports
@@ -32,7 +31,6 @@ TARGET_PAIRS = {
     "USDCAD": "USDCAD=X", "USDCHF": "USDCHF=X", "USDJPY": "USDJPY=X"
 }
 
-# Added back the Rates Outlook
 rates_outlook = {
     "Fed":  ["🔴⬇️65%", "🟡➡️35%", "18 Mar 26"],
     "ECB":  ["🔴⬇️45%", "🟡➡️55%", "05 Feb 26"],
@@ -51,9 +49,7 @@ def setup_driver():
     options.add_argument("--no-sandbox")
     options.add_argument("--disable-dev-shm-usage")
     options.add_argument("--window-size=1920,1080")
-    # Masking automation
     options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36")
-    
     driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=options)
     stealth(driver, languages=["en-US", "en"], vendor="Google Inc.", platform="Win32", webgl_vendor="Intel Inc.", renderer="Intel Iris OpenGL Engine", fix_hairline=True)
     return driver
@@ -76,8 +72,8 @@ def scrape_cb_rates():
         driver = setup_driver()
         driver.get("https://www.investing.com/central-banks/")
         
-        # Based on your HTML: Targeted wait for the table ID
-        WebDriverWait(driver, 20).until(EC.presence_of_element_located((By.ID, "curr_table")))
+        # INTERMITTENT FIX: Wait for the specific Federal Reserve link to be present
+        WebDriverWait(driver, 30).until(EC.presence_of_element_located((By.XPATH, "//a[contains(@href, 'federal-reserve')]")))
         
         rates = {}
         name_map = {
@@ -86,21 +82,17 @@ def scrape_cb_rates():
             "Reserve Bank of New Zealand": "RBNZ", "Swiss National Bank": "SNB"
         }
 
-        # Iterate directly through the tbody rows provided in your HTML snippet
+        # Targeting the specific ID from your HTML
         rows = driver.find_elements(By.CSS_SELECTOR, "table#curr_table tbody tr")
         for row in rows:
             cols = row.find_elements(By.TAG_NAME, "td")
-            if len(cols) < 4: continue
+            if len(cols) < 3: continue
             
             row_text = row.text
             for full_name, short_name in name_map.items():
                 if full_name in row_text:
-                    # Col 2: Rate, Col 3: Next Meeting (cleaning whitespace)
-                    rate_val = cols[2].text.strip()
-                    next_meet = cols[3].text.strip().replace("\n", " ").strip()
-                    # Final cleanup of excessive spaces from the HTML source
-                    next_meet = " ".join(next_meet.split())
-                    rates[short_name] = {"rate": rate_val, "meeting": next_meet}
+                    # Column 2 is the Rate. We ignore the meeting date as requested.
+                    rates[short_name] = cols[2].text.strip()
         return rates
     except Exception as e:
         print(f"⚠️ CB Scraping Failed: {e}"); return None
@@ -115,11 +107,10 @@ def scrape_forex_factory():
         driver = setup_driver()
         driver.get("https://www.forexfactory.com/calendar?week=this")
         
-        # FIX: MULTI-STEP SCROLLING
-        # This forces the browser to trigger lazy-loading for Wed, Thu, Fri
-        for i in range(1, 6):
-            driver.execute_script(f"window.scrollTo(0, document.body.scrollHeight * {i/5});")
-            time.sleep(2) # Sufficient time for data center IPs
+        # SLOW STEP-SCROLL: To ensure all days (Wed/Thu/Fri) trigger their lazy-load
+        for i in range(1, 7):
+            driver.execute_script(f"window.scrollTo(0, document.body.scrollHeight * {i/6});")
+            time.sleep(1.5)
         
         rows = driver.find_elements(By.CSS_SELECTOR, "tr.calendar__row")
         current_date_str, last_valid_time = "", ""
@@ -131,7 +122,6 @@ def scrape_forex_factory():
                 if val: current_date_str = val
                 continue
             
-            # Impact Check
             impact = row.find_elements(By.CSS_SELECTOR, "td.calendar__impact span.icon")
             if not impact or "icon--ff-impact-red" not in impact[0].get_attribute("class"):
                 continue
@@ -156,13 +146,13 @@ def scrape_forex_factory():
                     "act": act or "-", "cons": cons or "-", "prev": prev or "-"
                 })
             except: continue
-        return sorted(releases, key=lambda x: x['date']) # Ensure order
+        return releases
     except Exception as e:
         print(f"⚠️ FF Scraping Failed: {e}"); return None
     finally:
         if driver: driver.quit()
 
-# ===== CALCS =====
+# ===== CALCULATIONS =====
 def fetch_fx_data():
     tickers = list(TARGET_PAIRS.values())
     data = yf.download(tickers, period="1mo", progress=False)
@@ -178,8 +168,9 @@ def fetch_fx_data():
     return results
 
 def calculate_base_movers(fx_data):
+    currencies = ["AUD", "CAD", "CHF", "EUR", "GBP", "NZD", "USD", "JPY"]
     movers = {}
-    for c in ["AUD", "CAD", "CHF", "EUR", "GBP", "NZD", "USD", "JPY"]:
+    for c in currencies:
         dd, ww, count = 0, 0, 0
         for p, v in fx_data.items():
             if c in p:
@@ -200,28 +191,50 @@ for curr, vals in sorted(base_movers.items()):
     lines.append(f"{curr}: {vals[0]:+} pips d/d | {vals[1]:+} w/w")
 
 lines.append("\n---")
-groups = {"AUD": ["AUDCAD", "AUDCHF", "AUDJPY", "AUDNZD", "AUDUSD"], "EUR": ["EURUSD", "EURJPY", "EURGBP"], "USD": ["USDJPY", "USDCAD", "USDCHF"]}
-for base, pairs in groups.items():
-    seg = [f"{p} `{fx_results[p]['price']:.4f}` {fx_results[p]['dd']:+} d/d" for p in pairs if p in fx_results]
-    if seg: lines.append(f"*{base}*\n" + "\n".join(seg) + "\n")
 
-lines.append("---\n📅 *ForexFactory: High Impact*")
+# RESTORED FULL GROUPS
+groups = {
+    "AUD": ["AUDCAD", "AUDCHF", "AUDJPY", "AUDNZD", "AUDUSD"],
+    "CAD": ["CADCHF", "CADJPY"],
+    "CHF": ["CHFJPY"],
+    "EUR": ["EURAUD", "EURCAD", "EURCHF", "EURGBP", "EURJPY", "EURNZD", "EURUSD"],
+    "GBP": ["GBPAUD", "GBPCAD", "GBPCHF", "GBPJPY", "GBPNZD", "GBPUSD"],
+    "NZD": ["NZDCAD", "NZDCHF", "NZDJPY", "NZDUSD"],
+    "USD": ["USDCAD", "USDCHF", "USDJPY"]
+}
+
+for base, pairs in groups.items():
+    seg = []
+    for pair in pairs:
+        if pair in fx_results:
+            d = fx_results[pair]
+            p_fmt = f"{d['price']:.2f}" if d['is_jpy'] else f"{d['price']:.4f}"
+            seg.append(f"{pair} `{p_fmt}`  {d['dd']:+} d/d | {d['ww']:+} w/w")
+    if seg:
+        lines.append(f"*{base}*")
+        lines.append("\n".join(seg) + "\n")
+
+lines.append("---")
+lines.append("📅 *ForexFactory: High Impact*")
 if calendar_events:
     for e in calendar_events:
         lines.append(f"[{e['date']}] {e['flag']} {e['title']} | {e['time_sgt']}")
-        if e['act'] != "-": lines.append(f"   Act: {e['act']} | C: {e['cons']} | P: {e['prev']}")
+        if e['act'] != "-": lines.append(f"   Act: {e['act']} | C: {e['cons']} | P: {e['prev']}")
 else: lines.append("⚠️ _Fetch Error (Lazy Load)_")
 
-lines.append("---\n🏛 *Central Banks*")
+lines.append("\n---")
+lines.append("🏛 *Central Bank Policy Rates*")
 if scraped_rates:
-    for bank in ["Fed", "ECB", "BoE", "BoJ", "RBA", "RBNZ", "SNB", "BoC"]:
-        d = scraped_rates.get(bank)
-        if d: lines.append(f"{bank}: {d['rate']} (Next: {d['meeting']})")
-else: lines.append("⚠️ _Table Layout Changed_")
+    # Explicitly list the order you want
+    for bank in ["Fed", "ECB", "BoE", "BoJ", "SNB", "RBA", "BoC", "RBNZ"]:
+        rate = scraped_rates.get(bank, "N/A")
+        lines.append(f"{bank}: {rate}")
+else: lines.append("⚠️ _Table Layout Intermittent Fail_")
 
 lines.append("\n🔮 *Rates Outlook*")
 for bank, outlook in rates_outlook.items():
     lines.append(f"{bank}: {outlook[0]} | {outlook[1]} | {outlook[2]}")
 
-# Final Send
-requests.post(f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage", data={"chat_id": CHAT_ID, "text": "\n".join(lines), "parse_mode": "Markdown"})
+# Send
+requests.post(f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage", 
+              data={"chat_id": CHAT_ID, "text": "\n".join(lines), "parse_mode": "Markdown"})
