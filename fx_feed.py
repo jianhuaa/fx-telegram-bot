@@ -2,6 +2,7 @@ import time
 import requests
 import pandas as pd
 import yfinance as yf
+import random
 from datetime import datetime, timedelta, timezone
 
 # Selenium Imports
@@ -44,19 +45,28 @@ rates_outlook = {
     "RBNZ": ["🔴⬇️25%", "🟢⬆️20%", "03 Mar 26"]
 }
 
-# ===== HELPER: SETUP DRIVER =====
+# ===== HELPER: SETUP DRIVER (Anti-Detection) =====
 def setup_driver():
     options = Options()
     options.add_argument("--headless=new")
     options.add_argument("--no-sandbox")
     options.add_argument("--disable-dev-shm-usage")
     options.add_argument("--window-size=1920,1080")
+    
+    # 🛑 Anti-Bot Flags 🛑
     options.add_argument("--disable-blink-features=AutomationControlled")
     options.add_experimental_option("excludeSwitches", ["enable-automation"])
     options.add_experimental_option("useAutomationExtension", False)
-    
+    # Random User Agent to look more human
+    user_agents = [
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+        "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36"
+    ]
+    options.add_argument(f"user-agent={random.choice(user_agents)}")
+
     driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=options)
     
+    # Apply Stealth
     stealth(driver,
         languages=["en-US", "en"],
         vendor="Google Inc.",
@@ -72,8 +82,7 @@ def convert_time_to_sgt(date_str, time_str):
     if "All Day" in time_str or "Tentative" in time_str:
         return time_str
     try:
-        # Assumes date_str is like "Sun Feb 1" and year is 2026
-        # FF Time is usually EST/EDT. We add 13H for SGT (Standard)
+        # Assumes FF is US Eastern Time. SGT is roughly +13h
         current_year = datetime.now().year
         dt_str = f"{date_str} {current_year} {time_str}"
         dt_obj = datetime.strptime(dt_str, "%a %b %d %Y %I:%M%p")
@@ -82,42 +91,28 @@ def convert_time_to_sgt(date_str, time_str):
     except:
         return time_str
 
-# ===== 1. SCRAPER: CENTRAL BANKS (PANDAS METHOD) =====
+# ===== 1. SCRAPER: CENTRAL BANKS (INVESTING.COM) =====
 def scrape_cb_rates():
-    print("🕷️ Scraping Central Bank rates (Pandas Method)...")
+    print("🕷️ Scraping Central Bank rates (Investing.com)...")
     driver = None
     try:
         driver = setup_driver()
+        
+        # Clear cookies before starting
+        driver.delete_all_cookies()
+        
         driver.get("https://www.investing.com/central-banks/")
         
-        # Wait longer for dynamic table loading
-        time.sleep(8) 
+        # Random sleep to mimic human latency
+        time.sleep(random.uniform(5, 8))
         
-        # Robustness: Grab the full page source
-        html = driver.page_source
-        
-        # Use Pandas to find tables
-        # We look for a table that contains "Federal Reserve"
-        dfs = pd.read_html(html)
-        
-        target_df = None
-        for df in dfs:
-            # Check if this dataframe has the column we need
-            # We look for 'Federal Reserve' in any string column
-            mask = df.apply(lambda x: x.astype(str).str.contains("Federal Reserve", case=False)).any(axis=None)
-            if mask:
-                target_df = df
-                break
-        
-        if target_df is None:
-            print("⚠️ Table not found in HTML via Pandas")
-            return None
-
-        # Clean up the found dataframe
-        # It usually has columns: [Icon, Central Bank, Current Rate, ...]
-        # We need to identify which column is Name and which is Rate
+        # Wait for table
+        WebDriverWait(driver, 20).until(
+            EC.presence_of_element_located((By.CSS_SELECTOR, "table#curr_table"))
+        )
         
         rates = {}
+        # Mapping: Investing Name -> (Your Key, Next Meeting)
         name_map = {
             "Federal Reserve": "Fed", "European Central Bank": "ECB",
             "Bank of England": "BoE", "Bank of Japan": "BoJ",
@@ -125,30 +120,27 @@ def scrape_cb_rates():
             "Reserve Bank of New Zealand": "RBNZ", "Swiss National Bank": "SNB"
         }
 
-        # Iterate rows
-        for index, row in target_df.iterrows():
-            # Convert row to string list to find our targets
-            row_str = [str(x) for x in row.values]
-            
-            found_name = None
-            found_rate = None
-            
-            # Find Name
-            for cell in row_str:
-                for full_name, short_name in name_map.items():
-                    if full_name in cell:
-                        found_name = short_name
-                        break
-                if found_name: break
-            
-            # Find Rate (looks like percentage)
-            for cell in row_str:
-                if "%" in cell and any(c.isdigit() for c in cell):
-                    found_rate = cell
-                    break
-            
-            if found_name and found_rate:
-                rates[found_name] = found_rate
+        # Select rows in table#curr_table
+        rows = driver.find_elements(By.CSS_SELECTOR, "table#curr_table tbody tr")
+        
+        for row in rows:
+            try:
+                cols = row.find_elements(By.TAG_NAME, "td")
+                # Need at least 4 cols: [0]Icon, [1]Name, [2]Rate, [3]NextMeeting
+                if len(cols) < 4: continue
+
+                raw_name = cols[1].text.strip() # "Federal Reserve (FED)"
+                rate_val = cols[2].text.strip() # "3.75%"
+                next_meet = cols[3].text.strip() # "Mar 18, 2026"
+                
+                clean_name = raw_name.split('(')[0].strip()
+
+                if clean_name in name_map:
+                    bank_key = name_map[clean_name]
+                    # We store both Rate and Next Meeting
+                    rates[bank_key] = {"rate": rate_val, "meeting": next_meet}
+            except Exception:
+                continue
 
         return rates
 
@@ -158,11 +150,11 @@ def scrape_cb_rates():
     finally:
         if driver: driver.quit()
 
-# ===== 2. SCRAPER: FOREX FACTORY (WEEKLY) =====
+# ===== 2. SCRAPER: FOREX FACTORY (TODAY) =====
 def scrape_forex_factory():
-    print("📅 Scraping ForexFactory...")
-    # Using 'week=this' to ensure we get the whole week's data as requested
-    url = "https://www.forexfactory.com/calendar?week=this"
+    print("📅 Scraping ForexFactory (Today)...")
+    # Switched back to TODAY
+    url = "https://www.forexfactory.com/calendar?day=today"
     
     driver = None
     releases = []
@@ -194,13 +186,13 @@ def scrape_forex_factory():
                 if "calendar__row--no-event" in row_class:
                     continue
 
-                # 2. Check Impact (Red Only)
+                # 2. Check Impact
                 impact_spans = row.find_elements(By.CSS_SELECTOR, "td.calendar__impact span.icon")
                 if not impact_spans: continue
                 
                 impact_class = impact_spans[0].get_attribute("class")
                 
-                # STRICTLY RED IMPACT
+                # ONLY RED IMPACT
                 if "icon--ff-impact-red" in impact_class:
                     
                     currency = row.find_element(By.CSS_SELECTOR, "td.calendar__currency").text.strip()
@@ -329,14 +321,14 @@ for base, pairs in groups.items():
 
 lines.append("---")
 
-# 3. Economic Releases
-lines.append("📅 *ForexFactory: High Impact (Weekly)*")
+# 3. Economic Releases (TODAY)
+lines.append("📅 *ForexFactory: High Impact (Today)*")
 lines.append("_(Times in SGT)_")
 
 if calendar_events is None:
     lines.append("⚠️ _Scraper Error / Blocked_")
 elif not calendar_events:
-    lines.append("_No Red Impact events found this week_")
+    lines.append("_No Red Impact events today_")
 else:
     for e in calendar_events:
         lines.append(f"[{e['date']}] {e['flag']} {e['title']} | {e['time_sgt']}")
@@ -345,17 +337,19 @@ else:
 
 lines.append("\n---")
 
-# 4. Central Banks
+# 4. Central Banks (Investing.com)
 lines.append("🏛 *Central Bank Policy Rates*")
 cb_order = ["Fed", "ECB", "BoE", "BoJ", "BoC", "RBA", "RBNZ", "SNB"]
 
 if scraped_rates:
     for bank in cb_order:
-        rate = scraped_rates.get(bank, "N/A")
-        lines.append(f"{bank}: {rate}")
+        data = scraped_rates.get(bank, None)
+        if data:
+            lines.append(f"{bank}: {data['rate']} (Next: {data['meeting']})")
+        else:
+            lines.append(f"{bank}: N/A")
 else:
-    # Detailed failure message if Pandas fails
-    lines.append("⚠️ _Fetch Failed - Blocked by Investing.com_")
+    lines.append("⚠️ _Fetch Failed - Check Table Layout_")
 
 lines.append("\n---")
 
