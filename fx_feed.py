@@ -2,8 +2,8 @@ import requests
 from datetime import datetime, timezone, timedelta
 
 # ====== TELEGRAM CONFIG ======
-TELEGRAM_TOKEN = "YOUR_BOT_TOKEN_HERE"
-CHAT_ID = "YOUR_CHAT_ID_HERE"
+TELEGRAM_TOKEN = "7649050168:AAHNIYnrHzLOTcjNuMpeKgyUbfJB9x9an3c"
+CHAT_ID = "876384974"
 
 # ====== SGT TIMEZONE ======
 SGT = timezone(timedelta(hours=8))
