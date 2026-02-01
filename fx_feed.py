@@ -1,27 +1,22 @@
 import os
 import json
+import requests
 from datetime import datetime, timedelta, timezone
 from selenium import webdriver
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.by import By
-import requests
+from webdriver_manager.chrome import ChromeDriverManager
 
-# ===== TELEGRAM CONFIG (HARD-CODED) =====
+# ===== CONFIG =====
 TELEGRAM_TOKEN = "7649050168:AAHNIYnrHzLOTcjNuMpeKgyUbfJB9x9an3c"
 CHAT_ID = "876384974"
-FORCE_SEND = True  # send even weekends for testing
+FORCE_SEND = True 
 
-# ===== SGT TIME =====
 SGT = timezone(timedelta(hours=8))
 now = datetime.now(SGT)
-weekday = now.weekday()  # 0=Mon ... 6=Sun
 
-if not FORCE_SEND and weekday >= 5:
-    print("Weekend — skipping FX update")
-    exit(0)
-
-# ===== STATIC FX DATA =====
+# ===== STATIC DATA =====
 fx_pairs = {
     "AUD": {"AUDCAD": [0.8920, +9, +21], "AUDCHF": [0.5821, +12, +25], "AUDJPY": [97.85, -5, -13], "AUDNZD": [1.0830, +10, +15], "AUDUSD": [0.6624, +22, +41]},
     "CAD": {"CADCHF": [0.6521, -6, -20], "CADJPY": [109.73, -12, -49], "USDCAD": [1.3486, -17, -66]},
@@ -54,55 +49,44 @@ economic_releases = [
     {"flag":"🇬🇧","title":"UK GDP MoM","time":"16:30 SGT","prev":"0.0%","cons":"0.1%"}
 ]
 
-# ===== Central Bank Rates w/ Selenium + daily cache =====
-CACHE_FILE = "cb_rates.json"
-
-def get_cached_cb_rates():
-    if os.path.exists(CACHE_FILE):
-        with open(CACHE_FILE,"r") as f:
-            data = json.load(f)
-            last_update = datetime.fromisoformat(data["date"])
-            if last_update.date() == datetime.now(SGT).date():
-                return data["rates"]
-    return None
-
+# ===== SCRAPER WITH FAIL-SAFE =====
 def scrape_cb_rates():
     chrome_options = Options()
     chrome_options.add_argument("--headless")
     chrome_options.add_argument("--no-sandbox")
     chrome_options.add_argument("--disable-dev-shm-usage")
-    driver = webdriver.Chrome(service=Service("/usr/bin/chromedriver"), options=chrome_options)
+    # Add User-Agent to prevent 403 Forbidden
+    chrome_options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36")
     
-    driver.get("https://www.investing.com/central-banks/world-central-banks")
-    driver.implicitly_wait(5)
-    
-    rates = {}
-    table = driver.find_element(By.ID,"curr_table")
-    rows = table.find_elements(By.TAG_NAME,"tr")[1:]
-    for row in rows:
-        cells = row.find_elements(By.TAG_NAME,"td")
-        if len(cells)>=3:
-            name = cells[1].text.strip()
-            rate = cells[2].text.strip()
-            rates[name] = rate
-    driver.quit()
-    
-    with open(CACHE_FILE,"w") as f:
-        json.dump({"date":datetime.now(SGT).isoformat(),"rates":rates},f)
-    return rates
+    try:
+        driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=chrome_options)
+        driver.get("https://www.investing.com/central-banks/world-central-banks")
+        driver.implicitly_wait(10)
+        
+        rates = {}
+        table = driver.find_element(By.ID, "curr_table")
+        rows = table.find_elements(By.TAG_NAME, "tr")[1:]
+        for row in rows:
+            cells = row.find_elements(By.TAG_NAME, "td")
+            if len(cells) >= 3:
+                name = cells[1].text.strip()
+                rate = cells[2].text.strip()
+                rates[name] = rate
+        driver.quit()
+        return rates
+    except Exception as e:
+        print(f"Scraping Error: {e}")
+        return {"Note": "Could not fetch live rates (Site blocked or changed)"}
 
-central_bank_rates = get_cached_cb_rates()
-if not central_bank_rates:
-    central_bank_rates = scrape_cb_rates()
+central_bank_rates = scrape_cb_rates()
 
-# ===== Build Telegram Message =====
-lines = []
-lines.append(f"📊 G8 FX & Macro Update — {datetime.now(SGT).strftime('%H:%M')} SGT\n")
-lines.append("🔥 Top Movers (Weighted Avg across crosses)")
+# ===== BUILD MESSAGE =====
+lines = [f"📊 G8 FX & Macro Update — {now.strftime('%H:%M')} SGT\n"]
+lines.append("🔥 Top Movers")
 for c, vals in top_movers.items():
     lines.append(f"{c}: {vals[0]:+} pips d/d | {vals[1]:+} w/w")
-lines.append("\n---\n")
 
+lines.append("\n---\n")
 for segment in ["AUD","CAD","CHF","EUR","GBP","NZD","USD"]:
     for pair in sorted(fx_pairs.get(segment, {})):
         spot, dd, ww = fx_pairs[segment][pair]
@@ -112,21 +96,22 @@ for segment in ["AUD","CAD","CHF","EUR","GBP","NZD","USD"]:
 
 lines.append("---\nToday — Key Economic Releases")
 for e in economic_releases:
-    lines.append(f"{e['flag']} {e['title']}")
-    lines.append(f"Time {e['time']} | Prev {e['prev']} | Cons {e['cons']}")
+    lines.append(f"{e['flag']} {e['title']} | {e['time']} | P: {e['prev']} | C: {e['cons']}")
 
-lines.append("\n---\nCentral Bank Policy Rates")
-for k,v in central_bank_rates.items():
-    lines.append(f"{k:<35}: {v}")
+lines.append("\n---\nCentral Bank Rates")
+for k, v in central_bank_rates.items():
+    lines.append(f"{k}: {v}")
 
-lines.append("\n---\nRates Outlook — Next Meeting")
-for k,v in rates_outlook.items():
-    lines.append(f"{k:<4}: {v[0]:<8} | {v[1]:<8} | {v[2]}")
+lines.append("\n---\nRates Outlook")
+for k, v in rates_outlook.items():
+    lines.append(f"{k}: {v[0]} | {v[1]} | {v[2]}")
 
 message = "\n".join(lines)
 
-# ===== Send to Telegram =====
+# ===== SEND =====
 url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
-payload = {"chat_id":CHAT_ID,"text":message}
-response = requests.post(url,data=payload)
-print(response.json())
+payload = {"chat_id": CHAT_ID, "text": message}
+response = requests.post(url, data=payload)
+
+print(f"Status Code: {response.status_code}")
+print(f"Response: {response.json()}")
