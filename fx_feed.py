@@ -62,6 +62,7 @@ def scrape_cb_rates():
         driver = setup_driver()
         driver.get("https://www.investing.com/central-banks/")
         
+        # SKEPTICAL WAIT: Wait for the specific Federal Reserve link inside the table
         WebDriverWait(driver, 35).until(EC.presence_of_element_located((By.XPATH, "//a[contains(@href, 'federal-reserve')]")))
         
         rates = {}
@@ -71,7 +72,10 @@ def scrape_cb_rates():
             "Reserve Bank of New Zealand": "RBNZ", "Swiss National Bank": "SNB"
         }
 
+        # Try to find table rows within the specific ID provided
         rows = driver.find_elements(By.CSS_SELECTOR, "table#curr_table tbody tr")
+        
+        # If CSS fails (sometimes IDs are hidden/dynamic), fallback to XPATH
         if not rows:
             rows = driver.find_elements(By.XPATH, "//table[contains(@class, 'genTbl')]//tr")
 
@@ -82,6 +86,7 @@ def scrape_cb_rates():
             row_text = row.text
             for full_name, short_name in name_map.items():
                 if full_name in row_text:
+                    # Column 2 (index 2) is the Current Rate
                     rates[short_name] = cols[2].text.strip()
         return rates
     except Exception as e:
@@ -90,17 +95,17 @@ def scrape_cb_rates():
         if driver: driver.quit()
 
 def scrape_forex_factory():
-    print("📅 Scraping ForexFactory (Today)...")
+    print("📅 Scraping ForexFactory...")
     driver = None
     releases = []
     try:
         driver = setup_driver()
-        # Changed from week=this to day=today
         driver.get("https://www.forexfactory.com/calendar?day=today")
         
-        # Scents of lazy-loading (less needed for today, but safe to keep)
-        driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
-        time.sleep(2)
+        # STEP-SCROLL: Triggering lazy-load rows for mid-week events
+        for i in range(1, 7):
+            driver.execute_script(f"window.scrollTo(0, document.body.scrollHeight * {i/6});")
+            time.sleep(1.5)
         
         rows = driver.find_elements(By.CSS_SELECTOR, "tr.calendar__row")
         current_date_str, last_valid_time = "", ""
@@ -210,7 +215,7 @@ if calendar_events:
     for e in calendar_events:
         lines.append(f"[{e['date']}] {e['flag']} {e['title']} | {e['time_raw']}")
         if e['act'] != "-": lines.append(f"   Act: {e['act']} | C: {e['cons']} | P: {e['prev']}")
-else: lines.append("_No Red Impact Events for Today_")
+else: lines.append("⚠️ _Fetch Error (Lazy Load)_")
 
 lines.append("\n---")
 lines.append("🏛 *Central Bank Policy Rates*")
@@ -220,8 +225,7 @@ if scraped_rates:
         lines.append(f"{bank}: {rate}")
 else: lines.append("⚠️ _Table Layout Intermittent Fail_")
 
-# Added (Static) tag
-lines.append("\n🔮 *Rates Outlook (Static)*")
+lines.append("\n🔮 *Rates Outlook*")
 for bank, outlook in rates_outlook.items():
     lines.append(f"{bank}: {outlook[0]} | {outlook[1]} | {outlook[2]}")
 
