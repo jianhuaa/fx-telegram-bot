@@ -1,7 +1,9 @@
 import time
 import requests
+import pandas as pd
 import yfinance as yf
 from datetime import datetime, timedelta, timezone
+from dateutil import parser # Standard in most envs, or we can use basic datetime
 
 # Selenium Imports
 from selenium import webdriver
@@ -17,8 +19,11 @@ from selenium_stealth import stealth
 TELEGRAM_TOKEN = "7649050168:AAHNIYnrHzLOTcjNuMpeKgyUbfJB9x9an3c"
 CHAT_ID = "876384974"
 
-SGT = timezone(timedelta(hours=8))
-now = datetime.now(SGT)
+# Timezones for conversion
+# Assuming ForexFactory default is US Eastern Time (ET)
+# We will convert ET -> SGT
+SGT_TZ = timezone(timedelta(hours=8))
+now_sgt = datetime.now(SGT_TZ)
 
 # ===== PAIR MAPPING =====
 TARGET_PAIRS = {
@@ -65,7 +70,35 @@ def setup_driver():
     )
     return driver
 
-# ===== 1. SCRAPER: CENTRAL BANKS (FIXED) =====
+# ===== HELPER: TIME CONVERSION =====
+def convert_time_to_sgt(date_str, time_str):
+    """
+    Parses 'Sun Feb 1' and '3:00pm' (assumed EST) -> SGT Time String
+    """
+    if "All Day" in time_str or "Tentative" in time_str:
+        return time_str
+
+    try:
+        # 1. Parse Date (Assumes current year 2026 based on context)
+        # date_str ex: "Sun Feb 1"
+        current_year = datetime.now().year
+        dt_str = f"{date_str} {current_year} {time_str}"
+        
+        # 2. Create datetime object
+        # Using simple parsing. Note: This assumes the text is clean.
+        dt_obj = datetime.strptime(dt_str, "%a %b %d %Y %I:%M%p")
+        
+        # 3. Add offset. EST is usually UTC-5. SGT is UTC+8. Difference is +13 hours.
+        # (In Daylight Savings (EDT), diff is +12 hours).
+        # To be robust without heavy pytz dependencies, we'll approximate +13h (Standard)
+        # or just add 13 hours strictly.
+        sgt_time = dt_obj + timedelta(hours=13)
+        
+        return sgt_time.strftime("%H:%M") # Return 24h format
+    except Exception as e:
+        return time_str # Fallback if parsing fails
+
+# ===== 1. SCRAPER: CENTRAL BANKS =====
 def scrape_cb_rates():
     print("🕷️ Scraping Central Bank rates...")
     driver = None
@@ -73,13 +106,11 @@ def scrape_cb_rates():
         driver = setup_driver()
         driver.get("https://www.investing.com/central-banks/")
         
-        # Wait for table to be visible
         WebDriverWait(driver, 20).until(
             EC.presence_of_element_located((By.CSS_SELECTOR, "table#curr_table"))
         )
         
         rates = {}
-        # Mapping Investing.com names to your output keys
         name_map = {
             "Federal Reserve": "Fed", "European Central Bank": "ECB",
             "Bank of England": "BoE", "Bank of Japan": "BoJ",
@@ -87,7 +118,6 @@ def scrape_cb_rates():
             "Reserve Bank of New Zealand": "RBNZ", "Swiss National Bank": "SNB"
         }
 
-        # Select all rows in the specific table
         rows = driver.find_elements(By.CSS_SELECTOR, "table#curr_table tbody tr")
         
         for row in rows:
@@ -95,76 +125,85 @@ def scrape_cb_rates():
                 cols = row.find_elements(By.TAG_NAME, "td")
                 if len(cols) < 3: continue
 
-                # Name is in Col 1 (index 1) -> "Federal Reserve (FED)"
+                # Layout: Icon | Name (Ticker) | Rate
                 raw_name = cols[1].text.strip()
-                # Rate is in Col 2 (index 2) -> "3.75%"
                 rate_val = cols[2].text.strip()
-                
-                # Clean name: "Federal Reserve (FED)" -> "Federal Reserve"
                 clean_name = raw_name.split('(')[0].strip()
 
                 if clean_name in name_map:
                     rates[name_map[clean_name]] = rate_val
-            except Exception as e:
+            except Exception:
                 continue
 
         return rates
-
     except Exception as e:
         print(f"⚠️ CB Scraping Failed: {e}")
         return None
     finally:
         if driver: driver.quit()
 
-# ===== 2. SCRAPER: FOREX FACTORY (FIXED DATE & IMPACT) =====
+# ===== 2. SCRAPER: FOREX FACTORY (WEEKLY + SGT) =====
 def scrape_forex_factory():
-    print("📅 Scraping ForexFactory...")
-    url = "https://www.forexfactory.com/calendar"
+    print("📅 Scraping ForexFactory (Weekly)...")
+    # FORCE WEEKLY VIEW to get all events
+    url = "https://www.forexfactory.com/calendar?week=this"
+    
     driver = None
     releases = []
     
     try:
         driver = setup_driver()
         driver.get(url)
-        time.sleep(5) # Let Cloudflare/JS settle
+        time.sleep(5) 
 
-        # Explicitly wait for the calendar table
         WebDriverWait(driver, 20).until(
             EC.presence_of_element_located((By.CSS_SELECTOR, "table.calendar__table"))
         )
         
         rows = driver.find_elements(By.CSS_SELECTOR, "tr.calendar__row")
-        current_date_str = "Unknown Date"
+        
+        current_date_str = ""
+        last_valid_time = ""
         
         for row in rows:
             try:
                 row_class = row.get_attribute("class")
 
-                # 1. Detect Date Breaker Row (e.g., "Sun Feb 1")
+                # 1. Update Date
                 if "calendar__row--day-breaker" in row_class:
-                    # The text inside is usually just the date
-                    current_date_str = row.text.strip()
+                    raw_date = row.text.strip()
+                    # Cleanup: "Sun Feb 1" -> just use it
+                    if raw_date: 
+                        current_date_str = raw_date
                     continue
 
-                # 2. Skip spacer/empty rows
                 if "calendar__row--no-event" in row_class:
                     continue
 
-                # 3. Check Impact
-                # We look for the span inside td.calendar__impact
+                # 2. Check Impact (Red Only)
                 impact_spans = row.find_elements(By.CSS_SELECTOR, "td.calendar__impact span.icon")
-                if not impact_spans:
-                    continue
+                if not impact_spans: continue
                 
                 impact_class = impact_spans[0].get_attribute("class")
                 
-                # Filter: Only Red Impact
-                if "impact-red" in impact_class:
+                if "icon--ff-impact-red" in impact_class:
                     
                     currency = row.find_element(By.CSS_SELECTOR, "td.calendar__currency").text.strip()
                     event = row.find_element(By.CSS_SELECTOR, "span.calendar__event-title").text.strip()
-                    time_str = row.find_element(By.CSS_SELECTOR, "td.calendar__time").text.strip()
                     
+                    # Time Handling
+                    time_ele = row.find_element(By.CSS_SELECTOR, "td.calendar__time")
+                    time_str = time_ele.text.strip()
+                    
+                    # If time is empty, it shares the time with the previous event
+                    if not time_str and last_valid_time:
+                        time_str = last_valid_time
+                    elif time_str:
+                        last_valid_time = time_str
+                    
+                    # Convert Time to SGT
+                    sgt_time = convert_time_to_sgt(current_date_str, time_str)
+
                     act = row.find_element(By.CSS_SELECTOR, "td.calendar__actual").text.strip()
                     cons = row.find_element(By.CSS_SELECTOR, "td.calendar__forecast").text.strip()
                     prev = row.find_element(By.CSS_SELECTOR, "td.calendar__previous").text.strip()
@@ -175,14 +214,13 @@ def scrape_forex_factory():
                         "date": current_date_str,
                         "flag": flag_map.get(currency, "🌍"),
                         "title": f"{currency} {event}",
-                        "time": time_str,
+                        "time_sgt": sgt_time,
                         "act": act if act else "-",
                         "cons": cons if cons else "-",
                         "prev": prev if prev else "-"
                     })
             
-            except Exception as row_e:
-                # Silently skip malformed rows
+            except Exception:
                 continue
                 
         return releases
@@ -198,10 +236,8 @@ def fetch_fx_data():
     print("⏳ Fetching FX data...")
     tickers = list(TARGET_PAIRS.values())
     
-    # Using threads to speed up yf download if needed, but standard is fine
     data = yf.download(tickers, period="1mo", progress=False)
     
-    # Handle MultiIndex columns if yfinance returns them
     if isinstance(data.columns, pd.MultiIndex):
         closes = data.xs('Close', level=0, axis=1)
     else:
@@ -243,16 +279,13 @@ def calculate_base_movers(fx_data):
     return movers
 
 # ===== 4. EXECUTION =====
-# Need to import pandas for the yfinance fix above
-import pandas as pd
-
 fx_results = fetch_fx_data()
 scraped_rates = scrape_cb_rates()
 calendar_events = scrape_forex_factory()
 base_movers = calculate_base_movers(fx_results)
 
 # ===== BUILD MESSAGE =====
-lines = [f"📊 *G8 FX Update* — {now.strftime('%H:%M')} SGT\n"]
+lines = [f"📊 *G8 FX Update* — {now_sgt.strftime('%H:%M')} SGT\n"]
 
 # 1. Top Movers
 lines.append("🔥 *Top Movers (Base Index)*")
@@ -287,27 +320,25 @@ for base, pairs in groups.items():
 
 lines.append("---")
 
-# 3. Economic Releases
+# 3. Economic Releases (ALL EVENTS)
 lines.append("📅 *ForexFactory: High Impact (Weekly)*")
+lines.append("_(Times in SGT)_")
 
 if calendar_events is None:
     lines.append("⚠️ _Scraper Error / Blocked_")
 elif not calendar_events:
-    lines.append("_No Red Impact events found (Market Closed?)_")
+    lines.append("_No Red Impact events found this week_")
 else:
-    count = 0
+    # No Limit on count
     for e in calendar_events:
-        if count >= 15: # Increased limit slightly 
-            lines.append("... _(More events truncated)_")
-            break
-        lines.append(f"[{e['date']}] {e['flag']} {e['title']} | {e['time']}")
+        # Format: [Feb 1] 🇺🇸 USD Event | 20:00
+        lines.append(f"[{e['date']}] {e['flag']} {e['title']} | {e['time_sgt']}")
         if e['act'] != "-" or e['cons'] != "-":
             lines.append(f"   Act: {e['act']} | C: {e['cons']} | P: {e['prev']}")
-        count += 1
 
 lines.append("\n---")
 
-# 4. Central Banks (Strict)
+# 4. Central Banks
 lines.append("🏛 *Central Bank Policy Rates*")
 cb_order = ["Fed", "ECB", "BoE", "BoJ", "BoC", "RBA", "RBNZ", "SNB"]
 
