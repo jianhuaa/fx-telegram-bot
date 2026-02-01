@@ -1,10 +1,12 @@
 import requests
 from datetime import datetime, timedelta, timezone
+import json
+from bs4 import BeautifulSoup
 
 # ===== TELEGRAM CONFIG =====
 TELEGRAM_TOKEN = "7649050168:AAHNIYnrHzLOTcjNuMpeKgyUbfJB9x9an3c"
 CHAT_ID = "876384974"
-FORCE_SEND = True  # Send even on weekends for testing
+FORCE_SEND = True  # Send even weekends for testing
 
 # ===== SGT TIME =====
 SGT = timezone(timedelta(hours=8))
@@ -57,13 +59,7 @@ top_movers = {
     "USD": [-34, -205]
 }
 
-# ===== Central Bank Rates (static) =====
-central_bank_rates = {
-    "Fed":"5.25–5.50%", "ECB":"4.00%", "BoE":"5.25%", "BoJ":"0.10%",
-    "SNB":"1.75%", "RBA":"4.35%", "BoC":"5.00%", "RBNZ":"5.50%"
-}
-
-# ===== Rates Outlook — Colored Arrows (shortened year) =====
+# ===== Rates Outlook — Colored Arrows =====
 rates_outlook = {
     "Fed":["🔴⬇️65%","🟡➡️35%","22 Feb 26"],
     "ECB":["🔴⬇️45%","🟡➡️55%","08 Mar 26"],
@@ -75,12 +71,38 @@ rates_outlook = {
     "RBNZ":["🔴⬇️25%","🟢⬆️20%","03 Mar 26"]
 }
 
-# ===== Economic Releases (Static, time on next line) =====
+# ===== Economic Releases =====
 economic_releases = [
     {"flag":"🇺🇸","title":"US CPI (High)","time":"20:30 SGT","prev":"3.4%","cons":"3.2%"},
     {"flag":"🇪🇺","title":"EZ Industrial Prod","time":"16:00 SGT","prev":"-0.6%","cons":"-0.3%"},
     {"flag":"🇬🇧","title":"UK GDP MoM","time":"16:30 SGT","prev":"0.0%","cons":"0.1%"}
 ]
+
+# ===== Fetch Central Bank Rates from Investing.com (once per day) =====
+CACHE_FILE = "cb_rates.json"
+try:
+    with open(CACHE_FILE,"r") as f:
+        central_bank_rates = json.load(f)
+except FileNotFoundError:
+    print("Fetching central bank rates from Investing.com...")
+    url = "https://www.investing.com/central-banks/"
+    headers = {"User-Agent":"Mozilla/5.0"}
+    r = requests.get(url, headers=headers)
+    soup = BeautifulSoup(r.content, "html.parser")
+    central_bank_rates = {}
+    # This depends on Investing.com's table structure
+    table = soup.find("table", {"id":"centralBankRates"})
+    if table:
+        for row in table.find_all("tr")[1:]:
+            cells = row.find_all("td")
+            if len(cells) >= 2:
+                bank = cells[0].text.strip()
+                rate = cells[1].text.strip()
+                central_bank_rates[bank] = rate
+    # Save cache
+    with open(CACHE_FILE,"w") as f:
+        json.dump(central_bank_rates,f)
+    print("Central bank rates cached.")
 
 # ===== Format Telegram Message =====
 lines = []
@@ -104,11 +126,11 @@ for e in economic_releases:
     lines.append(f"Time {e['time']} | Prev {e['prev']} | Cons {e['cons']}")
 
 lines.append("\n---\nCentral Bank Policy Rates")
-for k, v in central_bank_rates.items():
-    lines.append(f"{k:<4}: {v}")
+for k,v in central_bank_rates.items():
+    lines.append(f"{k:<10}: {v}")
 
 lines.append("\n---\nRates Outlook — Next Meeting")
-for k, v in rates_outlook.items():
+for k,v in rates_outlook.items():
     lines.append(f"{k:<4}: {v[0]:<8} | {v[1]:<8} | {v[2]}")
 
 message = "\n".join(lines)
