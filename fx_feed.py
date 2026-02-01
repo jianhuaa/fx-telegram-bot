@@ -2,6 +2,7 @@ import time
 import requests
 import pandas as pd
 import yfinance as yf
+import random
 from datetime import datetime, timedelta, timezone
 
 # Selenium Imports
@@ -31,15 +32,16 @@ TARGET_PAIRS = {
     "USDCAD": "USDCAD=X", "USDCHF": "USDCHF=X", "USDJPY": "USDJPY=X"
 }
 
+# Added back the Rates Outlook
 rates_outlook = {
-    "Fed":  ["🔴⬇️65%", "🟡➡️35%", "22 Feb 26"],
-    "ECB":  ["🔴⬇️45%", "🟡➡️55%", "08 Mar 26"],
-    "BoE":  ["🔴⬇️30%", "🟢⬆️15%", "20 Mar 26"],
-    "BoJ":  ["🔴⬇️20%", "🟢⬆️30%", "10 Mar 26"],
-    "SNB":  ["🔴⬇️55%", "🟡➡️45%", "16 Mar 26"],
-    "RBA":  ["🟢⬆️40%", "🟡➡️60%", "05 Mar 26"],
-    "BoC":  ["🔴⬇️35%", "🟡➡️65%", "11 Mar 26"],
-    "RBNZ": ["🔴⬇️25%", "🟢⬆️20%", "03 Mar 26"]
+    "Fed":  ["🔴⬇️65%", "🟡➡️35%", "18 Mar 26"],
+    "ECB":  ["🔴⬇️45%", "🟡➡️55%", "05 Feb 26"],
+    "BoE":  ["🔴⬇️30%", "🟢⬆️15%", "05 Feb 26"],
+    "BoJ":  ["🔴⬇️20%", "🟢⬆️30%", "19 Mar 26"],
+    "SNB":  ["🔴⬇️55%", "🟡➡️45%", "19 Mar 26"],
+    "RBA":  ["🟢⬆️40%", "🟡➡️60%", "03 Feb 26"],
+    "BoC":  ["🔴⬇️35%", "🟡➡️65%", "18 Mar 26"],
+    "RBNZ": ["🔴⬇️25%", "🟢⬆️20%", "18 Feb 26"]
 }
 
 # ===== HELPERS =====
@@ -49,11 +51,9 @@ def setup_driver():
     options.add_argument("--no-sandbox")
     options.add_argument("--disable-dev-shm-usage")
     options.add_argument("--window-size=1920,1080")
-    options.add_argument("--disable-blink-features=AutomationControlled")
-    options.add_experimental_option("excludeSwitches", ["enable-automation"])
-    options.add_experimental_option("useAutomationExtension", False)
-    options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
-
+    # Masking automation
+    options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36")
+    
     driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=options)
     stealth(driver, languages=["en-US", "en"], vendor="Google Inc.", platform="Win32", webgl_vendor="Intel Inc.", renderer="Intel Iris OpenGL Engine", fix_hairline=True)
     return driver
@@ -76,8 +76,8 @@ def scrape_cb_rates():
         driver = setup_driver()
         driver.get("https://www.investing.com/central-banks/")
         
-        # Wait for the text "Federal Reserve" to appear in the table
-        WebDriverWait(driver, 25).until(EC.presence_of_element_located((By.XPATH, "//*[contains(text(), 'Federal Reserve')]")))
+        # Based on your HTML: Targeted wait for the table ID
+        WebDriverWait(driver, 20).until(EC.presence_of_element_located((By.ID, "curr_table")))
         
         rates = {}
         name_map = {
@@ -86,27 +86,24 @@ def scrape_cb_rates():
             "Reserve Bank of New Zealand": "RBNZ", "Swiss National Bank": "SNB"
         }
 
-        # Find all rows in any table on the page
-        rows = driver.find_elements(By.CSS_SELECTOR, "tr")
+        # Iterate directly through the tbody rows provided in your HTML snippet
+        rows = driver.find_elements(By.CSS_SELECTOR, "table#curr_table tbody tr")
         for row in rows:
             cols = row.find_elements(By.TAG_NAME, "td")
-            if len(cols) < 3: continue
+            if len(cols) < 4: continue
             
             row_text = row.text
             for full_name, short_name in name_map.items():
                 if full_name in row_text:
-                    # Column indices might shift, so we search for the % sign
-                    rate_val = "N/A"
-                    for col in cols:
-                        if "%" in col.text:
-                            rate_val = col.text.strip()
-                            break
-                    next_meet = cols[-1].text.strip() # Usually the last column
+                    # Col 2: Rate, Col 3: Next Meeting (cleaning whitespace)
+                    rate_val = cols[2].text.strip()
+                    next_meet = cols[3].text.strip().replace("\n", " ").strip()
+                    # Final cleanup of excessive spaces from the HTML source
+                    next_meet = " ".join(next_meet.split())
                     rates[short_name] = {"rate": rate_val, "meeting": next_meet}
         return rates
     except Exception as e:
-        print(f"⚠️ CB Scraping Failed: {e}")
-        return None
+        print(f"⚠️ CB Scraping Failed: {e}"); return None
     finally:
         if driver: driver.quit()
 
@@ -118,9 +115,11 @@ def scrape_forex_factory():
         driver = setup_driver()
         driver.get("https://www.forexfactory.com/calendar?week=this")
         
-        # FIX: FORCE LAZY LOADING by scrolling
-        driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
-        time.sleep(4) 
+        # FIX: MULTI-STEP SCROLLING
+        # This forces the browser to trigger lazy-loading for Wed, Thu, Fri
+        for i in range(1, 6):
+            driver.execute_script(f"window.scrollTo(0, document.body.scrollHeight * {i/5});")
+            time.sleep(2) # Sufficient time for data center IPs
         
         rows = driver.find_elements(By.CSS_SELECTOR, "tr.calendar__row")
         current_date_str, last_valid_time = "", ""
@@ -128,14 +127,15 @@ def scrape_forex_factory():
         for row in rows:
             row_class = row.get_attribute("class")
             if "calendar__row--day-breaker" in row_class:
-                current_date_str = row.text.strip()
+                val = row.text.strip()
+                if val: current_date_str = val
                 continue
             
-            impact_spans = row.find_elements(By.CSS_SELECTOR, "td.calendar__impact span.icon")
-            if not impact_spans or "icon--ff-impact-red" not in impact_spans[0].get_attribute("class"):
+            # Impact Check
+            impact = row.find_elements(By.CSS_SELECTOR, "td.calendar__impact span.icon")
+            if not impact or "icon--ff-impact-red" not in impact[0].get_attribute("class"):
                 continue
 
-            # Parsing
             try:
                 currency = row.find_element(By.CSS_SELECTOR, "td.calendar__currency").text.strip()
                 event = row.find_element(By.CSS_SELECTOR, "span.calendar__event-title").text.strip()
@@ -156,13 +156,13 @@ def scrape_forex_factory():
                     "act": act or "-", "cons": cons or "-", "prev": prev or "-"
                 })
             except: continue
-        return releases
+        return sorted(releases, key=lambda x: x['date']) # Ensure order
     except Exception as e:
         print(f"⚠️ FF Scraping Failed: {e}"); return None
     finally:
         if driver: driver.quit()
 
-# ===== REMAINING LOGIC (Calculations & Telegram) =====
+# ===== CALCS =====
 def fetch_fx_data():
     tickers = list(TARGET_PAIRS.values())
     data = yf.download(tickers, period="1mo", progress=False)
@@ -188,7 +188,7 @@ def calculate_base_movers(fx_data):
         if count > 0: movers[c] = [int(dd/count), int(ww/count)]
     return movers
 
-# EXECUTION
+# ===== EXECUTION =====
 fx_results = fetch_fx_data()
 scraped_rates = scrape_cb_rates()
 calendar_events = scrape_forex_factory()
@@ -209,14 +209,19 @@ lines.append("---\n📅 *ForexFactory: High Impact*")
 if calendar_events:
     for e in calendar_events:
         lines.append(f"[{e['date']}] {e['flag']} {e['title']} | {e['time_sgt']}")
-else: lines.append("⚠️ _Fetch Error_")
+        if e['act'] != "-": lines.append(f"   Act: {e['act']} | C: {e['cons']} | P: {e['prev']}")
+else: lines.append("⚠️ _Fetch Error (Lazy Load)_")
 
 lines.append("---\n🏛 *Central Banks*")
 if scraped_rates:
-    for bank in ["Fed", "ECB", "BoE", "BoJ"]:
+    for bank in ["Fed", "ECB", "BoE", "BoJ", "RBA", "RBNZ", "SNB", "BoC"]:
         d = scraped_rates.get(bank)
         if d: lines.append(f"{bank}: {d['rate']} (Next: {d['meeting']})")
 else: lines.append("⚠️ _Table Layout Changed_")
+
+lines.append("\n🔮 *Rates Outlook*")
+for bank, outlook in rates_outlook.items():
+    lines.append(f"{bank}: {outlook[0]} | {outlook[1]} | {outlook[2]}")
 
 # Final Send
 requests.post(f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage", data={"chat_id": CHAT_ID, "text": "\n".join(lines), "parse_mode": "Markdown"})
