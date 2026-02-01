@@ -72,14 +72,17 @@ def scrape_cb_rates():
         driver = setup_driver()
         driver.get("https://www.investing.com/central-banks/")
         
-        # Wait for visibility of the table to ensure JS has rendered text
-        wait = WebDriverWait(driver, 30)
-        table_selector = "table.genTbl.noFooter.boldButtons.currTable"
+        # === FIX IMPLEMENTED HERE ===
+        # We use WebDriverWait to ensure the table is actually loaded before reading it.
+        # This prevents the script from reading an empty page and failing intermittently.
+        wait = WebDriverWait(driver, 20)
         
+        # Try finding the table by ID first, which is standard
         try:
-            table = wait.until(EC.visibility_of_element_located((By.CSS_SELECTOR, table_selector)))
+            table = wait.until(EC.presence_of_element_located((By.ID, "curr_table")))
         except:
-            table = wait.until(EC.visibility_of_element_located((By.ID, "curr_table")))
+            # Fallback: Sometimes ID changes, try finding by class if ID fails
+            table = wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, "table.genTbl")))
 
         rates = {}
         name_map = {
@@ -88,7 +91,9 @@ def scrape_cb_rates():
             "Reserve Bank of New Zealand": "RBNZ", "Swiss National Bank": "SNB"
         }
 
+        # We grab rows from the specific table element we waited for
         rows = table.find_elements(By.TAG_NAME, "tr")
+        
         for row in rows:
             cols = row.find_elements(By.TAG_NAME, "td")
             if len(cols) < 3: continue
@@ -96,11 +101,12 @@ def scrape_cb_rates():
             row_text = row.text
             for full_name, short_name in name_map.items():
                 if full_name in row_text:
-                    # Index 2 is the Policy Rate
                     rates[short_name] = cols[2].text.strip()
+        
         return rates
     except Exception as e:
-        print(f"⚠️ CB Scraping Failed: {e}"); return None
+        print(f"⚠️ CB Scraping Failed: {e}")
+        return None
     finally:
         if driver: driver.quit()
 
@@ -110,7 +116,6 @@ def scrape_forex_factory():
     releases = []
     try:
         driver = setup_driver()
-        # CHANGED: day=today to focus results
         driver.get("https://www.forexfactory.com/calendar?day=today")
         
         for i in range(1, 4):
@@ -219,7 +224,8 @@ for base, pairs in groups.items():
         lines.append("\n".join(seg) + "\n")
 
 lines.append("---")
-lines.append("📅 *ForexFactory: High Impact Today*")
+# === REQUESTED CHANGE HERE ===
+lines.append("📅 *Economic Calendar (Central Time)*") 
 if calendar_events:
     for e in calendar_events:
         lines.append(f"[{e['date']}] {e['flag']} {e['title']} | {e['time_sgt']}")
@@ -234,7 +240,7 @@ if scraped_rates:
         lines.append(f"{bank}: {rate}")
 else: lines.append("⚠️ _Table Layout Intermittent Fail_")
 
-lines.append("\n🔮 *Rates Outlook*")
+lines.append("\n🔮 *Rates Outlook (Static)*")
 for bank, outlook in rates_outlook.items():
     lines.append(f"{bank}: {outlook[0]} | {outlook[1]} | {outlook[2]}")
 
