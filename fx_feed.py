@@ -7,7 +7,7 @@ from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.by import By
 import requests
 
-# ===== TELEGRAM CONFIG (HARD-CODED FOR TESTING) =====
+# ===== TELEGRAM CONFIG (HARD-CODED) =====
 TELEGRAM_TOKEN = "7649050168:AAHNIYnrHzLOTcjNuMpeKgyUbfJB9x9an3c"
 CHAT_ID = "876384974"
 FORCE_SEND = True  # send even weekends for testing
@@ -21,7 +21,7 @@ if not FORCE_SEND and weekday >= 5:
     print("Weekend — skipping FX update")
     exit(0)
 
-# ===== STATIC FX DATA (28 G8 FX crosses) =====
+# ===== STATIC FX DATA =====
 fx_pairs = {
     "AUD": {"AUDCAD": [0.8920, +9, +21], "AUDCHF": [0.5821, +12, +25], "AUDJPY": [97.85, -5, -13], "AUDNZD": [1.0830, +10, +15], "AUDUSD": [0.6624, +22, +41]},
     "CAD": {"CADCHF": [0.6521, -6, -20], "CADJPY": [109.73, -12, -49], "USDCAD": [1.3486, -17, -66]},
@@ -37,7 +37,6 @@ top_movers = {
     "JPY": [-32, -198], "NZD": [+24, +39], "USD": [-34, -205]
 }
 
-# ===== Rates Outlook (Arrows) =====
 rates_outlook = {
     "Fed":["🔴⬇️65%","🟡➡️35%","22 Feb 26"],
     "ECB":["🔴⬇️45%","🟡➡️55%","08 Mar 26"],
@@ -49,7 +48,6 @@ rates_outlook = {
     "RBNZ":["🔴⬇️25%","🟢⬆️20%","03 Mar 26"]
 }
 
-# ===== Economic Releases =====
 economic_releases = [
     {"flag":"🇺🇸","title":"US CPI (High)","time":"20:30 SGT","prev":"3.4%","cons":"3.2%"},
     {"flag":"🇪🇺","title":"EZ Industrial Prod","time":"16:00 SGT","prev":"-0.6%","cons":"-0.3%"},
