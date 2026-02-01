@@ -1,5 +1,6 @@
 import os
 import json
+import time
 import requests
 from datetime import datetime, timedelta, timezone
 from selenium import webdriver
@@ -7,12 +8,14 @@ from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.by import By
 from webdriver_manager.chrome import ChromeDriverManager
+from selenium_stealth import stealth
 
-# ===== CONFIG =====
+# ===== TELEGRAM CONFIG =====
 TELEGRAM_TOKEN = "7649050168:AAHNIYnrHzLOTcjNuMpeKgyUbfJB9x9an3c"
 CHAT_ID = "876384974"
 FORCE_SEND = True 
 
+# ===== SGT TIME =====
 SGT = timezone(timedelta(hours=8))
 now = datetime.now(SGT)
 
@@ -49,35 +52,61 @@ economic_releases = [
     {"flag":"🇬🇧","title":"UK GDP MoM","time":"16:30 SGT","prev":"0.0%","cons":"0.1%"}
 ]
 
-# ===== SCRAPER WITH FAIL-SAFE =====
+# ===== STEALTH SCRAPER =====
 def scrape_cb_rates():
     chrome_options = Options()
     chrome_options.add_argument("--headless")
     chrome_options.add_argument("--no-sandbox")
     chrome_options.add_argument("--disable-dev-shm-usage")
-    # Add User-Agent to prevent 403 Forbidden
-    chrome_options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36")
+    chrome_options.add_argument("--window-size=1920,1080")
     
+    # Use a real browser user agent
+    user_agent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+    chrome_options.add_argument(f"user-agent={user_agent}")
+
     try:
         driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=chrome_options)
+        
+        # Apply Stealth to hide automation flags
+        stealth(driver,
+            languages=["en-US", "en"],
+            vendor="Google Inc.",
+            platform="Win32",
+            webgl_vendor="Intel Inc.",
+            renderer="Intel Iris OpenGL Engine",
+            fix_hairline=True,
+        )
+
         driver.get("https://www.investing.com/central-banks/world-central-banks")
-        driver.implicitly_wait(10)
+        
+        # Give it a substantial wait to bypass JS challenges
+        time.sleep(15) 
         
         rates = {}
-        table = driver.find_element(By.ID, "curr_table")
+        # Try both common table selectors used by Investing.com
+        try:
+            table = driver.find_element(By.CSS_SELECTOR, "table.genTbl")
+        except:
+            table = driver.find_element(By.ID, "curr_table")
+
         rows = table.find_elements(By.TAG_NAME, "tr")[1:]
         for row in rows:
             cells = row.find_elements(By.TAG_NAME, "td")
             if len(cells) >= 3:
                 name = cells[1].text.strip()
                 rate = cells[2].text.strip()
-                rates[name] = rate
+                if name and rate:
+                    rates[name] = rate
+        
         driver.quit()
+        if not rates: raise Exception("No data found in table")
         return rates
-    except Exception as e:
-        print(f"Scraping Error: {e}")
-        return {"Note": "Could not fetch live rates (Site blocked or changed)"}
 
+    except Exception as e:
+        print(f"Scrape Error: {e}")
+        return {"Error": "Live scrape failed. Please check site availability."}
+
+# Get rates
 central_bank_rates = scrape_cb_rates()
 
 # ===== BUILD MESSAGE =====
@@ -98,7 +127,7 @@ lines.append("---\nToday — Key Economic Releases")
 for e in economic_releases:
     lines.append(f"{e['flag']} {e['title']} | {e['time']} | P: {e['prev']} | C: {e['cons']}")
 
-lines.append("\n---\nCentral Bank Rates")
+lines.append("\n---\nCentral Bank Policy Rates")
 for k, v in central_bank_rates.items():
     lines.append(f"{k}: {v}")
 
@@ -113,5 +142,4 @@ url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
 payload = {"chat_id": CHAT_ID, "text": message}
 response = requests.post(url, data=payload)
 
-print(f"Status Code: {response.status_code}")
-print(f"Response: {response.json()}")
+print(f"Telegram Response: {response.json()}")
