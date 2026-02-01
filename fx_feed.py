@@ -2,6 +2,7 @@ import time
 import requests
 import pandas as pd
 import yfinance as yf
+import random
 from datetime import datetime, timedelta, timezone
 
 # Selenium Imports
@@ -51,10 +52,13 @@ def setup_driver():
     options.add_argument("--no-sandbox")
     options.add_argument("--disable-dev-shm-usage")
     options.add_argument("--window-size=1920,1080")
+    
+    # Anti-Detection
     options.add_argument("--disable-blink-features=AutomationControlled")
     options.add_experimental_option("excludeSwitches", ["enable-automation"])
     options.add_experimental_option("useAutomationExtension", False)
-    
+    options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
+
     driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=options)
     
     stealth(driver,
@@ -72,7 +76,6 @@ def convert_time_to_sgt(date_str, time_str):
     if "All Day" in time_str or "Tentative" in time_str:
         return time_str
     try:
-        # Assumes FF is US Eastern Time. SGT is roughly +13h
         current_year = datetime.now().year
         dt_str = f"{date_str} {current_year} {time_str}"
         dt_obj = datetime.strptime(dt_str, "%a %b %d %Y %I:%M%p")
@@ -81,21 +84,33 @@ def convert_time_to_sgt(date_str, time_str):
     except:
         return time_str
 
-# ===== 1. SCRAPER: CENTRAL BANKS (Original Logic) =====
+# ===== 1. SCRAPER: CENTRAL BANKS (With Popup Killer) =====
 def scrape_cb_rates():
-    print("🕷️ Scraping Central Bank rates (Investing.com)...")
+    print("🕷️ Scraping Central Bank rates...")
     driver = None
     try:
         driver = setup_driver()
         driver.get("https://www.investing.com/central-banks/")
         
-        # Wait for table
+        # 1. Wait a bit for popups to appear
+        time.sleep(5)
+
+        # 2. POPUP KILLER: Try to click "I Accept" or "Close" buttons
+        try:
+            # Common ID for cookie banners
+            accept_btn = driver.find_element(By.ID, "onetrust-accept-btn-handler")
+            accept_btn.click()
+            print("🍪 Cookie popup closed.")
+            time.sleep(2)
+        except:
+            pass # No popup found, move on
+
+        # 3. Wait for table
         WebDriverWait(driver, 20).until(
             EC.presence_of_element_located((By.CSS_SELECTOR, "table#curr_table"))
         )
         
         rates = {}
-        # Mapping: Investing Name -> (Your Key, Next Meeting)
         name_map = {
             "Federal Reserve": "Fed", "European Central Bank": "ECB",
             "Bank of England": "BoE", "Bank of Japan": "BoJ",
@@ -103,24 +118,21 @@ def scrape_cb_rates():
             "Reserve Bank of New Zealand": "RBNZ", "Swiss National Bank": "SNB"
         }
 
-        # Original Selector that worked
         rows = driver.find_elements(By.CSS_SELECTOR, "table#curr_table tbody tr")
         
         for row in rows:
             try:
                 cols = row.find_elements(By.TAG_NAME, "td")
-                # Need at least 4 cols: [0]Icon, [1]Name, [2]Rate, [3]NextMeeting
                 if len(cols) < 4: continue
 
-                raw_name = cols[1].text.strip() # "Federal Reserve (FED)"
-                rate_val = cols[2].text.strip() # "3.75%"
-                next_meet = cols[3].text.strip() # "Mar 18, 2026"
+                raw_name = cols[1].text.strip()
+                rate_val = cols[2].text.strip()
+                next_meet = cols[3].text.strip()
                 
                 clean_name = raw_name.split('(')[0].strip()
 
                 if clean_name in name_map:
                     bank_key = name_map[clean_name]
-                    # We store both Rate and Next Meeting
                     rates[bank_key] = {"rate": rate_val, "meeting": next_meet}
             except Exception:
                 continue
@@ -133,10 +145,9 @@ def scrape_cb_rates():
     finally:
         if driver: driver.quit()
 
-# ===== 2. SCRAPER: FOREX FACTORY (Weekly) =====
+# ===== 2. SCRAPER: FOREX FACTORY (Safe Mode) =====
 def scrape_forex_factory():
-    print("📅 Scraping ForexFactory (Weekly)...")
-    # Switched back to WEEKLY to ensure data visibility
+    print("📅 Scraping ForexFactory...")
     url = "https://www.forexfactory.com/calendar?week=this"
     
     driver = None
@@ -178,13 +189,26 @@ def scrape_forex_factory():
                 # ONLY RED IMPACT
                 if "icon--ff-impact-red" in impact_class:
                     
-                    currency = row.find_element(By.CSS_SELECTOR, "td.calendar__currency").text.strip()
-                    event = row.find_element(By.CSS_SELECTOR, "span.calendar__event-title").text.strip()
+                    # SAFE SCRAPING: Use try-except for individual fields so one missing field doesn't skip the row
+                    currency = "-"
+                    event = "-"
+                    time_str = ""
+                    act = "-"
+                    cons = "-"
+                    prev = "-"
                     
-                    # Time Handling
-                    time_ele = row.find_element(By.CSS_SELECTOR, "td.calendar__time")
-                    time_str = time_ele.text.strip()
+                    try: currency = row.find_element(By.CSS_SELECTOR, "td.calendar__currency").text.strip()
+                    except: pass
                     
+                    try: event = row.find_element(By.CSS_SELECTOR, "span.calendar__event-title").text.strip()
+                    except: pass
+                    
+                    try: 
+                        time_ele = row.find_element(By.CSS_SELECTOR, "td.calendar__time")
+                        time_str = time_ele.text.strip()
+                    except: pass
+                    
+                    # Logic to handle blank times (same as previous event)
                     if not time_str and last_valid_time:
                         time_str = last_valid_time
                     elif time_str:
@@ -192,9 +216,14 @@ def scrape_forex_factory():
                     
                     sgt_time = convert_time_to_sgt(current_date_str, time_str)
 
-                    act = row.find_element(By.CSS_SELECTOR, "td.calendar__actual").text.strip()
-                    cons = row.find_element(By.CSS_SELECTOR, "td.calendar__forecast").text.strip()
-                    prev = row.find_element(By.CSS_SELECTOR, "td.calendar__previous").text.strip()
+                    try: act = row.find_element(By.CSS_SELECTOR, "td.calendar__actual").text.strip()
+                    except: pass
+                    
+                    try: cons = row.find_element(By.CSS_SELECTOR, "td.calendar__forecast").text.strip()
+                    except: pass
+                    
+                    try: prev = row.find_element(By.CSS_SELECTOR, "td.calendar__previous").text.strip()
+                    except: pass
 
                     flag_map = {"USD":"🇺🇸", "EUR":"🇪🇺", "GBP":"🇬🇧", "JPY":"🇯🇵", "CAD":"🇨🇦", "AUD":"🇦🇺", "NZD":"🇳🇿", "CHF":"🇨🇭", "CNY":"🇨🇳"}
 
@@ -271,9 +300,10 @@ base_movers = calculate_base_movers(fx_results)
 # ===== BUILD MESSAGE =====
 lines = [f"📊 *G8 FX Update* — {now_sgt.strftime('%H:%M')} SGT\n"]
 
-# 1. Top Movers
+# 1. Top Movers (SORTED A-Z)
 lines.append("🔥 *Top Movers (Base Index)*")
-sorted_movers = sorted(base_movers.items(), key=lambda x: abs(x[1][0]), reverse=True)
+# Changed sort key to x[0] (Currency Name) to sort Alphabetically
+sorted_movers = sorted(base_movers.items(), key=lambda x: x[0]) 
 for curr, vals in sorted_movers:
     lines.append(f"{curr}: {vals[0]:+} pips d/d | {vals[1]:+} w/w")
 
@@ -304,7 +334,7 @@ for base, pairs in groups.items():
 
 lines.append("---")
 
-# 3. Economic Releases (WEEKLY)
+# 3. Economic Releases (WEEKLY - FULL)
 lines.append("📅 *ForexFactory: High Impact (Weekly)*")
 lines.append("_(Times in SGT)_")
 
@@ -320,7 +350,7 @@ else:
 
 lines.append("\n---")
 
-# 4. Central Banks (Investing.com)
+# 4. Central Banks
 lines.append("🏛 *Central Bank Policy Rates*")
 cb_order = ["Fed", "ECB", "BoE", "BoJ", "BoC", "RBA", "RBNZ", "SNB"]
 
