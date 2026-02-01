@@ -1,6 +1,7 @@
 name: FX Telegram Update
 
 on:
+  workflow_dispatch:   # <-- this enables manual trigger
   schedule:
     - cron: '*/15 21-23 * * 1-4'
     - cron: '*/15 0-15 * * 2-5'
