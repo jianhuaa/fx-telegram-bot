@@ -1,11 +1,12 @@
 import time
 import requests
+import re
 import pandas as pd
 import yfinance as yf
 from bs4 import BeautifulSoup
 from datetime import datetime, timedelta, timezone
 
-# Selenium Imports (Kept for ForexFactory dynamic scrolling)
+# Selenium Imports
 from selenium import webdriver
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.chrome.options import Options
@@ -32,7 +33,7 @@ TARGET_PAIRS = {
     "USDCAD": "USDCAD=X", "USDCHF": "USDCHF=X", "USDJPY": "USDJPY=X"
 }
 
-# Probabilities are static/manual for now, but Dates will be dynamic
+# Probabilities (Static for now)
 base_outlook = {
     "Fed":  ["🔴⬇️65%", "🟡➡️35%"],
     "ECB":  ["🔴⬇️45%", "🟡➡️55%"],
@@ -77,34 +78,23 @@ def convert_time_to_sgt(date_str, time_str):
         return sgt_time.strftime("%H:%M")
     except: return time_str
 
-# ===== NEW SCRAPERS (CBRates.com) =====
+# ===== SCRAPERS =====
 
 def scrape_cbrates_current():
     print("🏛️ Scraping Current Rates (cbrates.com)...")
     url = "https://www.cbrates.com/"
     rates = {}
     
-    # Mapping cbrates.com country names to our codes
-    # Note: Keys must match the text found on cbrates.com exactly
+    # Mapping exact text from cbrates to our codes
     country_map = {
-        "United States": "Fed",
-        "Euro Area": "ECB",
-        "Eurozone": "ECB", # Fallback
-        "Britain": "BoE",
-        "United Kingdom": "BoE", # Fallback
-        "Japan": "BoJ",
-        "Canada": "BoC",
-        "Australia": "RBA",
-        "New Zealand": "RBNZ",
-        "Switzerland": "SNB"
+        "United States": "Fed", "Euro Area": "ECB", "Eurozone": "ECB", 
+        "Britain": "BoE", "United Kingdom": "BoE", "Japan": "BoJ", 
+        "Canada": "BoC", "Australia": "RBA", "New Zealand": "RBNZ", "Switzerland": "SNB"
     }
 
     try:
         r = requests.get(url, headers={'User-Agent': 'Mozilla/5.0'})
         soup = BeautifulSoup(r.text, 'html.parser')
-        
-        # Finding the main table (usually standard table class or just the first big one)
-        # cbrates usually has a table with flag images
         rows = soup.find_all('tr')
         
         for row in rows:
@@ -112,50 +102,22 @@ def scrape_cbrates_current():
             
             for country, code in country_map.items():
                 if country in text:
-                    # Found a row. Now find the rate percentage.
-                    # Logic: Look for the last '%' in the row, or handle US range.
-                    cells = row.find_all('td')
-                    if len(cells) < 2: continue
+                    # Logic 1: Check for Range "3.50 - 3.75" (Fed Logic)
+                    # We capture both numbers, then take the second (higher) one
+                    range_match = re.search(r"(\d+\.\d{2})\s*-\s*(\d+\.\d{2})", text)
                     
-                    # Extract text from the cell that likely holds the rate (usually last or 2nd)
-                    # We grab all text in row and look for % patterns
-                    row_text = row.get_text()
-                    
-                    # Special Logic for US Fed "3.50 - 3.75"
-                    if code == "Fed" and "-" in row_text:
-                        # Extract the range, take the second number
-                        # Example: "United States USD 3.50 - 3.75"
-                        try:
-                            # Split by hyphen, take the part after it
-                            parts = row_text.split('-')
-                            # The higher number is in the last part (e.g. " 3.75")
-                            # We need to clean it of extra text
-                            high_part = parts[-1].replace('%', '').strip()
-                            # Sometimes it might have extra chars, extract float
-                            import re
-                            match = re.search(r"(\d+\.\d+)", high_part)
-                            if match:
-                                rates[code] = f"{match.group(1)}%"
-                            else:
-                                rates[code] = high_part + "%"
-                        except:
-                            pass
+                    if range_match:
+                        # Found a range (e.g. 3.50 - 3.75) -> Take 3.75
+                        rates[code] = f"{range_match.group(2)}%"
                     else:
-                        # Standard Logic: Find the % value
-                        import re
-                        # Find all numbers like 4.25 or 0.10
-                        matches = re.findall(r"(\d+\.\d{2})", row_text)
-                        if matches:
-                            # Usually the rate is the first distinct number associated with the country
-                            # But cbrates lists Previous | Current sometimes. 
-                            # We assume the table shows current.
-                            rates[code] = f"{matches[0]}%"
+                        # Logic 2: Standard single percentage
+                        # Find the first valid percentage (e.g. 5.25)
+                        single_match = re.search(r"(\d+\.\d{2})", text)
+                        if single_match:
+                            rates[code] = f"{single_match.group(1)}%"
                     
-                    # Break loop for this row if found to avoid double matching
                     if code in rates: break
-                    
         return rates
-
     except Exception as e:
         print(f"⚠️ CBRates Rates Failed: {e}")
         return None
@@ -166,50 +128,31 @@ def scrape_cbrates_meetings():
     meetings = {}
     
     country_map = {
-        "United States": "Fed",
-        "Euro Area": "ECB",
-        "Eurozone": "ECB",
-        "Britain": "BoE",
-        "United Kingdom": "BoE",
-        "Japan": "BoJ",
-        "Canada": "BoC",
-        "Australia": "RBA",
-        "New Zealand": "RBNZ",
-        "Switzerland": "SNB"
+        "United States": "Fed", "Euro Area": "ECB", "Eurozone": "ECB",
+        "Britain": "BoE", "United Kingdom": "BoE", "Japan": "BoJ",
+        "Canada": "BoC", "Australia": "RBA", "New Zealand": "RBNZ", "Switzerland": "SNB"
     }
 
     try:
         r = requests.get(url, headers={'User-Agent': 'Mozilla/5.0'})
         soup = BeautifulSoup(r.text, 'html.parser')
-        
-        # The meetings page is usually a list of rows with Country | Date
         rows = soup.find_all('tr')
         
         for row in rows:
-            row_text = row.get_text(" ", strip=True)
+            text = row.get_text(" ", strip=True)
             
             for country, code in country_map.items():
-                if country in row_text:
-                    # We found the country. Now extract the date.
-                    # cbrates meetings format is typically: "United States : Dec 18, 2025"
-                    # We look for the date pattern.
-                    import re
-                    # Regex for "Mmm DD, YYYY" or "DD Mmm YYYY"
-                    # cbrates often uses "Dec 18" or "Dec 18, 2025"
+                if country in text:
+                    # Look for date pattern like "Jan 28" or "Feb 05"
+                    # Regex: (Month) + Space + (1 or 2 digits)
+                    date_match = re.search(r"(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+(\d{1,2})", text, re.IGNORECASE)
                     
-                    # Clean out the country name to leave the date
-                    date_text = row_text.replace(country, "").replace(":", "").strip()
-                    
-                    # Basic cleanup
-                    if date_text:
-                         # Store specifically if it looks like a date (contains a month)
-                         months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]
-                         if any(m in date_text for m in months):
-                             meetings[code] = date_text
-                             break # Found
-
+                    if date_match:
+                        # Reconstruct "Mmm DD"
+                        date_str = f"{date_match.group(1)} {date_match.group(2)}"
+                        meetings[code] = date_str
+                        break 
         return meetings
-
     except Exception as e:
         print(f"⚠️ CBRates Meetings Failed: {e}")
         return None
@@ -222,7 +165,6 @@ def scrape_forex_factory():
         driver = setup_driver()
         driver.get("https://www.forexfactory.com/calendar?day=today")
         
-        # Scroll to load dynamic content
         for i in range(1, 4):
             driver.execute_script(f"window.scrollTo(0, document.body.scrollHeight * {i/3});")
             time.sleep(1.5)
@@ -238,7 +180,6 @@ def scrape_forex_factory():
                 continue
             
             impact = row.find_elements(By.CSS_SELECTOR, "td.calendar__impact span.icon")
-            # Only get high impact (Red) events
             if not impact or "icon--ff-impact-red" not in impact[0].get_attribute("class"):
                 continue
 
@@ -271,19 +212,12 @@ def scrape_forex_factory():
 # ===== CALCULATIONS =====
 def fetch_fx_data():
     tickers = list(TARGET_PAIRS.values())
-    # Downloading data
     data = yf.download(tickers, period="1mo", progress=False)
     
-    # Handle MultiIndex columns (yfinance structure changes frequently)
     if isinstance(data.columns, pd.MultiIndex):
-        try:
-            # Try to get Close prices. If 'Close' is level 0
-            closes = data.xs('Close', level=0, axis=1)
-        except KeyError:
-             # Fallback if structure is different (e.g. Ticker as level 0)
-             closes = data['Close']
-    else:
-        closes = data['Close']
+        try: closes = data.xs('Close', level=0, axis=1)
+        except KeyError: closes = data['Close']
+    else: closes = data['Close']
         
     results = {}
     for pair, ticker in TARGET_PAIRS.items():
@@ -353,8 +287,8 @@ else: lines.append("No high impact events today.")
 lines.append("\n---")
 lines.append("🏛 *Central Bank Policy Rates*")
 if scraped_rates:
-    # Preferred order of display
-    order = ["Fed", "ECB", "BoE", "BoJ", "SNB", "RBA", "BoC", "RBNZ"]
+    # UPDATED ORDER as requested
+    order = ["RBA", "BoC", "SNB", "ECB", "BoE", "BoJ", "RBNZ", "Fed"]
     for bank in order:
         rate = scraped_rates.get(bank, "N/A")
         lines.append(f"{bank}: {rate}")
@@ -362,11 +296,10 @@ else:
     lines.append("⚠️ _Scraping Failed_")
 
 lines.append("\n🔮 *Rates Outlook*")
-# Merge static probabilities with dynamic dates
-order = ["Fed", "ECB", "BoE", "BoJ", "SNB", "RBA", "BoC", "RBNZ"]
+# Using the same order for the outlook
+order = ["RBA", "BoC", "SNB", "ECB", "BoE", "BoJ", "RBNZ", "Fed"]
 for bank in order:
     probs = base_outlook.get(bank, ["-", "-"])
-    # Get dynamic date if available, else placeholder
     date_str = scraped_meetings.get(bank, "TBA")
     lines.append(f"{bank}: {probs[0]} | {probs[1]} | {date_str}")
 
