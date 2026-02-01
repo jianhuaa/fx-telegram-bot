@@ -1,7 +1,5 @@
-import os
 import time
 import requests
-import numpy as np
 import yfinance as yf
 from datetime import datetime, timedelta, timezone
 
@@ -10,6 +8,8 @@ from selenium import webdriver
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
 from webdriver_manager.chrome import ChromeDriverManager
 from selenium_stealth import stealth
 
@@ -42,9 +42,8 @@ rates_outlook = {
     "RBNZ": ["🔴⬇️25%", "🟢⬆️20%", "03 Mar 26"]
 }
 
-# ===== 1. SCRAPER: CENTRAL BANKS (FIXED COLUMN INDEX) =====
-def scrape_cb_rates():
-    print("🕷️ Scraping Central Bank rates...")
+# ===== HELPER: SETUP DRIVER =====
+def setup_driver():
     options = Options()
     options.add_argument("--headless=new")
     options.add_argument("--no-sandbox")
@@ -54,22 +53,33 @@ def scrape_cb_rates():
     options.add_experimental_option("excludeSwitches", ["enable-automation"])
     options.add_experimental_option("useAutomationExtension", False)
     
+    driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=options)
+    
+    stealth(driver,
+        languages=["en-US", "en"],
+        vendor="Google Inc.",
+        platform="Win32",
+        webgl_vendor="Intel Inc.",
+        renderer="Intel Iris OpenGL Engine",
+        fix_hairline=True,
+    )
+    return driver
+
+# ===== 1. SCRAPER: CENTRAL BANKS (FIXED) =====
+def scrape_cb_rates():
+    print("🕷️ Scraping Central Bank rates...")
     driver = None
     try:
-        driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=options)
-        stealth(driver,
-            languages=["en-US", "en"],
-            vendor="Google Inc.",
-            platform="Win32",
-            webgl_vendor="Intel Inc.",
-            renderer="Intel Iris OpenGL Engine",
-            fix_hairline=True,
-        )
-
+        driver = setup_driver()
         driver.get("https://www.investing.com/central-banks/")
-        time.sleep(15) 
+        
+        # Wait for table to be visible
+        WebDriverWait(driver, 20).until(
+            EC.presence_of_element_located((By.CSS_SELECTOR, "table#curr_table"))
+        )
         
         rates = {}
+        # Mapping Investing.com names to your output keys
         name_map = {
             "Federal Reserve": "Fed", "European Central Bank": "ECB",
             "Bank of England": "BoE", "Bank of Japan": "BoJ",
@@ -77,111 +87,104 @@ def scrape_cb_rates():
             "Reserve Bank of New Zealand": "RBNZ", "Swiss National Bank": "SNB"
         }
 
-        # Select the table rows
+        # Select all rows in the specific table
         rows = driver.find_elements(By.CSS_SELECTOR, "table#curr_table tbody tr")
-        if not rows:
-            rows = driver.find_elements(By.CSS_SELECTOR, "table.genTbl tbody tr")
-
+        
         for row in rows:
-            cols = row.find_elements(By.TAG_NAME, "td")
-            
-            # === FIX FOR NEW HTML STRUCTURE ===
-            # The HTML you provided has an ICON in col[0].
-            # The NAME is in col[1].
-            # The RATE is in col[2].
-            if len(cols) >= 3:
-                # Try Col 1 for Name first (standard investing.com layout)
-                raw_text = cols[1].text.strip()
-                
-                # Fallback: Sometimes if no icon, Name is in Col 0
-                if not raw_text:
-                    raw_text = cols[0].text.strip()
+            try:
+                cols = row.find_elements(By.TAG_NAME, "td")
+                if len(cols) < 3: continue
 
-                # Clean name: "Federal Reserve (FED)" -> "Federal Reserve"
-                clean_name = raw_text.split('(')[0].strip()
-                
-                # Get Rate (Col 2)
+                # Name is in Col 1 (index 1) -> "Federal Reserve (FED)"
+                raw_name = cols[1].text.strip()
+                # Rate is in Col 2 (index 2) -> "3.75%"
                 rate_val = cols[2].text.strip()
+                
+                # Clean name: "Federal Reserve (FED)" -> "Federal Reserve"
+                clean_name = raw_name.split('(')[0].strip()
 
                 if clean_name in name_map:
                     rates[name_map[clean_name]] = rate_val
+            except Exception as e:
+                continue
 
-        if not rates: return None
         return rates
 
     except Exception as e:
-        print(f"⚠️ Scraping Failed: {e}")
+        print(f"⚠️ CB Scraping Failed: {e}")
         return None
     finally:
         if driver: driver.quit()
 
-# ===== 2. SCRAPER: FOREX FACTORY =====
+# ===== 2. SCRAPER: FOREX FACTORY (FIXED DATE & IMPACT) =====
 def scrape_forex_factory():
     print("📅 Scraping ForexFactory...")
     url = "https://www.forexfactory.com/calendar"
-    
-    options = Options()
-    options.add_argument("--headless=new")
-    options.add_argument("--no-sandbox")
-    options.add_argument("--disable-blink-features=AutomationControlled")
-    options.add_experimental_option("excludeSwitches", ["enable-automation"])
-    options.add_experimental_option("useAutomationExtension", False)
-    options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
-
     driver = None
     releases = []
     
     try:
-        driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=options)
-        stealth(driver,
-            languages=["en-US", "en"],
-            vendor="Google Inc.",
-            platform="Win32",
-            webgl_vendor="Intel Inc.",
-            renderer="Intel Iris OpenGL Engine",
-            fix_hairline=True,
-        )
-
+        driver = setup_driver()
         driver.get(url)
-        time.sleep(8) 
+        time.sleep(5) # Let Cloudflare/JS settle
+
+        # Explicitly wait for the calendar table
+        WebDriverWait(driver, 20).until(
+            EC.presence_of_element_located((By.CSS_SELECTOR, "table.calendar__table"))
+        )
         
         rows = driver.find_elements(By.CSS_SELECTOR, "tr.calendar__row")
-        current_date_str = ""
+        current_date_str = "Unknown Date"
         
         for row in rows:
             try:
-                # Date Header
-                if "new-day" in row.get_attribute("class"):
-                    date_ele = row.find_element(By.CSS_SELECTOR, "td.calendar__date span")
-                    current_date_str = date_ele.text.strip()
+                row_class = row.get_attribute("class")
+
+                # 1. Detect Date Breaker Row (e.g., "Sun Feb 1")
+                if "calendar__row--day-breaker" in row_class:
+                    # The text inside is usually just the date
+                    current_date_str = row.text.strip()
                     continue
 
-                # Filter Red Impact
-                impact_ele = row.find_element(By.CSS_SELECTOR, "td.calendar__impact span")
-                if "impact-red" not in impact_ele.get_attribute("class"):
+                # 2. Skip spacer/empty rows
+                if "calendar__row--no-event" in row_class:
                     continue
 
-                currency = row.find_element(By.CSS_SELECTOR, "td.calendar__currency").text.strip()
-                event = row.find_element(By.CSS_SELECTOR, "span.calendar__event-title").text.strip()
-                time_str = row.find_element(By.CSS_SELECTOR, "td.calendar__time").text.strip()
+                # 3. Check Impact
+                # We look for the span inside td.calendar__impact
+                impact_spans = row.find_elements(By.CSS_SELECTOR, "td.calendar__impact span.icon")
+                if not impact_spans:
+                    continue
                 
-                act = row.find_element(By.CSS_SELECTOR, "td.calendar__actual").text.strip()
-                cons = row.find_element(By.CSS_SELECTOR, "td.calendar__forecast").text.strip()
-                prev = row.find_element(By.CSS_SELECTOR, "td.calendar__previous").text.strip()
+                impact_class = impact_spans[0].get_attribute("class")
+                
+                # Filter: Only Red Impact
+                if "impact-red" in impact_class:
+                    
+                    currency = row.find_element(By.CSS_SELECTOR, "td.calendar__currency").text.strip()
+                    event = row.find_element(By.CSS_SELECTOR, "span.calendar__event-title").text.strip()
+                    time_str = row.find_element(By.CSS_SELECTOR, "td.calendar__time").text.strip()
+                    
+                    act = row.find_element(By.CSS_SELECTOR, "td.calendar__actual").text.strip()
+                    cons = row.find_element(By.CSS_SELECTOR, "td.calendar__forecast").text.strip()
+                    prev = row.find_element(By.CSS_SELECTOR, "td.calendar__previous").text.strip()
 
-                flag_map = {"USD":"🇺🇸", "EUR":"🇪🇺", "GBP":"🇬🇧", "JPY":"🇯🇵", "CAD":"🇨🇦", "AUD":"🇦🇺", "NZD":"🇳🇿", "CHF":"🇨🇭", "CNY":"🇨🇳"}
+                    flag_map = {"USD":"🇺🇸", "EUR":"🇪🇺", "GBP":"🇬🇧", "JPY":"🇯🇵", "CAD":"🇨🇦", "AUD":"🇦🇺", "NZD":"🇳🇿", "CHF":"🇨🇭", "CNY":"🇨🇳"}
 
-                releases.append({
-                    "date": current_date_str,
-                    "flag": flag_map.get(currency, "🌍"),
-                    "title": f"{currency} {event}",
-                    "time": time_str,
-                    "act": act if act else "-",
-                    "cons": cons if cons else "-",
-                    "prev": prev if prev else "-"
-                })
-            except:
+                    releases.append({
+                        "date": current_date_str,
+                        "flag": flag_map.get(currency, "🌍"),
+                        "title": f"{currency} {event}",
+                        "time": time_str,
+                        "act": act if act else "-",
+                        "cons": cons if cons else "-",
+                        "prev": prev if prev else "-"
+                    })
+            
+            except Exception as row_e:
+                # Silently skip malformed rows
                 continue
+                
         return releases
 
     except Exception as e:
@@ -195,17 +198,23 @@ def fetch_fx_data():
     print("⏳ Fetching FX data...")
     tickers = list(TARGET_PAIRS.values())
     
+    # Using threads to speed up yf download if needed, but standard is fine
     data = yf.download(tickers, period="1mo", progress=False)
-    closes = data['Close']
+    
+    # Handle MultiIndex columns if yfinance returns them
+    if isinstance(data.columns, pd.MultiIndex):
+        closes = data.xs('Close', level=0, axis=1)
+    else:
+        closes = data['Close']
     
     results = {}
     for pair, ticker in TARGET_PAIRS.items():
         if ticker in closes.columns:
             series = closes[ticker].dropna()
             if len(series) >= 6:
-                curr = series.iloc[-1]
-                p_day = series.iloc[-2]
-                p_week = series.iloc[-6] 
+                curr = float(series.iloc[-1])
+                p_day = float(series.iloc[-2])
+                p_week = float(series.iloc[-6]) 
                 
                 is_jpy = "JPY" in pair
                 mult = 100 if is_jpy else 10000
@@ -234,6 +243,9 @@ def calculate_base_movers(fx_data):
     return movers
 
 # ===== 4. EXECUTION =====
+# Need to import pandas for the yfinance fix above
+import pandas as pd
+
 fx_results = fetch_fx_data()
 scraped_rates = scrape_cb_rates()
 calendar_events = scrape_forex_factory()
@@ -285,7 +297,7 @@ elif not calendar_events:
 else:
     count = 0
     for e in calendar_events:
-        if count >= 10: 
+        if count >= 15: # Increased limit slightly 
             lines.append("... _(More events truncated)_")
             break
         lines.append(f"[{e['date']}] {e['flag']} {e['title']} | {e['time']}")
@@ -304,7 +316,6 @@ if scraped_rates:
         rate = scraped_rates.get(bank, "N/A")
         lines.append(f"{bank}: {rate}")
 else:
-    # This will trigger if the HTML parsing logic still fails
     lines.append("⚠️ _Fetch Failed - Check Table Layout_")
 
 lines.append("\n---")
