@@ -22,19 +22,15 @@ now = datetime.now(SGT)
 
 # ===== PAIR MAPPING =====
 TARGET_PAIRS = {
-    "AUDCAD": "AUDCAD=X", "AUDCHF": "AUDCHF=X", "AUDJPY": "AUDJPY=X", 
-    "AUDNZD": "AUDNZD=X", "AUDUSD": "AUDUSD=X",
+    "AUDCAD": "AUDCAD=X", "AUDCHF": "AUDCHF=X", "AUDJPY": "AUDJPY=X", "AUDNZD": "AUDNZD=X", "AUDUSD": "AUDUSD=X",
     "CADCHF": "CADCHF=X", "CADJPY": "CADJPY=X",
     "CHFJPY": "CHFJPY=X",
-    "EURAUD": "EURAUD=X", "EURCAD": "EURCAD=X", "EURCHF": "EURCHF=X", 
-    "EURGBP": "EURGBP=X", "EURJPY": "EURJPY=X", "EURNZD": "EURNZD=X", "EURUSD": "EURUSD=X",
-    "GBPAUD": "GBPAUD=X", "GBPCAD": "GBPCAD=X", "GBPCHF": "GBPCHF=X", 
-    "GBPJPY": "GBPJPY=X", "GBPNZD": "GBPNZD=X", "GBPUSD": "GBPUSD=X",
+    "EURAUD": "EURAUD=X", "EURCAD": "EURCAD=X", "EURCHF": "EURCHF=X", "EURGBP": "EURGBP=X", "EURJPY": "EURJPY=X", "EURNZD": "EURNZD=X", "EURUSD": "EURUSD=X",
+    "GBPAUD": "GBPAUD=X", "GBPCAD": "GBPCAD=X", "GBPCHF": "GBPCHF=X", "GBPJPY": "GBPJPY=X", "GBPNZD": "GBPNZD=X", "GBPUSD": "GBPUSD=X",
     "NZDCAD": "NZDCAD=X", "NZDCHF": "NZDCHF=X", "NZDJPY": "NZDJPY=X", "NZDUSD": "NZDUSD=X",
     "USDCAD": "USDCAD=X", "USDCHF": "USDCHF=X", "USDJPY": "USDJPY=X"
 }
 
-# ===== MANUAL OUTLOOK =====
 rates_outlook = {
     "Fed":  ["🔴⬇️65%", "🟡➡️35%", "22 Feb 26"],
     "ECB":  ["🔴⬇️45%", "🟡➡️55%", "08 Mar 26"],
@@ -46,7 +42,7 @@ rates_outlook = {
     "RBNZ": ["🔴⬇️25%", "🟢⬆️20%", "03 Mar 26"]
 }
 
-# ===== 1. SCRAPER: CB RATES (NO FALLBACK) =====
+# ===== 1. SCRAPER: CENTRAL BANKS (FIXED COLUMN INDEX) =====
 def scrape_cb_rates():
     print("🕷️ Scraping Central Bank rates...")
     options = Options()
@@ -81,19 +77,35 @@ def scrape_cb_rates():
             "Reserve Bank of New Zealand": "RBNZ", "Swiss National Bank": "SNB"
         }
 
+        # Select the table rows
         rows = driver.find_elements(By.CSS_SELECTOR, "table#curr_table tbody tr")
         if not rows:
             rows = driver.find_elements(By.CSS_SELECTOR, "table.genTbl tbody tr")
 
         for row in rows:
             cols = row.find_elements(By.TAG_NAME, "td")
-            if len(cols) >= 2:
-                raw_name = cols[0].text.split('(')[0].strip()
-                rate_val = cols[1].text.strip()
-                if raw_name in name_map:
-                    rates[name_map[raw_name]] = rate_val
+            
+            # === FIX FOR NEW HTML STRUCTURE ===
+            # The HTML you provided has an ICON in col[0].
+            # The NAME is in col[1].
+            # The RATE is in col[2].
+            if len(cols) >= 3:
+                # Try Col 1 for Name first (standard investing.com layout)
+                raw_text = cols[1].text.strip()
+                
+                # Fallback: Sometimes if no icon, Name is in Col 0
+                if not raw_text:
+                    raw_text = cols[0].text.strip()
 
-        # If empty, return None to trigger "Fetch Failed" message
+                # Clean name: "Federal Reserve (FED)" -> "Federal Reserve"
+                clean_name = raw_text.split('(')[0].strip()
+                
+                # Get Rate (Col 2)
+                rate_val = cols[2].text.strip()
+
+                if clean_name in name_map:
+                    rates[name_map[clean_name]] = rate_val
+
         if not rates: return None
         return rates
 
@@ -174,7 +186,7 @@ def scrape_forex_factory():
 
     except Exception as e:
         print(f"⚠️ FF Scraping Failed: {e}")
-        return None # Explicit failure
+        return None
     finally:
         if driver: driver.quit()
 
@@ -223,10 +235,8 @@ def calculate_base_movers(fx_data):
 
 # ===== 4. EXECUTION =====
 fx_results = fetch_fx_data()
-scraped_rates = scrape_cb_rates()     # If fails, returns None
-calendar_events = scrape_forex_factory() # If fails, returns None
-
-# NO FALLBACK RATES USED. We only use scraped_rates.
+scraped_rates = scrape_cb_rates()
+calendar_events = scrape_forex_factory()
 base_movers = calculate_base_movers(fx_results)
 
 # ===== BUILD MESSAGE =====
@@ -265,15 +275,13 @@ for base, pairs in groups.items():
 
 lines.append("---")
 
-# 3. Economic Releases (Revised Logic)
+# 3. Economic Releases
 lines.append("📅 *ForexFactory: High Impact (Weekly)*")
 
 if calendar_events is None:
-    # This means the try/except block caught a crash (Likely Blocked)
-    lines.append("⚠️ _Scraper Blocked / Error accessing ForexFactory_")
+    lines.append("⚠️ _Scraper Error / Blocked_")
 elif not calendar_events:
-    # This means scraper worked, but found 0 red events (Sunday/Quiet day)
-    lines.append("_No High Impact events found this week._")
+    lines.append("_No Red Impact events found (Market Closed?)_")
 else:
     count = 0
     for e in calendar_events:
@@ -287,7 +295,7 @@ else:
 
 lines.append("\n---")
 
-# 4. Central Banks (Strict - No Fallback)
+# 4. Central Banks (Strict)
 lines.append("🏛 *Central Bank Policy Rates*")
 cb_order = ["Fed", "ECB", "BoE", "BoJ", "BoC", "RBA", "RBNZ", "SNB"]
 
@@ -296,8 +304,8 @@ if scraped_rates:
         rate = scraped_rates.get(bank, "N/A")
         lines.append(f"{bank}: {rate}")
 else:
-    # Explicit Failure Message
-    lines.append("⚠️ _Fetch Failed - Investing.com Blocked_")
+    # This will trigger if the HTML parsing logic still fails
+    lines.append("⚠️ _Fetch Failed - Check Table Layout_")
 
 lines.append("\n---")
 
