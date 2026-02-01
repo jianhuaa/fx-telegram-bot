@@ -7,61 +7,37 @@ from selenium.webdriver.chrome.options import Options
 from selenium.webdriver.common.by import By
 import requests
 
-# ===== TELEGRAM CONFIG =====
-TELEGRAM_TOKEN = os.environ["TELEGRAM_TOKEN"]
-CHAT_ID = os.environ["CHAT_ID"]
+# ===== TELEGRAM CONFIG (HARD-CODED FOR TESTING) =====
+TELEGRAM_TOKEN = "7649050168:AAHNIYnrHzLOTcjNuMpeKgyUbfJB9x9an3c"
+CHAT_ID = "876384974"
+FORCE_SEND = True  # send even weekends for testing
 
 # ===== SGT TIME =====
 SGT = timezone(timedelta(hours=8))
 now = datetime.now(SGT)
 weekday = now.weekday()  # 0=Mon ... 6=Sun
 
-# ===== Optional: Skip weekends or outside market hours =====
-if weekday >= 5:
+if not FORCE_SEND and weekday >= 5:
     print("Weekend — skipping FX update")
     exit(0)
 
-# ===== STATIC FX DATA (28 G8 crosses) =====
+# ===== STATIC FX DATA (28 G8 FX crosses) =====
 fx_pairs = {
-    "AUD": {"AUDCAD": [0.8920, +9, +21],
-            "AUDCHF": [0.5821, +12, +25],
-            "AUDJPY": [97.85, -5, -13],
-            "AUDNZD": [1.0830, +10, +15],
-            "AUDUSD": [0.6624, +22, +41]},
-    "CAD": {"CADCHF": [0.6521, -6, -20],
-            "CADJPY": [109.73, -12, -49],
-            "USDCAD": [1.3486, -17, -66]},
-    "CHF": {"CHFJPY": [112.50, -10, -42],
-            "USDCHF": [0.8792, -14, -49]},
-    "EUR": {"EURAUD": [1.6365, +20, +51],
-            "EURCAD": [1.4620, +14, +45],
-            "EURCHF": [0.9521, +11, +36],
-            "EURGBP": [0.8512, +12, +34],
-            "EURJPY": [160.23, -8, +18],
-            "EURUSD": [1.0845, +26, +91]},
-    "GBP": {"GBPAUD": [1.9210, +22, +44],
-            "GBPCAD": [1.5800, +15, +48],
-            "GBPCHF": [1.0300, +13, +41],
-            "GBPJPY": [187.89, -10, -40],
-            "GBPNZD": [1.9982, +21, +50],
-            "GBPUSD": [1.2718, +19, +58]},
-    "NZD": {"NZDCHF": [0.5382, +13, +28],
-            "NZDJPY": [90.50, -7, -21],
-            "NZDUSD": [0.6113, +25, +37]},
+    "AUD": {"AUDCAD": [0.8920, +9, +21], "AUDCHF": [0.5821, +12, +25], "AUDJPY": [97.85, -5, -13], "AUDNZD": [1.0830, +10, +15], "AUDUSD": [0.6624, +22, +41]},
+    "CAD": {"CADCHF": [0.6521, -6, -20], "CADJPY": [109.73, -12, -49], "USDCAD": [1.3486, -17, -66]},
+    "CHF": {"CHFJPY": [112.50, -10, -42], "USDCHF": [0.8792, -14, -49]},
+    "EUR": {"EURAUD": [1.6365, +20, +51], "EURCAD": [1.4620, +14, +45], "EURCHF": [0.9521, +11, +36], "EURGBP": [0.8512, +12, +34], "EURJPY": [160.23, -8, +18], "EURUSD": [1.0845, +26, +91]},
+    "GBP": {"GBPAUD": [1.9210, +22, +44], "GBPCAD": [1.5800, +15, +48], "GBPCHF": [1.0300, +13, +41], "GBPJPY": [187.89, -10, -40], "GBPNZD": [1.9982, +21, +50], "GBPUSD": [1.2718, +19, +58]},
+    "NZD": {"NZDCHF": [0.5382, +13, +28], "NZDJPY": [90.50, -7, -21], "NZDUSD": [0.6113, +25, +37]},
     "USD": {"USDJPY": [147.90, -34, -205]}
 }
 
 top_movers = {
-    "AUD": [+21, +56],
-    "CAD": [-15, -62],
-    "CHF": [-12, -50],
-    "EUR": [+18, +92],
-    "GBP": [+16, +57],
-    "JPY": [-32, -198],
-    "NZD": [+24, +39],
-    "USD": [-34, -205]
+    "AUD": [+21, +56], "CAD": [-15, -62], "CHF": [-12, -50], "EUR": [+18, +92], "GBP": [+16, +57],
+    "JPY": [-32, -198], "NZD": [+24, +39], "USD": [-34, -205]
 }
 
+# ===== Rates Outlook (Arrows) =====
 rates_outlook = {
     "Fed":["🔴⬇️65%","🟡➡️35%","22 Feb 26"],
     "ECB":["🔴⬇️45%","🟡➡️55%","08 Mar 26"],
@@ -73,13 +49,14 @@ rates_outlook = {
     "RBNZ":["🔴⬇️25%","🟢⬆️20%","03 Mar 26"]
 }
 
+# ===== Economic Releases =====
 economic_releases = [
     {"flag":"🇺🇸","title":"US CPI (High)","time":"20:30 SGT","prev":"3.4%","cons":"3.2%"},
     {"flag":"🇪🇺","title":"EZ Industrial Prod","time":"16:00 SGT","prev":"-0.6%","cons":"-0.3%"},
     {"flag":"🇬🇧","title":"UK GDP MoM","time":"16:30 SGT","prev":"0.0%","cons":"0.1%"}
 ]
 
-# ===== Central Bank Rates w/ Selenium + cache =====
+# ===== Central Bank Rates w/ Selenium + daily cache =====
 CACHE_FILE = "cb_rates.json"
 
 def get_cached_cb_rates():
