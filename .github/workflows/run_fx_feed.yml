@@ -1,0 +1,26 @@
+name: FX Telegram Update
+
+on:
+  schedule:
+    - cron: '*/15 21-23 * * 1-4'
+    - cron: '*/15 0-15 * * 2-5'
+
+jobs:
+  fx_update:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repo
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run FX script
+        run: python fx_feed.py
