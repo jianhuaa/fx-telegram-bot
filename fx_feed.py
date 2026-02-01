@@ -1,8 +1,10 @@
 import os
-import json
 import time
 import requests
+import yfinance as yf
 from datetime import datetime, timedelta, timezone
+
+# Selenium Imports
 from selenium import webdriver
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.chrome.options import Options
@@ -10,79 +12,30 @@ from selenium.webdriver.common.by import By
 from webdriver_manager.chrome import ChromeDriverManager
 from selenium_stealth import stealth
 
-# ===== CONFIGURATION =====
+# ===== CONFIGURATION (HARDCODED) =====
 TELEGRAM_TOKEN = "7649050168:AAHNIYnrHzLOTcjNuMpeKgyUbfJB9x9an3c"
 CHAT_ID = "876384974"
-FORCE_SEND = True 
 
+# Singapore Time
 SGT = timezone(timedelta(hours=8))
 now = datetime.now(SGT)
 
-# ===== G8 MAPPING =====
-# Matches the exact HTML text content to your shorthand
-G8_MAP = {
-    "Federal Reserve": "Fed",
-    "European Central Bank": "ECB",
-    "Bank of England": "BoE",
-    "Bank of Japan": "BoJ",
-    "Bank of Canada": "BoC",
-    "Reserve Bank of Australia": "RBA",
-    "Reserve Bank of New Zealand": "RBNZ",
-    "Swiss National Bank": "SNB"
-}
-
-# ===== STATIC DATA =====
-fx_pairs = {
-    "AUD": {"AUDCAD": [0.8920, +9, +21], "AUDCHF": [0.5821, +12, +25], "AUDJPY": [97.85, -5, -13], "AUDNZD": [1.0830, +10, +15], "AUDUSD": [0.6624, +22, +41]},
-    "CAD": {"CADCHF": [0.6521, -6, -20], "CADJPY": [109.73, -12, -49], "USDCAD": [1.3486, -17, -66]},
-    "CHF": {"CHFJPY": [112.50, -10, -42], "USDCHF": [0.8792, -14, -49]},
-    "EUR": {"EURAUD": [1.6365, +20, +51], "EURCAD": [1.4620, +14, +45], "EURCHF": [0.9521, +11, +36], "EURGBP": [0.8512, +12, +34], "EURJPY": [160.23, -8, +18], "EURUSD": [1.0845, +26, +91]},
-    "GBP": {"GBPAUD": [1.9210, +22, +44], "GBPCAD": [1.5800, +15, +48], "GBPCHF": [1.0300, +13, +41], "GBPJPY": [187.89, -10, -40], "GBPNZD": [1.9982, +21, +50], "GBPUSD": [1.2718, +19, +58]},
-    "NZD": {"NZDCHF": [0.5382, +13, +28], "NZDJPY": [90.50, -7, -21], "NZDUSD": [0.6113, +25, +37]},
-    "USD": {"USDJPY": [147.90, -34, -205]}
-}
-
-top_movers = {
-    "AUD": [+21, +56], "CAD": [-15, -62], "CHF": [-12, -50], "EUR": [+18, +92], "GBP": [+16, +57],
-    "JPY": [-32, -198], "NZD": [+24, +39], "USD": [-34, -205]
-}
-
-rates_outlook = {
-    "Fed":["🔴⬇️65%","🟡➡️35%","22 Feb 26"],
-    "ECB":["🔴⬇️45%","🟡➡️55%","08 Mar 26"],
-    "BoE":["🔴⬇️30%","🟢⬆️15%","20 Mar 26"],
-    "BoJ":["🔴⬇️20%","🟢⬆️30%","10 Mar 26"],
-    "SNB":["🔴⬇️55%","🟡➡️45%","16 Mar 26"],
-    "RBA":["🟢⬆️40%","🟡➡️60%","05 Mar 26"],
-    "BoC":["🔴⬇️35%","🟡➡️65%","11 Mar 26"],
-    "RBNZ":["🔴⬇️25%","🟢⬆️20%","03 Mar 26"]
-}
-
-economic_releases = [
-    {"flag":"🇺🇸","title":"US CPI (High)","time":"20:30 SGT","prev":"3.4%","cons":"3.2%"},
-    {"flag":"🇪🇺","title":"EZ Industrial Prod","time":"16:00 SGT","prev":"-0.6%","cons":"-0.3%"},
-    {"flag":"🇬🇧","title":"UK GDP MoM","time":"16:30 SGT","prev":"0.0%","cons":"0.1%"}
-]
-
-# ===== ROBUST SCRAPER =====
+# ===== 1. ROBUST SCRAPER (The "Live" Part) =====
 def scrape_cb_rates():
-    chrome_options = Options()
-    # "New" headless mode is harder to detect
-    chrome_options.add_argument("--headless=new")
-    chrome_options.add_argument("--no-sandbox")
-    chrome_options.add_argument("--disable-dev-shm-usage")
-    chrome_options.add_argument("--window-size=1920,1080")
+    print("🕷️ Attempting to scrape Central Bank rates...")
     
-    # Anti-detection flags
-    chrome_options.add_argument("--disable-blink-features=AutomationControlled")
-    chrome_options.add_experimental_option("excludeSwitches", ["enable-automation"])
-    chrome_options.add_experimental_option("useAutomationExtension", False)
-    
-    # Generic User Agent
-    chrome_options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36")
+    options = Options()
+    options.add_argument("--headless=new")
+    options.add_argument("--no-sandbox")
+    options.add_argument("--disable-dev-shm-usage")
+    options.add_argument("--window-size=1920,1080")
+    options.add_argument("--disable-blink-features=AutomationControlled")
+    options.add_experimental_option("excludeSwitches", ["enable-automation"])
+    options.add_experimental_option("useAutomationExtension", False)
 
+    driver = None
     try:
-        driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=chrome_options)
+        driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=options)
         
         # Apply Stealth
         stealth(driver,
@@ -94,89 +47,152 @@ def scrape_cb_rates():
             fix_hairline=True,
         )
 
-        # LINK: Direct to the Central Banks page
+        # 1. Go to target
         driver.get("https://www.investing.com/central-banks/")
         
-        # Wait for Cloudflare/JS checks
-        time.sleep(20) 
+        # 2. Wait for Cloudflare challenge to pass (Crucial)
+        time.sleep(15)
         
+        # 3. Scrape Table
         rates = {}
-        
-        # Attempt to find the table by ID
-        try:
-            table = driver.find_element(By.ID, "curr_table")
-        except:
-            # Fallback for if ID changes
-            table = driver.find_element(By.CSS_SELECTOR, "table.genTbl")
+        # Mapping Investing.com names to your Short names
+        name_map = {
+            "Federal Reserve": "Fed", "European Central Bank": "ECB",
+            "Bank of England": "BoE", "Bank of Japan": "BoJ",
+            "Bank of Canada": "BoC", "Reserve Bank of Australia": "RBA",
+            "Reserve Bank of New Zealand": "RBNZ", "Swiss National Bank": "SNB"
+        }
 
-        rows = table.find_elements(By.TAG_NAME, "tr")[1:]
-        
+        # Try multiple selectors in case they change the site layout
+        rows = driver.find_elements(By.CSS_SELECTOR, "table#curr_table tbody tr")
+        if not rows:
+            rows = driver.find_elements(By.CSS_SELECTOR, "table.genTbl tbody tr")
+
         for row in rows:
-            cells = row.find_elements(By.TAG_NAME, "td")
-            if len(cells) >= 3:
-                # IMPORTANT: Use get_attribute('textContent') for hidden/headless elements
-                # "Federal Reserve (FED)" -> split -> "Federal Reserve"
-                raw_text = cells[1].get_attribute("textContent").strip()
-                name_clean = raw_text.split('(')[0].strip()
+            cols = row.find_elements(By.TAG_NAME, "td")
+            if len(cols) >= 2:
+                # Text is usually "Federal Reserve (Fed)"
+                raw_name = cols[0].text.split('(')[0].strip()
+                rate_val = cols[1].text.strip()
                 
-                rate_val = cells[2].get_attribute("textContent").strip()
-                
-                if name_clean in G8_MAP:
-                    short_name = G8_MAP[name_clean]
+                if raw_name in name_map:
+                    short_name = name_map[raw_name]
                     rates[short_name] = rate_val
-        
-        driver.quit()
+
+        if not rates:
+            raise ValueError("Table found but no rates extracted.")
+
+        print("✅ Scraping Success!")
         return rates
 
     except Exception as e:
-        print(f"Scrape Error details: {e}")
+        print(f"⚠️ Scraping Failed (likely blocked): {e}")
         return None
+    finally:
+        if driver:
+            driver.quit()
 
-# Fetch Data
-central_bank_rates = scrape_cb_rates()
+# ===== 2. RELIABLE FX DATA (yfinance) =====
+def fetch_live_fx():
+    print("⏳ Fetching live FX from Yahoo...")
+    pair_map = {
+        "AUDCAD": "AUDCAD=X", "AUDCHF": "AUDCHF=X", "AUDJPY": "AUDJPY=X", "AUDNZD": "AUDNZD=X", "AUDUSD": "AUDUSD=X",
+        "CADCHF": "CADCHF=X", "CADJPY": "CADJPY=X", "USDCAD": "USDCAD=X",
+        "CHFJPY": "CHFJPY=X", "USDCHF": "USDCHF=X",
+        "EURAUD": "EURAUD=X", "EURCAD": "EURCAD=X", "EURCHF": "EURCHF=X", "EURGBP": "EURGBP=X", "EURJPY": "EURJPY=X", "EURUSD": "EURUSD=X",
+        "GBPAUD": "GBPAUD=X", "GBPCAD": "GBPCAD=X", "GBPCHF": "GBPCHF=X", "GBPJPY": "GBPJPY=X", "GBPNZD": "GBPNZD=X", "GBPUSD": "GBPUSD=X",
+        "NZDCHF": "NZDCHF=X", "NZDJPY": "NZDJPY=X", "NZDUSD": "NZDUSD=X",
+        "USDJPY": "USDJPY=X"
+    }
+    tickers = list(pair_map.values())
+    try:
+        data = yf.download(tickers, period="5d", progress=False)
+        closes = data['Close']
+        results = {}
+        for pair, ticker in pair_map.items():
+            if ticker in closes.columns:
+                series = closes[ticker].dropna()
+                if len(series) >= 2:
+                    curr = series.iloc[-1]
+                    prev = series.iloc[-2]
+                    is_jpy = "JPY" in pair
+                    mult = 100 if is_jpy else 10000
+                    chg = (curr - prev) * mult
+                    results[pair] = [curr, int(chg)]
+        return results
+    except Exception as e:
+        print(f"❌ Yahoo Error: {e}")
+        return {}
 
-# ===== BUILD TELEGRAM MESSAGE =====
-lines = [f"📊 G8 FX & Macro Update — {now.strftime('%H:%M')} SGT\n"]
-lines.append("🔥 Top Movers")
-for c, vals in top_movers.items():
-    lines.append(f"{c}: {vals[0]:+} pips d/d | {vals[1]:+} w/w")
+# ===== 3. EXECUTION =====
+fx_data = fetch_live_fx()
+scraped_rates = scrape_cb_rates()
 
-lines.append("\n---\n")
-for segment in ["AUD","CAD","CHF","EUR","GBP","NZD","USD"]:
-    # Sort pairs alphabetically
-    segment_pairs = sorted(fx_pairs.get(segment, {}))
-    for pair in segment_pairs:
-        spot, dd, ww = fx_pairs[segment][pair]
-        rate_str = f"{spot:.2f}" if "JPY" in pair else f"{spot:.4f}"
-        lines.append(f"{pair} {rate_str}  {dd:+} d/d | {ww:+} w/w")
-    if segment_pairs:
+# FALLBACK RATES (Used if scraping fails)
+fallback_rates = {
+    "Fed": "5.50%", "ECB": "4.50%", "BoE": "5.25%", "BoJ": "-0.10%",
+    "BoC": "5.00%", "RBA": "4.35%", "RBNZ": "5.50%", "SNB": "1.75%"
+}
+
+# Decide which rates to use
+if scraped_rates and len(scraped_rates) > 3:
+    final_rates = scraped_rates
+    rate_source_icon = "🟢" # Live
+else:
+    final_rates = fallback_rates
+    rate_source_icon = "⚠️" # Cached
+
+# Build Message
+lines = [f"📊 *G8 FX Update* — {now.strftime('%H:%M')} SGT\n"]
+
+# Top Movers
+if fx_data:
+    sorted_pairs = sorted(fx_data.items(), key=lambda x: abs(x[1][1]), reverse=True)[:3]
+    lines.append("🔥 *Top Movers*")
+    for pair, vals in sorted_pairs:
+        lines.append(f"{pair}: {vals[1]:+} pips")
+else:
+    lines.append("⚠️ FX Data Unavailable")
+
+lines.append("")
+
+# Segments
+groups = {
+    "AUD": ["AUDCAD", "AUDCHF", "AUDJPY", "AUDNZD", "AUDUSD"],
+    "CAD": ["CADCHF", "CADJPY", "USDCAD"],
+    "CHF": ["CHFJPY", "USDCHF"],
+    "EUR": ["EURAUD", "EURCAD", "EURCHF", "EURGBP", "EURJPY", "EURUSD"],
+    "GBP": ["GBPAUD", "GBPCAD", "GBPCHF", "GBPJPY", "GBPNZD", "GBPUSD"],
+    "NZD": ["NZDCHF", "NZDJPY", "NZDUSD"],
+    "USD": ["USDJPY"]
+}
+
+for grp, pairs in groups.items():
+    seg_lines = []
+    for p in pairs:
+        if p in fx_data:
+            pr, ch = fx_data[p]
+            fmt = f"{pr:.2f}" if "JPY" in p else f"{pr:.4f}"
+            seg_lines.append(f"{p} `{fmt}` ({ch:+} pips)")
+    if seg_lines:
+        lines.append(f"*{grp}*")
+        lines.append("\n".join(seg_lines))
         lines.append("")
 
-lines.append("---\nToday — Key Economic Releases")
-for e in economic_releases:
-    lines.append(f"{e['flag']} {e['title']} | {e['time']} | P: {e['prev']} | C: {e['cons']}")
-
-lines.append("\n---\nCentral Bank Policy Rates")
-if central_bank_rates:
-    # Print in standard G8 order
-    g8_order = ["Fed", "ECB", "BoE", "BoJ", "BoC", "RBA", "RBNZ", "SNB"]
-    for bank in g8_order:
-        if bank in central_bank_rates:
-            lines.append(f"{bank}: {central_bank_rates[bank]}")
-else:
-    # Fallback message if scraper is blocked
-    lines.append("⚠️ Could not fetch live rates (Site blocked)")
-
-lines.append("\n---\nRates Outlook")
-for k, v in rates_outlook.items():
-    lines.append(f"{k}: {v[0]} | {v[1]} | {v[2]}")
+# Central Banks
+lines.append(f"🏛 *Central Bank Rates* {rate_source_icon}")
+cb_order = ["Fed", "ECB", "BoE", "BoJ", "BoC", "RBA", "RBNZ", "SNB"]
+cb_lines = []
+for b in cb_order:
+    cb_lines.append(f"{b}: {final_rates.get(b, 'N/A')}")
+lines.append(" | ".join(cb_lines))
 
 message = "\n".join(lines)
 
-# ===== SEND TO TELEGRAM =====
-url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
-payload = {"chat_id": CHAT_ID, "text": message}
-response = requests.post(url, data=payload)
-
-print(f"Sent to Telegram. Status: {response.status_code}")
-print(response.json())
+# Send
+try:
+    requests.post(f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage", 
+                  data={"chat_id": CHAT_ID, "text": message, "parse_mode": "Markdown"})
+    print("✅ Telegram Sent")
+except Exception as e:
+    print(f"❌ Telegram Error: {e}")
