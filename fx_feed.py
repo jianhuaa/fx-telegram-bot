@@ -49,8 +49,20 @@ def setup_driver():
     options.add_argument("--no-sandbox")
     options.add_argument("--disable-dev-shm-usage")
     options.add_argument("--window-size=1920,1080")
+    
+    # NEW: Block popups and Google One-Tap at the browser level
+    prefs = {
+        "credentials_enable_service": False,
+        "profile.password_manager_enabled": False,
+        "profile.default_content_setting_values.notifications": 2,
+        "profile.managed_default_content_settings.popups": 2
+    }
+    options.add_experimental_option("prefs", prefs)
+    options.add_experimental_option("excludeSwitches", ["enable-automation"])
+    
     options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36")
     driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=options)
+    
     stealth(driver, languages=["en-US", "en"], vendor="Google Inc.", platform="Win32", webgl_vendor="Intel Inc.", renderer="Intel Iris OpenGL Engine", fix_hairline=True)
     return driver
 
@@ -60,50 +72,58 @@ def convert_time_to_sgt(date_str, time_str):
         current_year = datetime.now().year
         dt_str = f"{date_str} {current_year} {time_str}"
         dt_obj = datetime.strptime(dt_str, "%a %b %d %Y %I:%M%p")
-        sgt_time = dt_obj + timedelta(hours=13)
+        sgt_time = dt_obj + timedelta(hours=13) 
         return sgt_time.strftime("%H:%M")
     except: return time_str
 
 # ===== SCRAPERS =====
 def scrape_cb_rates():
-    print("🕷️ Scraping Central Bank rates...")
+    print("🏛️ Scraping Central Bank rates...")
     driver = None
     try:
         driver = setup_driver()
         driver.get("https://www.investing.com/central-banks/")
         
-        # === FIX IMPLEMENTED HERE ===
-        # We use WebDriverWait to ensure the table is actually loaded before reading it.
-        # This prevents the script from reading an empty page and failing intermittently.
-        wait = WebDriverWait(driver, 20)
+        # POPUP KILLER: Kill the general overlay and email signup boxes immediately
+        # This prevents the "ElementInterceptedException"
+        driver.execute_script("""
+            var overlays = document.querySelectorAll('.js-general-overlay, .secondaryOverlay, .email-popup, #adFreeSalePopup');
+            overlays.forEach(el => el.remove());
+            document.body.classList.remove('no-scroll');
+        """)
         
-        # Try finding the table by ID first, which is standard
-        try:
-            table = wait.until(EC.presence_of_element_located((By.ID, "curr_table")))
-        except:
-            # Fallback: Sometimes ID changes, try finding by class if ID fails
-            table = wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, "table.genTbl")))
+        # Wait for the table rows to render
+        wait = WebDriverWait(driver, 20)
+        wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, "#curr_table tbody tr")))
 
-        rates = {}
         name_map = {
             "Federal Reserve": "Fed", "European Central Bank": "ECB", "Bank of England": "BoE", 
             "Bank of Japan": "BoJ", "Bank of Canada": "BoC", "Reserve Bank of Australia": "RBA", 
             "Reserve Bank of New Zealand": "RBNZ", "Swiss National Bank": "SNB"
         }
 
-        # We grab rows from the specific table element we waited for
-        rows = table.find_elements(By.TAG_NAME, "tr")
-        
-        for row in rows:
-            cols = row.find_elements(By.TAG_NAME, "td")
-            if len(cols) < 3: continue
-            
-            row_text = row.text
+        # JS-Based Scrape: Immune to invisible overlays or popups blocking the pointer
+        raw_data = driver.execute_script("""
+            var rows = document.querySelectorAll('#curr_table tbody tr');
+            return Array.from(rows).map(row => {
+                var cells = row.querySelectorAll('td');
+                if (cells.length >= 3) {
+                    return {
+                        name: cells[1].innerText,
+                        rate: cells[2].innerText
+                    };
+                }
+                return null;
+            }).filter(item => item !== null);
+        """)
+
+        rates = {}
+        for item in raw_data:
             for full_name, short_name in name_map.items():
-                if full_name in row_text:
-                    rates[short_name] = cols[2].text.strip()
+                if full_name in item['name']:
+                    rates[short_name] = item['rate'].strip()
         
-        return rates
+        return rates if rates else None
     except Exception as e:
         print(f"⚠️ CB Scraping Failed: {e}")
         return None
@@ -224,8 +244,7 @@ for base, pairs in groups.items():
         lines.append("\n".join(seg) + "\n")
 
 lines.append("---")
-# === REQUESTED CHANGE HERE ===
-lines.append("📅 *Economic Calendar (Central Time)*") 
+lines.append("📅 *Economic Calendar (Today)*") 
 if calendar_events:
     for e in calendar_events:
         lines.append(f"[{e['date']}] {e['flag']} {e['title']} | {e['time_sgt']}")
@@ -238,7 +257,8 @@ if scraped_rates:
     for bank in ["Fed", "ECB", "BoE", "BoJ", "SNB", "RBA", "BoC", "RBNZ"]:
         rate = scraped_rates.get(bank, "N/A")
         lines.append(f"{bank}: {rate}")
-else: lines.append("⚠️ _Table Layout Intermittent Fail_")
+else: 
+    lines.append("⚠️ _Table Scraping Failed_")
 
 lines.append("\n🔮 *Rates Outlook (Static)*")
 for bank, outlook in rates_outlook.items():
