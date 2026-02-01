@@ -96,27 +96,32 @@ def scrape_cbrates_current():
         r = requests.get(url, headers={'User-Agent': 'Mozilla/5.0'})
         soup = BeautifulSoup(r.text, 'html.parser')
         
-        # We look for rows that contain our country names
         rows = soup.find_all('tr')
         
         for row in rows:
-            text = row.get_text(" ", strip=True) # Flatten row text
+            text = row.get_text(" ", strip=True) 
             
             for country, code in country_map.items():
                 if country in text:
-                    # 1. Fed Logic: Look for range "3.50 - 3.75"
+                    # -----------------------------------------------
+                    # FED SPECIFIC LOGIC (High Priority)
+                    # Looks for pattern: 3.50-3.75
+                    # -----------------------------------------------
                     if code == "Fed":
-                        # Regex to find "number hyphen number"
-                        range_match = re.search(r"(\d+\.\d+)\s*-\s*(\d+\.\d+)", text)
+                        # Match: Digits.Digits - Digits.Digits
+                        # Handles spaces or no spaces around hyphen
+                        range_match = re.search(r"(\d+\.\d{2})\s*-\s*(\d+\.\d{2})", text)
                         if range_match:
                             # Take the second group (the higher number)
                             rates[code] = range_match.group(2) + "%"
                         else:
-                            # Fallback if they stop using ranges
+                            # Fallback to single number if range is missing
                             match = re.search(r"(\d+\.\d{2})", text)
                             if match: rates[code] = match.group(1) + "%"
                     
-                    # 2. Standard Logic for others
+                    # -----------------------------------------------
+                    # STANDARD LOGIC (All other banks)
+                    # -----------------------------------------------
                     else:
                         match = re.search(r"(\d+\.\d{2})", text)
                         if match:
@@ -131,9 +136,9 @@ def scrape_cbrates_current():
 def scrape_cbrates_meetings():
     print("🗓️ Scraping Meeting Dates (cbrates.com/meetings)...")
     url = "https://www.cbrates.com/meetings.htm"
-    meetings = {}
+    upcoming_meetings = {}
     
-    # Keys identifying the row
+    # Identifier map
     identifiers = {
         "Federal Reserve": "Fed", "European Central Bank": "ECB", 
         "Bank of England": "BoE", "Bank of Japan": "BoJ", 
@@ -144,25 +149,54 @@ def scrape_cbrates_meetings():
     try:
         r = requests.get(url, headers={'User-Agent': 'Mozilla/5.0'})
         soup = BeautifulSoup(r.text, 'html.parser')
-        
-        # Get all text from table rows
         rows = soup.find_all('tr')
         
+        today = datetime.now()
+        current_year = today.year
+
+        # We will collect ALL meetings found, then filter for future dates
+        found_meetings = {code: [] for code in identifiers.values()}
+
         for row in rows:
             text = row.get_text(" ", strip=True)
             
-            for identifier, code in identifiers.items():
-                if identifier in text:
-                    # Found the bank row. Now look for the date.
-                    # Pattern: Month Name + Space + 1-2 Digits (e.g., "Jan 28" or "Feb 5")
-                    date_match = re.search(r"(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+(\d{1,2})", text, re.IGNORECASE)
+            # Check if this row contains a date
+            # Pattern: "Jan 28" or "Feb 5"
+            date_match = re.search(r"(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+(\d{1,2})", text, re.IGNORECASE)
+            
+            if date_match:
+                # Create a date object (Assuming current year 2026)
+                month_str = date_match.group(1)
+                day_str = date_match.group(2)
+                try:
+                    meeting_date = datetime.strptime(f"{month_str} {day_str} {current_year}", "%b %d %Y")
                     
-                    if date_match:
-                        date_str = f"{date_match.group(1)} {date_match.group(2)}"
-                        meetings[code] = date_str
-                        # Found it, move to next bank
-                        break
-        return meetings
+                    # Check which bank is in this row
+                    for identifier, code in identifiers.items():
+                        if identifier in text:
+                            found_meetings[code].append(meeting_date)
+                except:
+                    continue
+
+        # Now Pick the NEXT Future meeting for each bank
+        for code, dates in found_meetings.items():
+            # Sort dates chronologically
+            dates.sort()
+            
+            future_date_found = False
+            for d in dates:
+                # If the meeting is today or in the future
+                if d.date() >= today.date():
+                    upcoming_meetings[code] = d.strftime("%b %d")
+                    future_date_found = True
+                    break
+            
+            if not future_date_found and dates:
+                # If all dates are past, likely we are late in the year or site outdated
+                # Show "TBA" or the last known date? Usually TBA is safer.
+                upcoming_meetings[code] = "TBA"
+
+        return upcoming_meetings
 
     except Exception as e:
         print(f"⚠️ CBRates Meetings Failed: {e}")
@@ -298,7 +332,7 @@ else: lines.append("No high impact events today.")
 lines.append("\n---")
 lines.append("🏛 *Central Bank Policy Rates*")
 if scraped_rates:
-    # Custom Order as requested
+    # UPDATED ORDER
     order = ["RBA", "BoC", "SNB", "ECB", "BoE", "BoJ", "RBNZ", "Fed"]
     for bank in order:
         rate = scraped_rates.get(bank, "N/A")
@@ -307,7 +341,7 @@ else:
     lines.append("⚠️ _Scraping Failed_")
 
 lines.append("\n🔮 *Rates Outlook*")
-# Using the same order for outlook
+# UPDATED ORDER
 order = ["RBA", "BoC", "SNB", "ECB", "BoE", "BoJ", "RBNZ", "Fed"]
 for bank in order:
     probs = base_outlook.get(bank, ["-", "-"])
