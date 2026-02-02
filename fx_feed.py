@@ -49,6 +49,7 @@ base_outlook = {
 def setup_driver():
     options = Options()
     options.add_argument("--headless=new")
+    # CHANGE 1: Linux/GitHub Runner compatibility flags
     options.add_argument("--no-sandbox")
     options.add_argument("--disable-dev-shm-usage")
     options.add_argument("--window-size=1920,1080")
@@ -85,9 +86,6 @@ def scrape_cbrates_current():
     url = "https://www.cbrates.com/"
     rates = {}
     
-    # v3 Logic: Search for the Short Code (e.g. "(Fed)", "(ECB)") 
-    # instead of the country name, as the HTML often mashes text together.
-    # Exception: Australia and New Zealand don't always have codes in the table.
     identifier_map = {
         "(Fed)": "Fed",
         "(ECB)": "ECB",
@@ -103,46 +101,28 @@ def scrape_cbrates_current():
         r = requests.get(url, headers={'User-Agent': 'Mozilla/5.0'})
         soup = BeautifulSoup(r.text, 'html.parser')
         
-        # cbrates structure is messy; iterating all table rows is safest
         rows = soup.find_all('tr')
         
         for row in rows:
-            # get_text(" ") adds a space separator to prevent "3.75%United" issues
             text = row.get_text(" ", strip=True)
             
             for identifier, code in identifier_map.items():
                 if identifier in text:
-                    # -------------------------------------------------------
-                    # FED LOGIC: Look for "3.50-3.75" range first
-                    # -------------------------------------------------------
                     if code == "Fed":
-                        # Regex for "digits.digits - digits.digits"
                         range_match = re.search(r"(\d+\.\d{2})\s*-\s*(\d+\.\d{2})", text)
                         if range_match:
-                            # User wants the UPPER limit (Group 2) -> 3.75
                             rates[code] = range_match.group(2) + "%"
                         else:
-                            # Fallback: Just grab the first percentage-like number
                             match = re.search(r"(\d+\.\d{2})", text)
                             if match: rates[code] = match.group(1) + "%"
-
-                    # -------------------------------------------------------
-                    # STANDARD LOGIC: Look for "2.00 %" or "2.00%"
-                    # -------------------------------------------------------
                     else:
-                        # Regex finds "digits.digits" followed by %
-                        # This prevents grabbing the "0.25" from the change column
                         match = re.search(r"(\d+\.\d{2})\s*%", text)
                         if match:
                             rates[code] = match.group(1) + "%"
                         else:
-                            # Fallback if % is missing, grab first float
                             match = re.search(r"(\d+\.\d{2})", text)
                             if match: rates[code] = match.group(1) + "%"
-                    
-                    # Stop checking other banks for this row
                     break
-                    
         return rates
 
     except Exception as e:
@@ -154,7 +134,6 @@ def scrape_cbrates_meetings():
     url = "https://www.cbrates.com/meetings.htm"
     upcoming_meetings = {}
     
-    # Identifiers on the meetings page are usually full names
     identifiers = {
         "Federal Reserve": "Fed", "European Central Bank": "ECB", 
         "Bank of England": "BoE", "Bank of Japan": "BoJ", 
@@ -170,27 +149,18 @@ def scrape_cbrates_meetings():
         today = datetime.now()
         current_year = today.year
 
-        # Collect ALL meeting dates found for each bank
         found_meetings = {code: [] for code in identifiers.values()}
 
         for row in rows:
             text = row.get_text(" ", strip=True)
-            
-            # Pattern: "Jan 28" or "Feb 5"
             date_match = re.search(r"(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+(\d{1,2})", text, re.IGNORECASE)
             
             if date_match:
                 month_str = date_match.group(1)
                 day_str = date_match.group(2)
                 try:
-                    # Parse date assuming current year
                     meeting_date = datetime.strptime(f"{month_str} {day_str} {current_year}", "%b %d %Y")
-                    
-                    # If date is in the past (e.g., Jan 20 when today is Feb 1), assume it's next year? 
-                    # No, cbrates usually clears past dates. But just in case:
                     if meeting_date.date() < today.date():
-                        # If parsed date is earlier than today, check if it might be next year
-                        # (Simple logic: if meeting is Jan and we are in Dec, it's next year)
                         pass 
 
                     for identifier, code in identifiers.items():
@@ -199,9 +169,8 @@ def scrape_cbrates_meetings():
                 except:
                     continue
 
-        # Filter for the NEXT FUTURE meeting
         for code, dates in found_meetings.items():
-            dates.sort() # Ensure chronological order
+            dates.sort()
             future_date_found = False
             for d in dates:
                 if d.date() >= today.date():
@@ -309,7 +278,6 @@ scraped_meetings = scrape_cbrates_meetings()
 calendar_events = scrape_forex_factory()
 base_movers = calculate_base_movers(fx_results)
 
-# Build Message
 lines = [f"📊 *G8 FX Update* — {now_sgt.strftime('%H:%M')} SGT\n", "🔥 *Top Movers (Base Index)*"]
 for curr, vals in sorted(base_movers.items()):
     lines.append(f"{curr}: {vals[0]:+} pips d/d | {vals[1]:+} w/w")
@@ -348,7 +316,6 @@ else: lines.append("No high impact events today.")
 lines.append("\n---")
 lines.append("🏛 *Central Bank Policy Rates*")
 if scraped_rates:
-    # Custom Order (Ascending Currency / Requested Order)
     order = ["RBA", "BoC", "SNB", "ECB", "BoE", "BoJ", "RBNZ", "Fed"]
     for bank in order:
         rate = scraped_rates.get(bank, "N/A")
@@ -357,14 +324,12 @@ else:
     lines.append("⚠️ _Scraping Failed_")
 
 lines.append("\n🔮 *Rates Outlook*")
-# Using the same order for the outlook
 order = ["RBA", "BoC", "SNB", "ECB", "BoE", "BoJ", "RBNZ", "Fed"]
 for bank in order:
     probs = base_outlook.get(bank, ["-", "-"])
     date_str = scraped_meetings.get(bank, "TBA")
     lines.append(f"{bank}: {probs[0]} | {probs[1]} | {date_str}")
 
-# Send
 print("Sending to Telegram...")
 try:
     response = requests.post(f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage", 
@@ -374,12 +339,13 @@ except Exception as e:
     print(f"Error sending message: {e}")
 
 # ==========================================
-# ADD THIS TO THE VERY BOTTOM OF YOUR SCRIPT
+# FINAL SECTION (With Change 2 applied)
 # ==========================================
 
 def send_telegram_message(message):
     """Sends the final report to Telegram using your config."""
-    url = f"https://api.telegram.org{TELEGRAM_TOKEN}/sendMessage"
+    # CHANGE 2: Added /bot prefix
+    url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
     payload = {
         "chat_id": CHAT_ID, 
         "text": message, 
@@ -396,12 +362,8 @@ def send_telegram_message(message):
 if __name__ == "__main__":
     print(f"🚀 Started G8 Feed at {now_sgt.strftime('%H:%M:%S')} SGT")
     
-    # 1. RUN YOUR SCRAPERS (Calling the functions you already have)
-    # Note: Make sure these function names match exactly what is in your line 1-375
     current_rates = scrape_cbrates_current()
     
-    # 2. BUILD THE MESSAGE
-    # You can expand this to include your 'base_outlook' or 'TARGET_PAIRS'
     report = f"📊 <b>G8 FX FEED UPDATE</b>\n"
     report += f"📅 {now_sgt.strftime('%d %b %Y | %H:%M')} SGT\n\n"
     
@@ -412,11 +374,9 @@ if __name__ == "__main__":
     else:
         report += "⚠️ <i>Rates data currently unavailable.</i>\n"
 
-    # 3. EXECUTE SEND
     result = send_telegram_message(report)
     
     if result and result.get("ok"):
         print("✅ Message delivered successfully to Telegram.")
     else:
         print(f"❌ Failed to send. Response: {result}")
-
