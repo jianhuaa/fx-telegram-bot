@@ -373,25 +373,50 @@ try:
 except Exception as e:
     print(f"Error sending message: {e}")
 
+# ==========================================
+# ADD THIS TO THE VERY BOTTOM OF YOUR SCRIPT
+# ==========================================
+
 def send_telegram_message(message):
+    """Sends the final report to Telegram using your config."""
     url = f"https://api.telegram.org{TELEGRAM_TOKEN}/sendMessage"
-    payload = {"chat_id": CHAT_ID, "text": message, "parse_mode": "HTML"}
+    payload = {
+        "chat_id": CHAT_ID, 
+        "text": message, 
+        "parse_mode": "HTML",
+        "disable_web_page_preview": True
+    }
     try:
         response = requests.post(url, json=payload)
-        print(f"Telegram Response: {response.text}")
+        return response.json()
     except Exception as e:
-        print(f"Failed to send: {e}")
+        print(f"Telegram Error: {e}")
+        return None
 
-# --- THE EXECUTION BRIDGE ---
 if __name__ == "__main__":
-    # 1. Run your scrapers
-    rates = scrape_cbrates_current()
+    print(f"🚀 Started G8 Feed at {now_sgt.strftime('%H:%M:%S')} SGT")
     
-    # 2. Build a simple message (you can make this prettier later)
-    report = "🚀 <b>FX Feed Update</b>\n\n"
-    for bank, rate in rates.items():
-        report += f"🏛 {bank}: {rate}\n"
+    # 1. RUN YOUR SCRAPERS (Calling the functions you already have)
+    # Note: Make sure these function names match exactly what is in your line 1-375
+    current_rates = scrape_cbrates_current()
     
-    # 3. SEND IT
-    send_telegram_message(report)
+    # 2. BUILD THE MESSAGE
+    # You can expand this to include your 'base_outlook' or 'TARGET_PAIRS'
+    report = f"📊 <b>G8 FX FEED UPDATE</b>\n"
+    report += f"📅 {now_sgt.strftime('%d %b %Y | %H:%M')} SGT\n\n"
+    
+    if current_rates:
+        report += "<b>Current Rates:</b>\n"
+        for bank, rate in current_rates.items():
+            report += f"• {bank}: <code>{rate}</code>\n"
+    else:
+        report += "⚠️ <i>Rates data currently unavailable.</i>\n"
+
+    # 3. EXECUTE SEND
+    result = send_telegram_message(report)
+    
+    if result and result.get("ok"):
+        print("✅ Message delivered successfully to Telegram.")
+    else:
+        print(f"❌ Failed to send. Response: {result}")
 
