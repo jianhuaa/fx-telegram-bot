@@ -160,9 +160,6 @@ def scrape_cbrates_meetings():
                 day_str = date_match.group(2)
                 try:
                     meeting_date = datetime.strptime(f"{month_str} {day_str} {current_year}", "%b %d %Y")
-                    if meeting_date.date() < today.date():
-                        pass 
-
                     for identifier, code in identifiers.items():
                         if identifier in text:
                             found_meetings[code].append(meeting_date)
@@ -239,32 +236,47 @@ def scrape_forex_factory():
     finally:
         if driver: driver.quit()
 
-# ===== CALCULATIONS (UPDATED FOR LIVE DATA) =====
+# ===== CALCULATIONS (FIXED TIME OFFSET LOGIC) =====
 def fetch_fx_data():
-    print("📈 Fetching LIVE FX Data (1m interval, 7d period)...")
+    print("📈 Fetching LIVE FX Data (2m Offset-Driven)...")
     tickers = list(TARGET_PAIRS.values())
-    # We use 7d/1m to get absolute latest prices without daily caching
-    data = yf.download(tickers, period="7d", interval="1m", progress=False)
+    
+    # Use 9 days to ensure we have a full 168h (7d) buffer including weekends
+    data = yf.download(tickers, period="9d", interval="2m", progress=False)
     
     if isinstance(data.columns, pd.MultiIndex):
         try: closes = data.xs('Close', level=0, axis=1)
         except KeyError: closes = data['Close']
     else: closes = data['Close']
-        
+    
+    # Anchor: The current actual moment
+    now = datetime.now(timezone.utc)
+    t_24h = now - timedelta(hours=24)
+    t_168h = now - timedelta(days=7)
+
     results = {}
     for pair, ticker in TARGET_PAIRS.items():
         if ticker in closes.columns:
             series = closes[ticker].dropna()
-            if len(series) >= 2:
-                # Absolute latest price
+            if not series.empty:
+                # Current Price: Absolute latest tick available
                 curr = float(series.iloc[-1])
-                # Daily change (approx 1440 mins ago)
-                p_day = float(series.iloc[-1440]) if len(series) > 1440 else float(series.iloc[0])
-                # Weekly change (start of our 7d window)
-                p_week = float(series.iloc[0])
+                
+                # Finding the closest indices for our offsets
+                # We use merge_asof logic (nearest timestamp available)
+                idx_24h = series.index.get_indexer([t_24h], method='nearest')[0]
+                idx_168h = series.index.get_indexer([t_168h], method='nearest')[0]
+                
+                p_day = float(series.iloc[idx_24h])
+                p_week = float(series.iloc[idx_168h])
                 
                 mult = 100 if "JPY" in pair else 10000
-                results[pair] = {"price": curr, "dd": int((curr - p_day) * mult), "ww": int((curr - p_week) * mult), "is_jpy": "JPY" in pair}
+                results[pair] = {
+                    "price": curr, 
+                    "dd": int((curr - p_day) * mult), 
+                    "ww": int((curr - p_week) * mult), 
+                    "is_jpy": "JPY" in pair
+                }
     return results
 
 def calculate_base_movers(fx_data):
