@@ -1,6 +1,7 @@
 import time
 import requests
 import re
+import random
 import pandas as pd
 import yfinance as yf
 from bs4 import BeautifulSoup
@@ -33,7 +34,7 @@ TARGET_PAIRS = {
     "USDCAD": "USDCAD=X", "USDCHF": "USDCHF=X", "USDJPY": "USDJPY=X"
 }
 
-# Probabilities (Static)
+# Probabilities (Static Outlook)
 base_outlook = {
     "Fed":  ["🔴⬇️65%", "🟡➡️35%"],
     "ECB":  ["🔴⬇️45%", "🟡➡️55%"],
@@ -49,7 +50,6 @@ base_outlook = {
 def setup_driver():
     options = Options()
     options.add_argument("--headless=new")
-    # CHANGE 1: Linux/GitHub Runner compatibility flags
     options.add_argument("--no-sandbox")
     options.add_argument("--disable-dev-shm-usage")
     options.add_argument("--window-size=1920,1080")
@@ -63,7 +63,8 @@ def setup_driver():
     options.add_experimental_option("prefs", prefs)
     options.add_experimental_option("excludeSwitches", ["enable-automation"])
     
-    options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36")
+    # Randomized User-Agent to prevent bot detection
+    options.add_argument(f"user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/{random.randint(110, 122)}.0.0.0 Safari/537.36")
     driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=options)
     
     stealth(driver, languages=["en-US", "en"], vendor="Google Inc.", platform="Win32", webgl_vendor="Intel Inc.", renderer="Intel Iris OpenGL Engine", fix_hairline=True)
@@ -92,7 +93,7 @@ def scrape_cbrates_current():
     }
 
     try:
-        r = requests.get(url, headers={'User-Agent': 'Mozilla/5.0'})
+        r = requests.get(url, headers={'User-Agent': 'Mozilla/5.0'}, timeout=15)
         soup = BeautifulSoup(r.text, 'html.parser')
         rows = soup.find_all('tr')
         for row in rows:
@@ -127,7 +128,7 @@ def scrape_cbrates_meetings():
         "Reserve Bank of New Zealand": "RBNZ", "Bank of Canada": "BoC"
     }
     try:
-        r = requests.get(url, headers={'User-Agent': 'Mozilla/5.0'})
+        r = requests.get(url, headers={'User-Agent': 'Mozilla/5.0'}, timeout=15)
         soup = BeautifulSoup(r.text, 'html.parser')
         rows = soup.find_all('tr')
         today = datetime.now()
@@ -145,13 +146,11 @@ def scrape_cbrates_meetings():
                 except: continue
         for code, dates in found_meetings.items():
             dates.sort()
-            future_date_found = False
             for d in dates:
                 if d.date() >= today.date():
                     upcoming_meetings[code] = d.strftime("%b %d")
-                    future_date_found = True
                     break
-            if not future_date_found: upcoming_meetings[code] = "TBA"
+            if code not in upcoming_meetings: upcoming_meetings[code] = "TBA"
         return upcoming_meetings
     except Exception as e:
         print(f"⚠️ CBRates Meetings Failed: {e}"); return None
@@ -187,7 +186,11 @@ def scrape_forex_factory():
                 cons = row.find_element(By.CSS_SELECTOR, "td.calendar__forecast").text.strip()
                 prev = row.find_element(By.CSS_SELECTOR, "td.calendar__previous").text.strip()
                 flag_map = {"USD":"🇺🇸", "EUR":"🇪🇺", "GBP":"🇬🇧", "JPY":"🇯🇵", "CAD":"🇨🇦", "AUD":"🇦🇺", "NZD":"🇳🇿", "CHF":"🇨🇭"}
-                releases.append({"date": current_date_str, "flag": flag_map.get(currency, "🌍"), "title": f"{currency} {event}", "time_sgt": sgt_time, "act": act or "-", "cons": cons or "-", "prev": prev or "-"})
+                releases.append({
+                    "date": current_date_str, "flag": flag_map.get(currency, "🌍"),
+                    "title": f"{currency} {event}", "time_sgt": sgt_time,
+                    "act": act or "-", "cons": cons or "-", "prev": prev or "-"
+                })
             except: continue
         return releases
     except Exception as e:
@@ -195,48 +198,47 @@ def scrape_forex_factory():
     finally:
         if driver: driver.quit()
 
-# ===== CALCULATIONS (INSTITUTIONAL NY CUT LOGIC) =====
+# ===== CALCULATIONS (DIRECT SCRAPER + NY CUT ANCHOR) =====
 def fetch_fx_data():
-    print("📈 Fetching FX Data (Institutional Anchor: 05:00 SGT)...")
-    tickers = list(TARGET_PAIRS.values())
-    
-    # We download 10 days of 1-hour data to find the NY Close anchors
-    # 1h is much more stable than 1m for historical session identification
-    data = yf.download(tickers, period="10d", interval="1h", progress=False)
-    
-    if isinstance(data.columns, pd.MultiIndex):
-        closes = data.xs('Close', level=0, axis=1)
-    else: closes = data['Close']
-    
+    print("📈 Fetching FX Data (Institutional Anchor + Anti-Stale Scraper)...")
     results = {}
-    for pair, ticker in TARGET_PAIRS.items():
-        if ticker in closes.columns:
-            series = closes[ticker].dropna()
-            if not series.empty:
-                # Live Price (Most recent 1h bar)
-                curr = float(series.iloc[-1])
-                
-                # NY Close Anchor: 17:00 EST is 05:00 SGT (or 06:00 during DST)
-                # We filter for the 05:00 SGT candles to find the institutional reset points
-                ny_cut_candles = series[series.index.hour == 5]
-                
-                if not ny_cut_candles.empty:
-                    # Daily Change: Current price vs the most recent NY Close (Friday if today is Monday)
-                    p_day = float(ny_cut_candles.iloc[-1])
-                    # Weekly Change: Current price vs the first NY Close in our window
-                    p_week = float(ny_cut_candles.iloc[0])
-                else:
-                    # Fallback if no 05:00 candle exists yet
-                    p_day = float(series.iloc[0])
-                    p_week = float(series.iloc[0])
-                
-                mult = 100 if "JPY" in pair else 10000
-                results[pair] = {
-                    "price": curr, 
-                    "dd": int((curr - p_day) * mult), 
-                    "ww": int((curr - p_week) * mult), 
-                    "is_jpy": "JPY" in pair
-                }
+    session = requests.Session()
+    session.headers.update({'User-Agent': f'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/{random.randint(115,122)}.0.0.0 Safari/537.36'})
+
+    # 1. Historical Baselines (Daily interval for rock-solid NY Close)
+    tickers_list = list(TARGET_PAIRS.values())
+    hist_data = yf.download(tickers_list, period="10d", interval="1d", progress=False, session=session)
+    if isinstance(hist_data.columns, pd.MultiIndex):
+        hist_closes = hist_data.xs('Close', level=0, axis=1)
+    else: hist_closes = hist_data['Close']
+
+    # 2. Scrape Live Price directly from the Yahoo Summary Page
+    for pair, symbol in TARGET_PAIRS.items():
+        try:
+            url = f"https://finance.yahoo.com/quote/{symbol}"
+            response = session.get(url, timeout=12)
+            # Targets the live UI stream used by the browser
+            price_pattern = r'data-field="regularMarketPrice".*?value="([\d\.]+)"'
+            match = re.search(price_pattern, response.text)
+            
+            if match:
+                curr = float(match.group(1))
+            else:
+                curr = yf.Ticker(symbol, session=session).fast_info['lastPrice']
+
+            series = hist_closes[symbol].dropna()
+            p_day = float(series.iloc[-1]) # Last full trading day close
+            p_week = float(series.iloc[0])  # Start of 10d window
+            
+            mult = 100 if "JPY" in pair else 10000
+            results[pair] = {
+                "price": curr, 
+                "dd": int((curr - p_day) * mult), 
+                "ww": int((curr - p_week) * mult), 
+                "is_jpy": "JPY" in pair
+            }
+            time.sleep(random.uniform(0.1, 0.4))
+        except: continue
     return results
 
 def calculate_base_movers(fx_data):
@@ -251,7 +253,7 @@ def calculate_base_movers(fx_data):
         if count > 0: movers[c] = [int(dd/count), int(ww/count)]
     return movers
 
-# ===== EXECUTION =====
+# ===== EXECUTION & MESSAGE BUILDING =====
 fx_results = fetch_fx_data()
 scraped_rates = scrape_cbrates_current() 
 scraped_meetings = scrape_cbrates_meetings()
@@ -263,7 +265,6 @@ for curr, vals in sorted(base_movers.items()):
     lines.append(f"{curr}: {vals[0]:+} pips d/d | {vals[1]:+} w/w")
 
 lines.append("\n---")
-
 groups = {
     "AUD": ["AUDCAD", "AUDCHF", "AUDJPY", "AUDNZD", "AUDUSD"],
     "CAD": ["CADCHF", "CADJPY"],
@@ -318,14 +319,9 @@ except Exception as e:
     print(f"Error sending message: {e}")
 
 def send_telegram_message(message):
-    """Sends the final report to Telegram using your config."""
+    """Fallback function for modular sending."""
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
-    payload = {
-        "chat_id": CHAT_ID, 
-        "text": message, 
-        "parse_mode": "HTML",
-        "disable_web_page_preview": True
-    }
+    payload = {"chat_id": CHAT_ID, "text": message, "parse_mode": "HTML", "disable_web_page_preview": True}
     try:
         response = requests.post(url, json=payload)
         return response.json()
