@@ -193,7 +193,7 @@ def scrape_forex_factory():
     releases = []
     try:
         driver = setup_driver()
-        driver.get("https://www.forexfactory.com/calendar?day=today")
+        driver.get("https://www.forexfactory.com/calendar?week=this")
         
         for i in range(1, 4):
             driver.execute_script(f"window.scrollTo(0, document.body.scrollHeight * {i/3});")
@@ -358,25 +358,3 @@ def send_telegram_message(message):
     except Exception as e:
         print(f"Telegram Error: {e}")
         return None
-
-if __name__ == "__main__":
-    print(f"🚀 Started G8 Feed at {now_sgt.strftime('%H:%M:%S')} SGT")
-    
-    current_rates = scrape_cbrates_current()
-    
-    report = f"📊 <b>G8 FX FEED UPDATE</b>\n"
-    report += f"📅 {now_sgt.strftime('%d %b %Y | %H:%M')} SGT\n\n"
-    
-    if current_rates:
-        report += "<b>Current Rates:</b>\n"
-        for bank, rate in current_rates.items():
-            report += f"• {bank}: <code>{rate}</code>\n"
-    else:
-        report += "⚠️ <i>Rates data currently unavailable.</i>\n"
-
-    result = send_telegram_message(report)
-    
-    if result and result.get("ok"):
-        print("✅ Message delivered successfully to Telegram.")
-    else:
-        print(f"❌ Failed to send. Response: {result}")
