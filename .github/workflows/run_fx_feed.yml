@@ -2,7 +2,7 @@ name: G8 FX Telegram Feed
 
 on:
   schedule:
-    - cron: '*/20 * * * 1-5'
+    - cron: '*/5 * * * 1-5'
   workflow_dispatch:
 
 jobs:
