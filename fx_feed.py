@@ -24,13 +24,34 @@ SGT_TZ = timezone(timedelta(hours=8))
 now_sgt = datetime.now(SGT_TZ)
 
 TARGET_PAIRS = {
-    "AUDCAD": "AUDCAD=X", "AUDCHF": "AUDCHF=X", "AUDJPY": "AUDJPY=X", "AUDNZD": "AUDNZD=X", "AUDUSD": "AUDUSD=X",
-    "CADCHF": "CADCHF=X", "CADJPY": "CADJPY=X",
+    "AUDCAD": "AUDCAD=X", 
+    "AUDCHF": "AUDCHF=X", 
+    "AUDJPY": "AUDJPY=X", 
+    "AUDNZD": "AUDNZD=X", 
+    "AUDUSD": "AUDUSD=X",
+    "CADCHF": "CADCHF=X", 
+    "CADJPY": "CADJPY=X",
     "CHFJPY": "CHFJPY=X",
-    "EURAUD": "EURAUD=X", "EURCAD": "EURCAD=X", "EURCHF": "EURCHF=X", "EURGBP": "EURGBP=X", "EURJPY": "EURJPY=X", "EURNZD": "EURNZD=X", "EURUSD": "EURUSD=X",
-    "GBPAUD": "GBPAUD=X", "GBPCAD": "GBPCAD=X", "GBPCHF": "GBPCHF=X", "GBPJPY": "GBPJPY=X", "GBPNZD": "GBPNZD=X", "GBPUSD": "GBPUSD=X",
-    "NZDCAD": "NZDCAD=X", "NZDCHF": "NZDCHF=X", "NZDJPY": "NZDJPY=X", "NZDUSD": "NZDUSD=X",
-    "USDCAD": "USDCAD=X", "USDCHF": "USDCHF=X", "USDJPY": "USDJPY=X"
+    "EURAUD": "EURAUD=X", 
+    "EURCAD": "EURCAD=X", 
+    "EURCHF": "EURCHF=X", 
+    "EURGBP": "EURGBP=X", 
+    "EURJPY": "EURJPY=X", 
+    "EURNZD": "EURNZD=X", 
+    "EURUSD": "EURUSD=X",
+    "GBPAUD": "GBPAUD=X", 
+    "GBPCAD": "GBPCAD=X", 
+    "GBPCHF": "GBPCHF=X", 
+    "GBPJPY": "GBPJPY=X", 
+    "GBPNZD": "GBPNZD=X", 
+    "GBPUSD": "GBPUSD=X",
+    "NZDCAD": "NZDCAD=X", 
+    "NZDCHF": "NZDCHF=X", 
+    "NZDJPY": "NZDJPY=X", 
+    "NZDUSD": "NZDUSD=X",
+    "USDCAD": "USDCAD=X", 
+    "USDCHF": "USDCHF=X", 
+    "USDJPY": "USDJPY=X"
 }
 
 # Probabilities (Static)
@@ -49,9 +70,8 @@ base_outlook = {
 def setup_driver():
     options = Options()
     options.add_argument("--headless=new")
-    # CHANGE 1: Linux/GitHub Runner compatibility flags
-    options.add_argument("--no-sandbox")
-    options.add_argument("--disable-dev-shm-usage")
+    options.add_argument("--no-sandbox")            # FIXED FOR GITHUB
+    options.add_argument("--disable-dev-shm-usage") # FIXED FOR GITHUB
     options.add_argument("--window-size=1920,1080")
     
     prefs = {
@@ -98,14 +118,12 @@ def scrape_cbrates_current():
     }
 
     try:
-        r = requests.get(url, headers={'User-Agent': 'Mozilla/5.0'})
+        r = requests.get(url, headers={'User-Agent': 'Mozilla/5.0'}, timeout=15)
         soup = BeautifulSoup(r.text, 'html.parser')
-        
         rows = soup.find_all('tr')
         
         for row in rows:
             text = row.get_text(" ", strip=True)
-            
             for identifier, code in identifier_map.items():
                 if identifier in text:
                     if code == "Fed":
@@ -124,7 +142,6 @@ def scrape_cbrates_current():
                             if match: rates[code] = match.group(1) + "%"
                     break
         return rates
-
     except Exception as e:
         print(f"⚠️ CBRates Rates Failed: {e}")
         return None
@@ -142,13 +159,11 @@ def scrape_cbrates_meetings():
     }
 
     try:
-        r = requests.get(url, headers={'User-Agent': 'Mozilla/5.0'})
+        r = requests.get(url, headers={'User-Agent': 'Mozilla/5.0'}, timeout=15)
         soup = BeautifulSoup(r.text, 'html.parser')
         rows = soup.find_all('tr')
-        
         today = datetime.now()
         current_year = today.year
-
         found_meetings = {code: [] for code in identifiers.values()}
 
         for row in rows:
@@ -156,33 +171,18 @@ def scrape_cbrates_meetings():
             date_match = re.search(r"(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+(\d{1,2})", text, re.IGNORECASE)
             
             if date_match:
-                month_str = date_match.group(1)
-                day_str = date_match.group(2)
+                month_str, day_str = date_match.group(1), date_match.group(2)
                 try:
                     meeting_date = datetime.strptime(f"{month_str} {day_str} {current_year}", "%b %d %Y")
-                    if meeting_date.date() < today.date():
-                        pass 
-
                     for identifier, code in identifiers.items():
-                        if identifier in text:
+                        if identifier in text: 
                             found_meetings[code].append(meeting_date)
-                except:
-                    continue
+                except: continue
 
         for code, dates in found_meetings.items():
             dates.sort()
-            future_date_found = False
-            for d in dates:
-                if d.date() >= today.date():
-                    upcoming_meetings[code] = d.strftime("%b %d")
-                    future_date_found = True
-                    break
-            
-            if not future_date_found:
-                upcoming_meetings[code] = "TBA"
-
+            upcoming_meetings[code] = next((d.strftime("%b %d") for d in dates if d.date() >= today.date()), "TBA")
         return upcoming_meetings
-
     except Exception as e:
         print(f"⚠️ CBRates Meetings Failed: {e}")
         return None
@@ -193,70 +193,79 @@ def scrape_forex_factory():
     releases = []
     try:
         driver = setup_driver()
-        driver.get("https://www.forexfactory.com/calendar?week=this")
-        
+        driver.get("https://www.forexfactory.com/calendar?day=today")
         for i in range(1, 4):
             driver.execute_script(f"window.scrollTo(0, document.body.scrollHeight * {i/3});")
             time.sleep(1.5)
         
         rows = driver.find_elements(By.CSS_SELECTOR, "tr.calendar__row")
         current_date_str, last_valid_time = "", ""
-        
         for row in rows:
             row_class = row.get_attribute("class")
             if "calendar__row--day-breaker" in row_class:
                 val = row.text.strip()
                 if val: current_date_str = val
                 continue
-            
             impact = row.find_elements(By.CSS_SELECTOR, "td.calendar__impact span.icon")
-            if not impact or "icon--ff-impact-red" not in impact[0].get_attribute("class"):
-                continue
+            if not impact or "icon--ff-impact-red" not in impact[0].get_attribute("class"): continue
 
             try:
                 currency = row.find_element(By.CSS_SELECTOR, "td.calendar__currency").text.strip()
                 event = row.find_element(By.CSS_SELECTOR, "span.calendar__event-title").text.strip()
                 time_str = row.find_element(By.CSS_SELECTOR, "td.calendar__time").text.strip()
-                
                 if not time_str: time_str = last_valid_time
                 else: last_valid_time = time_str
-                
                 sgt_time = convert_time_to_sgt(current_date_str, time_str)
-                act = row.find_element(By.CSS_SELECTOR, "td.calendar__actual").text.strip()
-                cons = row.find_element(By.CSS_SELECTOR, "td.calendar__forecast").text.strip()
-                prev = row.find_element(By.CSS_SELECTOR, "td.calendar__previous").text.strip()
-
+                
                 flag_map = {"USD":"🇺🇸", "EUR":"🇪🇺", "GBP":"🇬🇧", "JPY":"🇯🇵", "CAD":"🇨🇦", "AUD":"🇦🇺", "NZD":"🇳🇿", "CHF":"🇨🇭"}
                 releases.append({
-                    "date": current_date_str, "flag": flag_map.get(currency, "🌍"),
-                    "title": f"{currency} {event}", "time_sgt": sgt_time,
-                    "act": act or "-", "cons": cons or "-", "prev": prev or "-"
+                    "date": current_date_str, 
+                    "flag": flag_map.get(currency, "🌍"),
+                    "title": f"{currency} {event}", 
+                    "time_sgt": sgt_time,
+                    "act": row.find_element(By.CSS_SELECTOR, "td.calendar__actual").text.strip() or "-",
+                    "cons": row.find_element(By.CSS_SELECTOR, "td.calendar__forecast").text.strip() or "-",
+                    "prev": row.find_element(By.CSS_SELECTOR, "td.calendar__previous").text.strip() or "-"
                 })
             except: continue
         return releases
     except Exception as e:
-        print(f"⚠️ FF Scraping Failed: {e}"); return None
+        print(f"⚠️ FF Scraping Failed: {e}")
+        return None
     finally:
         if driver: driver.quit()
 
-# ===== CALCULATIONS =====
+# ===== IMPROVED LIVE CALCULATIONS =====
 def fetch_fx_data():
+    print("📈 Fetching Live 1m and Historical Daily Data...")
     tickers = list(TARGET_PAIRS.values())
-    data = yf.download(tickers, period="1mo", progress=False)
     
-    if isinstance(data.columns, pd.MultiIndex):
-        try: closes = data.xs('Close', level=0, axis=1)
-        except KeyError: closes = data['Close']
-    else: closes = data['Close']
+    # 1. Get Daily Closes (Friday's Close and Last Week's Close)
+    hist_data = yf.download(tickers, period="10d", interval="1d", progress=False)
+    hist_closes = hist_data['Close'] if not isinstance(hist_data.columns, pd.MultiIndex) else hist_data.xs('Close', level=0, axis=1)
+    
+    # 2. Get Live 1-minute Close (Most current price)
+    live_data = yf.download(tickers, period="1d", interval="1m", progress=False)
+    live_closes = live_data['Close'] if not isinstance(live_data.columns, pd.MultiIndex) else live_data.xs('Close', level=0, axis=1)
         
     results = {}
     for pair, ticker in TARGET_PAIRS.items():
-        if ticker in closes.columns:
-            series = closes[ticker].dropna()
-            if len(series) >= 6:
-                curr, p_day, p_week = float(series.iloc[-1]), float(series.iloc[-2]), float(series.iloc[-6])
+        if ticker in live_closes.columns and ticker in hist_closes.columns:
+            l_series = live_closes[ticker].dropna()
+            h_series = hist_closes[ticker].dropna()
+            
+            if not l_series.empty and len(h_series) >= 6:
+                curr = float(l_series.iloc[-1])    # Latest 1-min Close
+                p_day = float(h_series.iloc[-1])   # Friday Close
+                p_week = float(h_series.iloc[-6])  # Last Week Close
+                
                 mult = 100 if "JPY" in pair else 10000
-                results[pair] = {"price": curr, "dd": int((curr - p_day) * mult), "ww": int((curr - p_week) * mult), "is_jpy": "JPY" in pair}
+                results[pair] = {
+                    "price": curr, 
+                    "dd": int((curr - p_day) * mult), 
+                    "ww": int((curr - p_week) * mult), 
+                    "is_jpy": "JPY" in pair
+                }
     return results
 
 def calculate_base_movers(fx_data):
@@ -267,8 +276,11 @@ def calculate_base_movers(fx_data):
         for p, v in fx_data.items():
             if c in p:
                 factor = 1 if p.startswith(c) else -1
-                dd += v["dd"] * factor; ww += v["ww"] * factor; count += 1
-        if count > 0: movers[c] = [int(dd/count), int(ww/count)]
+                dd += v["dd"] * factor
+                ww += v["ww"] * factor
+                count += 1
+        if count > 0: 
+            movers[c] = [int(dd/count), int(ww/count)]
     return movers
 
 # ===== EXECUTION =====
@@ -278,12 +290,12 @@ scraped_meetings = scrape_cbrates_meetings()
 calendar_events = scrape_forex_factory()
 base_movers = calculate_base_movers(fx_results)
 
+# Build Message
 lines = [f"📊 *G8 FX Update* — {now_sgt.strftime('%H:%M')} SGT\n", "🔥 *Top Movers (Base Index)*"]
 for curr, vals in sorted(base_movers.items()):
     lines.append(f"{curr}: {vals[0]:+} pips d/d | {vals[1]:+} w/w")
 
 lines.append("\n---")
-
 groups = {
     "AUD": ["AUDCAD", "AUDCHF", "AUDJPY", "AUDNZD", "AUDUSD"],
     "CAD": ["CADCHF", "CADJPY"],
@@ -306,55 +318,70 @@ for base, pairs in groups.items():
         lines.append("\n".join(seg) + "\n")
 
 lines.append("---")
-lines.append("📅 *Weekly Economic Calendar (Central Time)*") 
+lines.append("📅 *Economic Calendar (Today)*") 
 if calendar_events:
     for e in calendar_events:
         lines.append(f"[{e['date']}] {e['flag']} {e['title']} | {e['time_sgt']}")
-        if e['act'] != "-": lines.append(f"    Act: {e['act']} | C: {e['cons']} | P: {e['prev']}")
-else: lines.append("No high impact events today.")
+        if e['act'] != "-": 
+            lines.append(f"    Act: {e['act']} | C: {e['cons']} | P: {e['prev']}")
+else: 
+    lines.append("No high impact events today.")
 
 lines.append("\n---")
 lines.append("🏛 *Central Bank Policy Rates*")
+order = ["RBA", "BoC", "SNB", "ECB", "BoE", "BoJ", "RBNZ", "Fed"]
 if scraped_rates:
-    order = ["RBA", "BoC", "SNB", "ECB", "BoE", "BoJ", "RBNZ", "Fed"]
-    for bank in order:
-        rate = scraped_rates.get(bank, "N/A")
+    for bank in order: 
+        rate = scraped_rates.get(bank, 'N/A')
         lines.append(f"{bank}: {rate}")
 else: 
     lines.append("⚠️ _Scraping Failed_")
 
 lines.append("\n🔮 *Rates Outlook*")
-order = ["RBA", "BoC", "SNB", "ECB", "BoE", "BoJ", "RBNZ", "Fed"]
 for bank in order:
     probs = base_outlook.get(bank, ["-", "-"])
     date_str = scraped_meetings.get(bank, "TBA")
     lines.append(f"{bank}: {probs[0]} | {probs[1]} | {date_str}")
 
-print("Sending to Telegram...")
+# SEND INITIAL (Markdown)
+print("Sending Main Report...")
 try:
-    response = requests.post(f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage", 
-                             data={"chat_id": CHAT_ID, "text": "\n".join(lines), "parse_mode": "Markdown"})
-    print(f"Status Code: {response.status_code}")
-except Exception as e:
-    print(f"Error sending message: {e}")
+    requests.post(f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage", 
+                  data={"chat_id": CHAT_ID, "text": "\n".join(lines), "parse_mode": "Markdown"})
+except Exception as e: 
+    print(f"Error: {e}")
 
 # ==========================================
-# FINAL SECTION (With Change 2 applied)
+# FINAL SECTION (HTML Trigger)
 # ==========================================
-
 def send_telegram_message(message):
-    """Sends the final report to Telegram using your config."""
-    # CHANGE 2: Added /bot prefix
-    url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
+    url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage" # FIX: Added /bot
     payload = {
         "chat_id": CHAT_ID, 
         "text": message, 
-        "parse_mode": "HTML",
+        "parse_mode": "HTML", 
         "disable_web_page_preview": True
     }
     try:
-        response = requests.post(url, json=payload)
+        response = requests.post(url, json=payload, timeout=15)
         return response.json()
-    except Exception as e:
-        print(f"Telegram Error: {e}")
+    except Exception as e: 
+        print(f"Error: {e}")
         return None
+
+if __name__ == "__main__":
+    print(f"🚀 Started G8 Feed at {now_sgt.strftime('%H:%M:%S')} SGT")
+    
+    current_rates = scrape_cbrates_current()
+    
+    report = f"📊 <b>G8 FX FEED UPDATE</b>\n"
+    report += f"📅 {now_sgt.strftime('%d %b %Y | %H:%M')} SGT\n\n"
+    
+    if current_rates:
+        report += "<b>Current Rates:</b>\n"
+        for bank, rate in current_rates.items(): 
+            report += f"• {bank}: <code>{rate}</code>\n"
+    else: 
+        report += "⚠️ <i>Rates data currently unavailable.</i>\n"
+        
+    send_telegram_message(report)
