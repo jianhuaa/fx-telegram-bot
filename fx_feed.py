@@ -372,3 +372,26 @@ try:
     print(f"Status Code: {response.status_code}")
 except Exception as e:
     print(f"Error sending message: {e}")
+
+def send_telegram_message(message):
+    url = f"https://api.telegram.org{TELEGRAM_TOKEN}/sendMessage"
+    payload = {"chat_id": CHAT_ID, "text": message, "parse_mode": "HTML"}
+    try:
+        response = requests.post(url, json=payload)
+        print(f"Telegram Response: {response.text}")
+    except Exception as e:
+        print(f"Failed to send: {e}")
+
+# --- THE EXECUTION BRIDGE ---
+if __name__ == "__main__":
+    # 1. Run your scrapers
+    rates = scrape_cbrates_current()
+    
+    # 2. Build a simple message (you can make this prettier later)
+    report = "🚀 <b>FX Feed Update</b>\n\n"
+    for bank, rate in rates.items():
+        report += f"🏛 {bank}: {rate}\n"
+    
+    # 3. SEND IT
+    send_telegram_message(report)
+
