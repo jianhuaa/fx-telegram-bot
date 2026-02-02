@@ -1,7 +1,6 @@
 import time
 import requests
 import re
-import random
 import pandas as pd
 import yfinance as yf
 from bs4 import BeautifulSoup
@@ -34,7 +33,7 @@ TARGET_PAIRS = {
     "USDCAD": "USDCAD=X", "USDCHF": "USDCHF=X", "USDJPY": "USDJPY=X"
 }
 
-# Probabilities (Static Outlook)
+# Probabilities (Static)
 base_outlook = {
     "Fed":  ["🔴⬇️65%", "🟡➡️35%"],
     "ECB":  ["🔴⬇️45%", "🟡➡️55%"],
@@ -50,6 +49,7 @@ base_outlook = {
 def setup_driver():
     options = Options()
     options.add_argument("--headless=new")
+    # CHANGE 1: Linux/GitHub Runner compatibility flags
     options.add_argument("--no-sandbox")
     options.add_argument("--disable-dev-shm-usage")
     options.add_argument("--window-size=1920,1080")
@@ -63,7 +63,7 @@ def setup_driver():
     options.add_experimental_option("prefs", prefs)
     options.add_experimental_option("excludeSwitches", ["enable-automation"])
     
-    options.add_argument(f"user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/{random.randint(110, 122)}.0.0.0 Safari/537.36")
+    options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36")
     driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=options)
     
     stealth(driver, languages=["en-US", "en"], vendor="Google Inc.", platform="Win32", webgl_vendor="Intel Inc.", renderer="Intel Iris OpenGL Engine", fix_hairline=True)
@@ -82,113 +82,161 @@ def convert_time_to_sgt(date_str, time_str):
 # ===== SCRAPERS =====
 
 def scrape_cbrates_current():
-    print("🏛️ Scraping Current Rates...")
+    print("🏛️ Scraping Current Rates (cbrates.com) [v3 Robust]...")
     url = "https://www.cbrates.com/"
     rates = {}
-    identifier_map = {"(Fed)": "Fed", "(ECB)": "ECB", "(BoE)": "BoE", "(BoJ)": "BoJ", "(BoC)": "BoC", "(SNB)": "SNB", "Australia": "RBA", "New Zealand": "RBNZ"}
+    
+    identifier_map = {
+        "(Fed)": "Fed", "(ECB)": "ECB", "(BoE)": "BoE", "(BoJ)": "BoJ",
+        "(BoC)": "BoC", "(SNB)": "SNB", "Australia": "RBA", "New Zealand": "RBNZ"
+    }
+
     try:
-        r = requests.get(url, headers={'User-Agent': 'Mozilla/5.0'}, timeout=15)
+        r = requests.get(url, headers={'User-Agent': 'Mozilla/5.0'})
         soup = BeautifulSoup(r.text, 'html.parser')
         rows = soup.find_all('tr')
         for row in rows:
             text = row.get_text(" ", strip=True)
             for identifier, code in identifier_map.items():
                 if identifier in text:
-                    match = re.search(r"(\d+\.\d{2})", text)
-                    if match: rates[code] = match.group(1) + "%"
+                    if code == "Fed":
+                        range_match = re.search(r"(\d+\.\d{2})\s*-\s*(\d+\.\d{2})", text)
+                        if range_match: rates[code] = range_match.group(2) + "%"
+                        else:
+                            match = re.search(r"(\d+\.\d{2})", text)
+                            if match: rates[code] = match.group(1) + "%"
+                    else:
+                        match = re.search(r"(\d+\.\d{2})\s*%", text)
+                        if match: rates[code] = match.group(1) + "%"
+                        else:
+                            match = re.search(r"(\d+\.\d{2})", text)
+                            if match: rates[code] = match.group(1) + "%"
                     break
         return rates
-    except: return None
+    except Exception as e:
+        print(f"⚠️ CBRates Rates Failed: {e}"); return None
 
 def scrape_cbrates_meetings():
-    print("🗓️ Scraping Meeting Dates...")
+    print("🗓️ Scraping Meeting Dates (cbrates.com/meetings)...")
     url = "https://www.cbrates.com/meetings.htm"
     upcoming_meetings = {}
-    identifiers = {"Federal Reserve": "Fed", "European Central Bank": "ECB", "Bank of England": "BoE", "Bank of Japan": "BoJ", "Reserve Bank of Australia": "RBA", "Swiss National Bank": "SNB", "Reserve Bank of New Zealand": "RBNZ", "Bank of Canada": "BoC"}
+    identifiers = {
+        "Federal Reserve": "Fed", "European Central Bank": "ECB", 
+        "Bank of England": "BoE", "Bank of Japan": "BoJ", 
+        "Reserve Bank of Australia": "RBA", "Swiss National Bank": "SNB", 
+        "Reserve Bank of New Zealand": "RBNZ", "Bank of Canada": "BoC"
+    }
     try:
-        r = requests.get(url, headers={'User-Agent': 'Mozilla/5.0'}, timeout=15)
+        r = requests.get(url, headers={'User-Agent': 'Mozilla/5.0'})
         soup = BeautifulSoup(r.text, 'html.parser')
         rows = soup.find_all('tr')
         today = datetime.now()
+        current_year = today.year
         found_meetings = {code: [] for code in identifiers.values()}
         for row in rows:
             text = row.get_text(" ", strip=True)
             date_match = re.search(r"(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+(\d{1,2})", text, re.IGNORECASE)
             if date_match:
+                month_str, day_str = date_match.group(1), date_match.group(2)
                 try:
-                    m_date = datetime.strptime(f"{date_match.group(1)} {date_match.group(2)} {today.year}", "%b %d %Y")
+                    meeting_date = datetime.strptime(f"{month_str} {day_str} {current_year}", "%b %d %Y")
                     for identifier, code in identifiers.items():
-                        if identifier in text: found_meetings[code].append(m_date)
+                        if identifier in text: found_meetings[code].append(meeting_date)
                 except: continue
         for code, dates in found_meetings.items():
             dates.sort()
+            future_date_found = False
             for d in dates:
                 if d.date() >= today.date():
                     upcoming_meetings[code] = d.strftime("%b %d")
+                    future_date_found = True
                     break
-            if code not in upcoming_meetings: upcoming_meetings[code] = "TBA"
+            if not future_date_found: upcoming_meetings[code] = "TBA"
         return upcoming_meetings
-    except: return None
+    except Exception as e:
+        print(f"⚠️ CBRates Meetings Failed: {e}"); return None
 
 def scrape_forex_factory():
-    print("📅 Scraping ForexFactory...")
+    print("📅 Scraping ForexFactory (Today)...")
     driver = None
     releases = []
     try:
         driver = setup_driver()
         driver.get("https://www.forexfactory.com/calendar?week=this")
-        time.sleep(3)
+        for i in range(1, 4):
+            driver.execute_script(f"window.scrollTo(0, document.body.scrollHeight * {i/3});")
+            time.sleep(1.5)
         rows = driver.find_elements(By.CSS_SELECTOR, "tr.calendar__row")
-        current_date_str = ""
+        current_date_str, last_valid_time = "", ""
         for row in rows:
             row_class = row.get_attribute("class")
             if "calendar__row--day-breaker" in row_class:
-                current_date_str = row.text.strip()
+                val = row.text.strip()
+                if val: current_date_str = val
                 continue
             impact = row.find_elements(By.CSS_SELECTOR, "td.calendar__impact span.icon")
-            if impact and "icon--ff-impact-red" in impact[0].get_attribute("class"):
+            if not impact or "icon--ff-impact-red" not in impact[0].get_attribute("class"): continue
+            try:
                 currency = row.find_element(By.CSS_SELECTOR, "td.calendar__currency").text.strip()
                 event = row.find_element(By.CSS_SELECTOR, "span.calendar__event-title").text.strip()
-                releases.append({"date": current_date_str, "flag": "🌍", "title": f"{currency} {event}", "time_sgt": "Check FF", "act": "-", "cons": "-", "prev": "-"})
+                time_str = row.find_element(By.CSS_SELECTOR, "td.calendar__time").text.strip()
+                if not time_str: time_str = last_valid_time
+                else: last_valid_time = time_str
+                sgt_time = convert_time_to_sgt(current_date_str, time_str)
+                act = row.find_element(By.CSS_SELECTOR, "td.calendar__actual").text.strip()
+                cons = row.find_element(By.CSS_SELECTOR, "td.calendar__forecast").text.strip()
+                prev = row.find_element(By.CSS_SELECTOR, "td.calendar__previous").text.strip()
+                flag_map = {"USD":"🇺🇸", "EUR":"🇪🇺", "GBP":"🇬🇧", "JPY":"🇯🇵", "CAD":"🇨🇦", "AUD":"🇦🇺", "NZD":"🇳🇿", "CHF":"🇨🇭"}
+                releases.append({"date": current_date_str, "flag": flag_map.get(currency, "🌍"), "title": f"{currency} {event}", "time_sgt": sgt_time, "act": act or "-", "cons": cons or "-", "prev": prev or "-"})
+            except: continue
         return releases
-    except: return None
+    except Exception as e:
+        print(f"⚠️ FF Scraping Failed: {e}"); return None
     finally:
         if driver: driver.quit()
 
-# ===== CALCULATIONS (PROTECTED FETCH) =====
+# ===== CALCULATIONS (INSTITUTIONAL NY CUT LOGIC) =====
 def fetch_fx_data():
-    print("📈 Fetching FX Data (Protected Mode)...")
+    print("📈 Fetching FX Data (Institutional Anchor: 05:00 SGT)...")
+    tickers = list(TARGET_PAIRS.values())
+    
+    # We download 10 days of 1-hour data to find the NY Close anchors
+    # 1h is much more stable than 1m for historical session identification
+    data = yf.download(tickers, period="10d", interval="1h", progress=False)
+    
+    if isinstance(data.columns, pd.MultiIndex):
+        closes = data.xs('Close', level=0, axis=1)
+    else: closes = data['Close']
+    
     results = {}
-    session = requests.Session()
-    session.headers.update({'User-Agent': f'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/{random.randint(110,122)}.0.0.0 Safari/537.36'})
-
-    try:
-        tickers_list = list(TARGET_PAIRS.values())
-        hist_data = yf.download(tickers_list, period="10d", interval="1d", progress=False, session=session)
-        if isinstance(hist_data.columns, pd.MultiIndex):
-            hist_closes = hist_data.xs('Close', level=0, axis=1)
-        else: hist_closes = hist_data['Close']
-    except Exception as e:
-        print(f"⚠️ YFinance Download Failed: {e}")
-        return {}
-
-    for pair, symbol in TARGET_PAIRS.items():
-        try:
-            # Direct HTML Scrape
-            url = f"https://finance.yahoo.com/quote/{symbol}"
-            response = session.get(url, timeout=12)
-            price_pattern = r'data-field="regularMarketPrice".*?value="([\d\.]+)"'
-            match = re.search(price_pattern, response.text)
-            
-            curr = float(match.group(1)) if match else yf.Ticker(symbol, session=session).fast_info['lastPrice']
-
-            series = hist_closes[symbol].dropna()
+    for pair, ticker in TARGET_PAIRS.items():
+        if ticker in closes.columns:
+            series = closes[ticker].dropna()
             if not series.empty:
-                p_day = float(series.iloc[-1])
-                p_week = float(series.iloc[0])
+                # Live Price (Most recent 1h bar)
+                curr = float(series.iloc[-1])
+                
+                # NY Close Anchor: 17:00 EST is 05:00 SGT (or 06:00 during DST)
+                # We filter for the 05:00 SGT candles to find the institutional reset points
+                ny_cut_candles = series[series.index.hour == 5]
+                
+                if not ny_cut_candles.empty:
+                    # Daily Change: Current price vs the most recent NY Close (Friday if today is Monday)
+                    p_day = float(ny_cut_candles.iloc[-1])
+                    # Weekly Change: Current price vs the first NY Close in our window
+                    p_week = float(ny_cut_candles.iloc[0])
+                else:
+                    # Fallback if no 05:00 candle exists yet
+                    p_day = float(series.iloc[0])
+                    p_week = float(series.iloc[0])
+                
                 mult = 100 if "JPY" in pair else 10000
-                results[pair] = {"price": curr, "dd": int((curr - p_day) * mult), "ww": int((curr - p_week) * mult), "is_jpy": "JPY" in pair}
-        except: continue
+                results[pair] = {
+                    "price": curr, 
+                    "dd": int((curr - p_day) * mult), 
+                    "ww": int((curr - p_week) * mult), 
+                    "is_jpy": "JPY" in pair
+                }
     return results
 
 def calculate_base_movers(fx_data):
@@ -205,10 +253,6 @@ def calculate_base_movers(fx_data):
 
 # ===== EXECUTION =====
 fx_results = fetch_fx_data()
-if not fx_results:
-    print("❌ Critical Failure: No FX Data")
-    exit(1)
-
 scraped_rates = scrape_cbrates_current() 
 scraped_meetings = scrape_cbrates_meetings()
 calendar_events = scrape_forex_factory()
@@ -219,7 +263,16 @@ for curr, vals in sorted(base_movers.items()):
     lines.append(f"{curr}: {vals[0]:+} pips d/d | {vals[1]:+} w/w")
 
 lines.append("\n---")
-groups = {"AUD": ["AUDCAD", "AUDCHF", "AUDJPY", "AUDNZD", "AUDUSD"], "CAD": ["CADCHF", "CADJPY"], "CHF": ["CHFJPY"], "EUR": ["EURAUD", "EURCAD", "EURCHF", "EURGBP", "EURJPY", "EURNZD", "EURUSD"], "GBP": ["GBPAUD", "GBPCAD", "GBPCHF", "GBPJPY", "GBPNZD", "GBPUSD"], "NZD": ["NZDCAD", "NZDCHF", "NZDJPY", "NZDUSD"], "USD": ["USDCAD", "USDCHF", "USDJPY"]}
+
+groups = {
+    "AUD": ["AUDCAD", "AUDCHF", "AUDJPY", "AUDNZD", "AUDUSD"],
+    "CAD": ["CADCHF", "CADJPY"],
+    "CHF": ["CHFJPY"],
+    "EUR": ["EURAUD", "EURCAD", "EURCHF", "EURGBP", "EURJPY", "EURNZD", "EURUSD"],
+    "GBP": ["GBPAUD", "GBPCAD", "GBPCHF", "GBPJPY", "GBPNZD", "GBPUSD"],
+    "NZD": ["NZDCAD", "NZDCHF", "NZDJPY", "NZDUSD"],
+    "USD": ["USDCAD", "USDCHF", "USDJPY"]
+}
 
 for base, pairs in groups.items():
     seg = []
@@ -233,29 +286,49 @@ for base, pairs in groups.items():
         lines.append("\n".join(seg) + "\n")
 
 lines.append("---")
-lines.append("📅 *Weekly Economic Calendar*") 
+lines.append("📅 *Weekly Economic Calendar (Central Time)*") 
 if calendar_events:
     for e in calendar_events:
-        lines.append(f"[{e['date']}] {e['flag']} {e['title']}")
+        lines.append(f"[{e['date']}] {e['flag']} {e['title']} | {e['time_sgt']}")
+        if e['act'] != "-": lines.append(f"    Act: {e['act']} | C: {e['cons']} | P: {e['prev']}")
 else: lines.append("No high impact events today.")
 
 lines.append("\n---")
-lines.append("🏛 *Central Bank Rates*")
+lines.append("🏛 *Central Bank Policy Rates*")
 if scraped_rates:
     order = ["RBA", "BoC", "SNB", "ECB", "BoE", "BoJ", "RBNZ", "Fed"]
     for bank in order:
         rate = scraped_rates.get(bank, "N/A")
         lines.append(f"{bank}: {rate}")
+else: lines.append("⚠️ _Scraping Failed_")
 
-lines.append("\n🔮 *Outlook*")
-for bank in ["RBA", "BoC", "SNB", "ECB", "BoE", "BoJ", "RBNZ", "Fed"]:
+lines.append("\n🔮 *Rates Outlook*")
+order = ["RBA", "BoC", "SNB", "ECB", "BoE", "BoJ", "RBNZ", "Fed"]
+for bank in order:
     probs = base_outlook.get(bank, ["-", "-"])
     date_str = scraped_meetings.get(bank, "TBA") if scraped_meetings else "TBA"
     lines.append(f"{bank}: {probs[0]} | {probs[1]} | {date_str}")
 
 print("Sending to Telegram...")
 try:
-    requests.post(f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage", 
-                  data={"chat_id": CHAT_ID, "text": "\n".join(lines), "parse_mode": "Markdown"})
+    response = requests.post(f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage", 
+                             data={"chat_id": CHAT_ID, "text": "\n".join(lines), "parse_mode": "Markdown"})
+    print(f"Status Code: {response.status_code}")
 except Exception as e:
-    print(f"Error: {e}")
+    print(f"Error sending message: {e}")
+
+def send_telegram_message(message):
+    """Sends the final report to Telegram using your config."""
+    url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
+    payload = {
+        "chat_id": CHAT_ID, 
+        "text": message, 
+        "parse_mode": "HTML",
+        "disable_web_page_preview": True
+    }
+    try:
+        response = requests.post(url, json=payload)
+        return response.json()
+    except Exception as e:
+        print(f"Telegram Error: {e}")
+        return None
