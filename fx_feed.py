@@ -49,6 +49,7 @@ base_outlook = {
 def setup_driver():
     options = Options()
     options.add_argument("--headless=new")
+    # CHANGE 1: Linux/GitHub Runner compatibility flags
     options.add_argument("--no-sandbox")
     options.add_argument("--disable-dev-shm-usage")
     options.add_argument("--window-size=1920,1080")
@@ -120,8 +121,9 @@ def scrape_cbrates_meetings():
     url = "https://www.cbrates.com/meetings.htm"
     upcoming_meetings = {}
     identifiers = {
-        "Federal Reserve": "Fed", "European Central Bank": "ECB", "Bank of England": "BoE", 
-        "Bank of Japan": "BoJ", "Reserve Bank of Australia": "RBA", "Swiss National Bank": "SNB", 
+        "Federal Reserve": "Fed", "European Central Bank": "ECB", 
+        "Bank of England": "BoE", "Bank of Japan": "BoJ", 
+        "Reserve Bank of Australia": "RBA", "Swiss National Bank": "SNB", 
         "Reserve Bank of New Zealand": "RBNZ", "Bank of Canada": "BoC"
     }
     try:
@@ -193,31 +195,40 @@ def scrape_forex_factory():
     finally:
         if driver: driver.quit()
 
-# ===== CALCULATIONS (SESSION-AWARE ROW COUNT LOGIC) =====
+# ===== CALCULATIONS (INSTITUTIONAL NY CUT LOGIC) =====
 def fetch_fx_data():
-    print("📈 Fetching LIVE FX Data (Market-Session Aware)...")
+    print("📈 Fetching FX Data (Institutional Anchor: 05:00 SGT)...")
     tickers = list(TARGET_PAIRS.values())
     
-    # Increase period to 10d to safely capture last week's Monday session
-    data = yf.download(tickers, period="10d", interval="2m", progress=False)
+    # We download 10 days of 1-hour data to find the NY Close anchors
+    # 1h is much more stable than 1m for historical session identification
+    data = yf.download(tickers, period="10d", interval="1h", progress=False)
     
     if isinstance(data.columns, pd.MultiIndex):
-        try: closes = data.xs('Close', level=0, axis=1)
-        except KeyError: closes = data['Close']
+        closes = data.xs('Close', level=0, axis=1)
     else: closes = data['Close']
     
     results = {}
     for pair, ticker in TARGET_PAIRS.items():
         if ticker in closes.columns:
             series = closes[ticker].dropna()
-            if len(series) > 10:
+            if not series.empty:
+                # Live Price (Most recent 1h bar)
                 curr = float(series.iloc[-1])
                 
-                # Logic: Skip the clock, use trading bars
-                # 720 bars of 2m = 24h of active market time
-                # 3600 bars of 2m = 120h (5 full trading days)
-                p_day = float(series.iloc[-720]) if len(series) > 720 else float(series.iloc[0])
-                p_week = float(series.iloc[-3600]) if len(series) > 3600 else float(series.iloc[0])
+                # NY Close Anchor: 17:00 EST is 05:00 SGT (or 06:00 during DST)
+                # We filter for the 05:00 SGT candles to find the institutional reset points
+                ny_cut_candles = series[series.index.hour == 5]
+                
+                if not ny_cut_candles.empty:
+                    # Daily Change: Current price vs the most recent NY Close (Friday if today is Monday)
+                    p_day = float(ny_cut_candles.iloc[-1])
+                    # Weekly Change: Current price vs the first NY Close in our window
+                    p_week = float(ny_cut_candles.iloc[0])
+                else:
+                    # Fallback if no 05:00 candle exists yet
+                    p_day = float(series.iloc[0])
+                    p_week = float(series.iloc[0])
                 
                 mult = 100 if "JPY" in pair else 10000
                 results[pair] = {
