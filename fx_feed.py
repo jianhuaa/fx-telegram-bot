@@ -306,7 +306,7 @@ for base, pairs in groups.items():
         lines.append("\n".join(seg) + "\n")
 
 lines.append("---")
-lines.append("📅 *Economic Calendar (Today)*") 
+lines.append("📅 *Weekly Economic Calendar (Central Time)*") 
 if calendar_events:
     for e in calendar_events:
         lines.append(f"[{e['date']}] {e['flag']} {e['title']} | {e['time_sgt']}")
