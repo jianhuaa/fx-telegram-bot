@@ -195,12 +195,13 @@ def scrape_forex_factory():
     finally:
         if driver: driver.quit()
 
-# ===== CALCULATIONS (INSTITUTIONAL RESAMPLE LOGIC) =====
+# ===== CALCULATIONS (INSTITUTIONAL NY CUT LOGIC) =====
 def fetch_fx_data():
-    print("📈 Fetching FX Data (Institutional Resample: Daily Close Alignment)...")
+    print("📈 Fetching FX Data (Institutional Anchor: 05:00 SGT)...")
     tickers = list(TARGET_PAIRS.values())
     
-    # We download 10 days of 1-hour data
+    # We download 10 days of 1-hour data to find the NY Close anchors
+    # 1h is much more stable than 1m for historical session identification
     data = yf.download(tickers, period="10d", interval="1h", progress=False)
     
     if isinstance(data.columns, pd.MultiIndex):
@@ -215,18 +216,19 @@ def fetch_fx_data():
                 # Live Price (Most recent 1h bar)
                 curr = float(series.iloc[-1])
                 
-                # Logic: Resample by Day ('D') and take the '.last()' available price of that day.
-                # This automatically finds the 'Institutional Close' for each date.
-                daily_closes = series.resample('D').last().dropna()
+                # NY Close Anchor: 17:00 EST is 05:00 SGT (or 06:00 during DST)
+                # We filter for the 05:00 SGT candles to find the institutional reset points
+                ny_cut_candles = series[series.index.hour == 5]
                 
-                if len(daily_closes) >= 2:
-                    # p_day = The last price of the PREVIOUS full trading day
-                    p_day = float(daily_closes.iloc[-2])
-                    # p_week = The last price of the oldest trading day in the 10d window
-                    p_week = float(daily_closes.iloc[0])
+                if not ny_cut_candles.empty:
+                    # Daily Change: Current price vs the most recent NY Close (Friday if today is Monday)
+                    p_day = float(ny_cut_candles.iloc[-1])
+                    # Weekly Change: Current price vs the first NY Close in our window
+                    p_week = float(ny_cut_candles.iloc[0])
                 else:
-                    p_day = curr
-                    p_week = curr
+                    # Fallback if no 05:00 candle exists yet
+                    p_day = float(series.iloc[0])
+                    p_week = float(series.iloc[0])
                 
                 mult = 100 if "JPY" in pair else 10000
                 results[pair] = {
