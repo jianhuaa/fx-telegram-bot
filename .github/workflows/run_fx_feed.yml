@@ -29,7 +29,5 @@ jobs:
           pip install requests selenium webdriver-manager selenium-stealth yfinance pandas beautifulsoup4
 
       - name: Run FX Feed Script
-        env:
-          # If you move your token to Secrets (highly recommended)
-          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }} 
+        # NO "env:" block here. The script will just use your hardcoded values.
         run: python fx_feed.py
