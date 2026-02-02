@@ -226,7 +226,7 @@ def scrape_forex_factory():
                 cons = row.find_element(By.CSS_SELECTOR, "td.calendar__forecast").text.strip()
                 prev = row.find_element(By.CSS_SELECTOR, "td.calendar__previous").text.strip()
 
-                flag_map = {"USD":"🇺🇸", "EUR":"🇪🇺", "GBP":"🇬🇧", "JPY":"🇯🇵", "CAD":"🇨🇦", "AUD":"🇦🇺", "NZD":"🇳🇿", "CHF":"🇨🇭"}
+                flag_map = {"USD":"🇺🇸", "EUR":"🇪🇺", "GBP":"🇬🇧", "JPY":"🇯🇵", "CAD":"🇨🇦", "AUD":"🇺🇸", "NZD":"🇳🇿", "CHF":"🇨🇭"}
                 releases.append({
                     "date": current_date_str, "flag": flag_map.get(currency, "🌍"),
                     "title": f"{currency} {event}", "time_sgt": sgt_time,
@@ -239,24 +239,43 @@ def scrape_forex_factory():
     finally:
         if driver: driver.quit()
 
-# ===== CALCULATIONS =====
+# ===== CALCULATIONS (UPDATED WITH FAIL-SAFE LOGIC) =====
 def fetch_fx_data():
+    print("📈 Fetching FX Data (Fail-Safe 5m Mode)...")
     tickers = list(TARGET_PAIRS.values())
-    data = yf.download(tickers, period="1mo", progress=False)
     
-    if isinstance(data.columns, pd.MultiIndex):
-        try: closes = data.xs('Close', level=0, axis=1)
-        except KeyError: closes = data['Close']
-    else: closes = data['Close']
+    # 1. Get Historical Daily Closes (Friday's Close and Last Week's Close)
+    hist_data = yf.download(tickers, period="10d", interval="1d", progress=False)
+    hist_closes = hist_data['Close'] if not isinstance(hist_data.columns, pd.MultiIndex) else hist_data.xs('Close', level=0, axis=1)
+    
+    # 2. Get Live 5-minute Close (Most current price)
+    live_data = yf.download(tickers, period="1d", interval="5m", progress=False)
+    live_closes = live_data['Close'] if not isinstance(live_data.columns, pd.MultiIndex) else live_data.xs('Close', level=0, axis=1)
         
     results = {}
     for pair, ticker in TARGET_PAIRS.items():
-        if ticker in closes.columns:
-            series = closes[ticker].dropna()
-            if len(series) >= 6:
-                curr, p_day, p_week = float(series.iloc[-1]), float(series.iloc[-2]), float(series.iloc[-6])
+        if ticker in hist_closes.columns:
+            h_series = hist_closes[ticker].dropna()
+            
+            # Logic: Use Live 5m if it exists, otherwise fall back to Friday's Daily Close
+            if ticker in live_closes.columns and not live_closes[ticker].dropna().empty:
+                curr = float(live_closes[ticker].dropna().iloc[-1])
+            elif not h_series.empty:
+                curr = float(h_series.iloc[-1])
+            else:
+                continue # Skip if no data found at all
+
+            if len(h_series) >= 6:
+                p_day = float(h_series.iloc[-1])   # Previous Daily Close
+                p_week = float(h_series.iloc[-6])  # Week Ago Daily Close
+                
                 mult = 100 if "JPY" in pair else 10000
-                results[pair] = {"price": curr, "dd": int((curr - p_day) * mult), "ww": int((curr - p_week) * mult), "is_jpy": "JPY" in pair}
+                results[pair] = {
+                    "price": curr, 
+                    "dd": int((curr - p_day) * mult), 
+                    "ww": int((curr - p_week) * mult), 
+                    "is_jpy": "JPY" in pair
+                }
     return results
 
 def calculate_base_movers(fx_data):
@@ -358,3 +377,16 @@ def send_telegram_message(message):
     except Exception as e:
         print(f"Telegram Error: {e}")
         return None
+
+if __name__ == "__main__":
+    print(f"🚀 Started G8 Feed at {now_sgt.strftime('%H:%M:%S')} SGT")
+    current_rates = scrape_cbrates_current()
+    report = f"📊 <b>G8 FX FEED UPDATE</b>\n"
+    report += f"📅 {now_sgt.strftime('%d %b %Y | %H:%M')} SGT\n\n"
+    if current_rates:
+        report += "<b>Current Rates:</b>\n"
+        for bank, rate in current_rates.items(): 
+            report += f"• {bank}: <code>{rate}</code>\n"
+    else: 
+        report += "⚠️ <i>Rates data currently unavailable.</i>\n"
+    send_telegram_message(report)
