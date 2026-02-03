@@ -8,6 +8,7 @@ on:
 jobs:
   fx_feed:
     runs-on: ubuntu-latest
+    timeout-minutes: 15  # Safety: Kills the job if it hangs, saving your quota
 
     steps:
       - name: Checkout repo
@@ -17,17 +18,15 @@ jobs:
         uses: actions/setup-python@v4
         with:
           python-version: '3.10'
+          cache: 'pip' # SPEED BOOST: Caches downloaded libraries between runs
 
-      - name: Install Google Chrome
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y google-chrome-stable
+      # OPTIMIZATION: Removed "Install Google Chrome" step.
+      # The 'ubuntu-latest' runner already includes Chrome Enterprise.
+      # This removal saves ~90 seconds of initialization time.
 
       - name: Install dependencies
         run: |
-          python -m pip install --upgrade pip
-          pip install requests selenium webdriver-manager selenium-stealth yfinance pandas beautifulsoup4
+          pip install requests selenium webdriver-manager selenium-stealth yfinance pandas beautifulsoup4 cloudscraper
 
       - name: Run FX Feed Script
-        # NO "env:" block here. The script will just use your hardcoded values.
         run: python fx_feed.py
