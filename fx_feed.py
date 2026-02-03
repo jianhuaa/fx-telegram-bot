@@ -49,7 +49,6 @@ base_outlook = {
 def setup_driver():
     options = Options()
     options.add_argument("--headless=new")
-    # CHANGE 1: Linux/GitHub Runner compatibility flags
     options.add_argument("--no-sandbox")
     options.add_argument("--disable-dev-shm-usage")
     options.add_argument("--window-size=1920,1080")
@@ -85,12 +84,10 @@ def scrape_cbrates_current():
     print("🏛️ Scraping Current Rates (cbrates.com) [v3 Robust]...")
     url = "https://www.cbrates.com/"
     rates = {}
-    
     identifier_map = {
         "(Fed)": "Fed", "(ECB)": "ECB", "(BoE)": "BoE", "(BoJ)": "BoJ",
         "(BoC)": "BoC", "(SNB)": "SNB", "Australia": "RBA", "New Zealand": "RBNZ"
     }
-
     try:
         r = requests.get(url, headers={'User-Agent': 'Mozilla/5.0'})
         soup = BeautifulSoup(r.text, 'html.parser')
@@ -195,41 +192,27 @@ def scrape_forex_factory():
     finally:
         if driver: driver.quit()
 
-# ===== CALCULATIONS (INSTITUTIONAL NY CUT LOGIC) =====
+# ===== CALCULATIONS =====
 def fetch_fx_data():
     print("📈 Fetching FX Data (Institutional Anchor: 05:00 SGT)...")
     tickers = list(TARGET_PAIRS.values())
-    
-    # We download 10 days of 1-hour data to find the NY Close anchors
-    # 1h is much more stable than 1m for historical session identification
     data = yf.download(tickers, period="10d", interval="1h", progress=False)
-    
     if isinstance(data.columns, pd.MultiIndex):
         closes = data.xs('Close', level=0, axis=1)
     else: closes = data['Close']
-    
     results = {}
     for pair, ticker in TARGET_PAIRS.items():
         if ticker in closes.columns:
             series = closes[ticker].dropna()
             if not series.empty:
-                # Live Price (Most recent 1h bar)
                 curr = float(series.iloc[-1])
-                
-                # NY Close Anchor: 17:00 EST is 05:00 SGT (or 06:00 during DST)
-                # We filter for the 05:00 SGT candles to find the institutional reset points
                 ny_cut_candles = series[series.index.hour == 5]
-                
                 if not ny_cut_candles.empty:
-                    # Daily Change: Current price vs the most recent NY Close (Friday if today is Monday)
                     p_day = float(ny_cut_candles.iloc[-1])
-                    # Weekly Change: Current price vs the first NY Close in our window
                     p_week = float(ny_cut_candles.iloc[0])
                 else:
-                    # Fallback if no 05:00 candle exists yet
                     p_day = float(series.iloc[0])
                     p_week = float(series.iloc[0])
-                
                 mult = 100 if "JPY" in pair else 10000
                 results[pair] = {
                     "price": curr, 
@@ -258,7 +241,8 @@ scraped_meetings = scrape_cbrates_meetings()
 calendar_events = scrape_forex_factory()
 base_movers = calculate_base_movers(fx_results)
 
-lines = [f"📊 *G8 FX Update* — {now_sgt.strftime('%H:%M')} SGT\n", "🔥 *Top Movers (Base Index)*"]
+# Switch to HTML tags for Telegram Expandable Quotes
+lines = [f"📊 <b>G8 FX Update</b> — {now_sgt.strftime('%H:%M')} SGT\n", "🔥 <b>Top Movers (Base Index)</b>"]
 for curr, vals in sorted(base_movers.items()):
     lines.append(f"{curr}: {vals[0]:+} pips d/d | {vals[1]:+} w/w")
 
@@ -280,55 +264,61 @@ for base, pairs in groups.items():
         if pair in fx_results:
             d = fx_results[pair]
             p_fmt = f"{d['price']:.2f}" if d['is_jpy'] else f"{d['price']:.4f}"
-            seg.append(f"{pair} `{p_fmt}`  {d['dd']:+} d/d | {d['ww']:+} w/w")
+            seg.append(f"{pair} <code>{p_fmt}</code>  {d['dd']:+} d/d | {d['ww']:+} w/w")
     if seg:
-        lines.append(f"*{base}*")
-        lines.append("\n".join(seg) + "\n")
+        lines.append(f"<b>{base} Pairs</b>")
+        # WRAPPER: Expandable blockquote for each currency group
+        lines.append(f"<blockquote expandable>\n" + "\n".join(seg) + "\n</blockquote>")
 
 lines.append("---")
-lines.append("📅 *Weekly Economic Calendar (Central Time)*") 
+lines.append("📅 <b>Weekly Economic Calendar</b>") 
 if calendar_events:
+    cal_seg = []
     for e in calendar_events:
-        lines.append(f"[{e['date']}] {e['flag']} {e['title']} | {e['time_sgt']}")
-        if e['act'] != "-": lines.append(f"    Act: {e['act']} | C: {e['cons']} | P: {e['prev']}")
+        event_line = f"[{e['date']}] {e['flag']} {e['title']} | {e['time_sgt']}"
+        if e['act'] != "-": 
+            event_line += f"\n   Act: {e['act']} | C: {e['cons']} | P: {e['prev']}"
+        cal_seg.append(event_line)
+    # WRAPPER: Expandable blockquote for the calendar
+    lines.append(f"<blockquote expandable>\n" + "\n".join(cal_seg) + "\n</blockquote>")
 else: lines.append("No high impact events today.")
 
 lines.append("\n---")
-lines.append("🏛 *Central Bank Policy Rates*")
+lines.append("🏛 <b>Central Bank Policy Rates</b>")
 if scraped_rates:
+    rate_seg = []
     order = ["RBA", "BoC", "SNB", "ECB", "BoE", "BoJ", "RBNZ", "Fed"]
     for bank in order:
         rate = scraped_rates.get(bank, "N/A")
-        lines.append(f"{bank}: {rate}")
-else: lines.append("⚠️ _Scraping Failed_")
+        rate_seg.append(f"{bank}: {rate}")
+    lines.append(f"<blockquote expandable>\n" + "\n".join(rate_seg) + "\n</blockquote>")
+else: lines.append("⚠️ <i>Scraping Failed</i>")
 
-lines.append("\n🔮 *Rates Outlook*")
+lines.append("\n🔮 <b>Rates Outlook</b>")
+outlook_seg = []
 order = ["RBA", "BoC", "SNB", "ECB", "BoE", "BoJ", "RBNZ", "Fed"]
 for bank in order:
     probs = base_outlook.get(bank, ["-", "-"])
     date_str = scraped_meetings.get(bank, "TBA") if scraped_meetings else "TBA"
-    lines.append(f"{bank}: {probs[0]} | {probs[1]} | {date_str}")
+    outlook_seg.append(f"{bank}: {probs[0]} | {probs[1]} | {date_str}")
+lines.append(f"<blockquote expandable>\n" + "\n".join(outlook_seg) + "\n</blockquote>")
 
-print("Sending to Telegram...")
-try:
-    response = requests.post(f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage", 
-                             data={"chat_id": CHAT_ID, "text": "\n".join(lines), "parse_mode": "Markdown"})
-    print(f"Status Code: {response.status_code}")
-except Exception as e:
-    print(f"Error sending message: {e}")
-
-def send_telegram_message(message):
-    """Sends the final report to Telegram using your config."""
+def send_telegram_message(message_text):
+    print("Sending to Telegram...")
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
     payload = {
-        "chat_id": CHAT_ID, 
-        "text": message, 
+        "chat_id": CHAT_ID,
+        "text": message_text,
         "parse_mode": "HTML",
         "disable_web_page_preview": True
     }
     try:
         response = requests.post(url, json=payload)
+        print(f"Status Code: {response.status_code}")
         return response.json()
     except Exception as e:
         print(f"Telegram Error: {e}")
         return None
+
+# Trigger the send
+send_telegram_message("\n".join(lines))
