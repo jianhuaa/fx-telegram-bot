@@ -21,7 +21,7 @@ from selenium_stealth import stealth
 TELEGRAM_TOKEN = "7649050168:AAHNIYnrHzLOTcjNuMpeKgyUbfJB9x9an3c"
 CHAT_ID = "876384974"
 
-# IANA Timezone Objects
+# IANA Timezone Objects (Crucial for 13h vs 14h DST logic)
 SGT = ZoneInfo("Asia/Singapore")
 ET = ZoneInfo("America/New_York")
 
@@ -71,25 +71,24 @@ def setup_driver():
     
     driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=options)
     
-    # Force New York Timezone at the browser level to stabilize ForexFactory input
+    # FORCE BROWSER TO NEW YORK TIME (Aligns ForexFactory to ET)
     driver.execute_cdp_cmd('Emulation.setTimezoneOverride', {'timezoneId': 'America/New_York'})
     
     stealth(driver, languages=["en-US", "en"], vendor="Google Inc.", platform="Win32", webgl_vendor="Intel Inc.", renderer="Intel Iris OpenGL Engine", fix_hairline=True)
     return driver
 
 def convert_time_to_sgt(date_str, time_str):
-    """Dynamic conversion from ET (ForexFactory) to SGT AM/PM."""
+    """Converts ET Strings to 12-hour SGT Format using IANA DB."""
     if not time_str or any(x in time_str for x in ["All Day", "Tentative"]): return time_str
     try:
         current_year = datetime.now().year
         dt_str = f"{date_str} {current_year} {time_str}"
         naive_dt = datetime.strptime(dt_str, "%a %b %d %Y %I:%M%p")
         
-        # Localize as ET, then convert to SGT
+        # Localize as ET, then cast to SGT
         et_dt = naive_dt.replace(tzinfo=ET)
         sgt_dt = et_dt.astimezone(SGT)
         
-        # Return in 12-hour format with AM/PM
         return sgt_dt.strftime("%I:%M %p")
     except: return time_str
 
@@ -99,7 +98,6 @@ def scrape_cbrates_current():
     print("🏛️ Scraping Current Rates (cbrates.com) [v3 Robust]...")
     url = "https://www.cbrates.com/"
     rates = {}
-    
     identifier_map = {
         "(Fed)": "Fed", "(ECB)": "ECB", "(BoE)": "BoE", "(BoJ)": "BoJ",
         "(BoC)": "BoC", "(SNB)": "SNB", "Australia": "RBA", "New Zealand": "RBNZ"
@@ -265,12 +263,12 @@ scraped_meetings = scrape_cbrates_meetings()
 calendar_events = scrape_forex_factory()
 base_movers = calculate_base_movers(fx_results)
 
-# Build Header with SGT / ET
-lines = [f"📊 <b>G8 FX Update</b> — {now_sgt.strftime('%H:%M')} SGT / {now_et.strftime('%H:%M')} ET\n", "🔥 <b>Top Movers (Base Index)</b>"]
+# Build Headers
+lines = [f"📊 <b>G8 FX Update</b> — {now_sgt.strftime('%I:%M %p')} SGT / {now_et.strftime('%I:%M %p')} ET\n", "🔥 <b>Top Movers (Base Index)</b>"]
 for curr, vals in sorted(base_movers.items()):
     lines.append(f"{curr}: {vals[0]:+} pips d/d | {vals[1]:+} w/w")
 
-# 28 FX CROSSES SECTION
+# Consolidated 28 Pairs
 lines.append("\n💰 <b>28 FX G8 Crosses</b>")
 groups = {
     "AUD": ["AUDCAD", "AUDCHF", "AUDJPY", "AUDNZD", "AUDUSD"],
@@ -294,10 +292,10 @@ for base, pairs in groups.items():
 
 lines.append(f"<blockquote expandable>\n" + "\n\n".join(all_crosses_content) + "\n</blockquote>")
 
-# 1 Blank line before Economic Calendar
-lines.append("") 
+# Blank Space
+lines.append("")
 
-# CALENDAR SECTION - Updated Header to (ET)
+# Calendar Section
 lines.append("📅 <b>Economic Calendar (ET)</b>") 
 if calendar_events:
     cal_content = []
@@ -308,10 +306,10 @@ if calendar_events:
     lines.append(f"<blockquote expandable>\n" + "\n".join(cal_content) + "\n</blockquote>")
 else: lines.append("<blockquote expandable>No high impact events today.</blockquote>")
 
-# 1 Blank line before Central Bank Rates
-lines.append("") 
+# Blank Space
+lines.append("")
 
-# POLICY RATES SECTION
+# Central Bank Rates
 lines.append("🏛 <b>Central Bank Rates</b>")
 if scraped_rates:
     rate_content = []
@@ -322,7 +320,7 @@ if scraped_rates:
     lines.append(f"<blockquote expandable>\n" + "\n".join(rate_content) + "\n</blockquote>")
 else: lines.append("<blockquote expandable>⚠️ Scraping Failed</blockquote>")
 
-# OUTLOOK SECTION
+# Outlook
 lines.append("\n🔮 <b>Rates Outlook</b>")
 outlook_content = []
 order = ["RBA", "BoC", "SNB", "ECB", "BoE", "BoJ", "RBNZ", "Fed"]
@@ -332,11 +330,10 @@ for bank in order:
     outlook_content.append(f"{bank}: {probs[0]} | {probs[1]} | {date_str}")
 lines.append(f"<blockquote expandable>\n" + "\n".join(outlook_content) + "\n</blockquote>")
 
-# Final Sender
+# Final Post
 print("Sending to Telegram...")
 try:
-    response = requests.post(f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage", 
-                             json={"chat_id": CHAT_ID, "text": "\n".join(lines), "parse_mode": "HTML", "disable_web_page_preview": True})
-    print(f"Status Code: {response.status_code}")
+    requests.post(f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage", 
+                  json={"chat_id": CHAT_ID, "text": "\n".join(lines), "parse_mode": "HTML", "disable_web_page_preview": True})
 except Exception as e:
-    print(f"Error sending message: {e}")
+    print(f"Error: {e}")
