@@ -21,7 +21,7 @@ from selenium_stealth import stealth
 TELEGRAM_TOKEN = "7649050168:AAHNIYnrHzLOTcjNuMpeKgyUbfJB9x9an3c"
 CHAT_ID = "876384974"
 
-# IANA Timezone Objects
+# IANA Timezone Objects for precision
 SGT = ZoneInfo("Asia/Singapore")
 ET = ZoneInfo("America/New_York")
 
@@ -97,7 +97,8 @@ def scrape_cbrates_current():
                 if identifier in text:
                     if code == "Fed":
                         range_match = re.search(r"(\d+\.\d{2})\s*-\s*(\d+\.\d{2})", text)
-                        if range_match: rates[code] = range_match.group(2) + "%"
+                        if range_match: 
+                            rates[code] = range_match.group(2) + "%"
                         else:
                             match = re.search(r"(\d+\.\d{2})", text)
                             if match: rates[code] = match.group(1) + "%"
@@ -177,7 +178,7 @@ def scrape_forex_factory():
                 event = row.find_element(By.CSS_SELECTOR, "span.calendar__event-title").text.strip()
                 time_str = row.find_element(By.CSS_SELECTOR, "td.calendar__time").text.strip()
                 
-                # RAW TIME: No conversion, strictly what the source says (ET)
+                # RAW TIME FROM SOURCE (ET)
                 if not time_str: time_str = last_valid_time
                 else: last_valid_time = time_str
                 
@@ -215,7 +216,12 @@ def fetch_fx_data():
                     p_day = float(series.iloc[0])
                     p_week = float(series.iloc[0])
                 mult = 100 if "JPY" in pair else 10000
-                results[pair] = {"price": curr, "dd": int((curr - p_day) * mult), "ww": int((curr - p_week) * mult), "is_jpy": "JPY" in pair}
+                results[pair] = {
+                    "price": curr, 
+                    "dd": int((curr - p_day) * mult), 
+                    "ww": int((curr - p_week) * mult), 
+                    "is_jpy": "JPY" in pair
+                }
     return results
 
 def calculate_base_movers(fx_data):
@@ -237,14 +243,23 @@ scraped_meetings = scrape_cbrates_meetings()
 calendar_events = scrape_forex_factory()
 base_movers = calculate_base_movers(fx_results)
 
-# Build Header: SGT / ET
-lines = [f"📊 <b>G8 FX Update</b> — {now_sgt.strftime('%I:%M %p')} SGT / {now_et.strftime('%I:%M %p')} ET\n", "🔥 <b>Top Movers (Base Index)</b>"]
+# Build Header: Compact Lowercase
+lines = [f"📊 <b>G8 FX Update</b> — {now_sgt.strftime('%I:%M%p').lower()} SGT / {now_et.strftime('%I:%M%p').lower()} ET\n", "🔥 <b>Top Movers</b>"]
 for curr, vals in sorted(base_movers.items()):
     lines.append(f"{curr}: {vals[0]:+} pips d/d | {vals[1]:+} w/w")
 
-# FX Crosses Section
+# FX Crosses Vault
 lines.append("\n💰 <b>28 FX G8 Crosses</b>")
-groups = {"AUD": ["AUDCAD", "AUDCHF", "AUDJPY", "AUDNZD", "AUDUSD"], "CAD": ["CADCHF", "CADJPY"], "CHF": ["CHFJPY"], "EUR": ["EURAUD", "EURCAD", "EURCHF", "EURGBP", "EURJPY", "EURNZD", "EURUSD"], "GBP": ["GBPAUD", "GBPCAD", "GBPCHF", "GBPJPY", "GBPNZD", "GBPUSD"], "NZD": ["NZDCAD", "NZDCHF", "NZDJPY", "NZDUSD"], "USD": ["USDCAD", "USDCHF", "USDJPY"]}
+groups = {
+    "AUD": ["AUDCAD", "AUDCHF", "AUDJPY", "AUDNZD", "AUDUSD"],
+    "CAD": ["CADCHF", "CADJPY"],
+    "CHF": ["CHFJPY"],
+    "EUR": ["EURAUD", "EURCAD", "EURCHF", "EURGBP", "EURJPY", "EURNZD", "EURUSD"],
+    "GBP": ["GBPAUD", "GBPCAD", "GBPCHF", "GBPJPY", "GBPNZD", "GBPUSD"],
+    "NZD": ["NZDCAD", "NZDCHF", "NZDJPY", "NZDUSD"],
+    "USD": ["USDCAD", "USDCHF", "USDJPY"]
+}
+
 all_crosses_content = []
 for base, pairs in groups.items():
     seg = [f"<b>{base}</b>"]
@@ -254,39 +269,60 @@ for base, pairs in groups.items():
             p_fmt = f"{d['price']:.2f}" if d['is_jpy'] else f"{d['price']:.4f}"
             seg.append(f"{pair} <code>{p_fmt}</code> {d['dd']:+} d/d | {d['ww']:+} w/w")
     all_crosses_content.append("\n".join(seg))
+
 lines.append(f"<blockquote expandable>\n" + "\n\n".join(all_crosses_content) + "\n</blockquote>")
 
-lines.append("") # Blank line for space
+# Blank Line Space
+lines.append("")
 
-# CALENDAR SECTION: ET labeled for manual SGT calculation
+# Calendar Section (ET Strictly)
 lines.append("📅 <b>Economic Calendar (ET)</b>") 
 if calendar_events:
     cal_content = []
     for e in calendar_events:
         txt = f"[{e['date']}] {e['flag']} {e['title']} | {e['time_et']} ET"
-        if e['act'] != "-": txt += f"\n   Act: {e['act']} | C: {e['cons']} | P: {e['prev']}"
+        if e['act'] != "-": 
+            txt += f"\n   Act: {e['act']} | C: {e['cons']} | P: {e['prev']}"
         cal_content.append(txt)
     lines.append(f"<blockquote expandable>\n" + "\n".join(cal_content) + "\n</blockquote>")
-else: lines.append("<blockquote expandable>No high impact events today.</blockquote>")
+else:
+    lines.append("<blockquote expandable>No high impact events today.</blockquote>")
 
-lines.append("") # Blank line for space
+# Blank Line Space
+lines.append("")
 
-# Rates Section
+# Central Bank Rates
 lines.append("🏛 <b>Central Bank Rates</b>")
 if scraped_rates:
-    rate_content = [f"{bank}: {scraped_rates.get(bank, 'N/A')}" for bank in ["RBA", "BoC", "SNB", "ECB", "BoE", "BoJ", "RBNZ", "Fed"]]
+    rate_content = []
+    order = ["RBA", "BoC", "SNB", "ECB", "BoE", "BoJ", "RBNZ", "Fed"]
+    for bank in order:
+        val = scraped_rates.get(bank, "N/A")
+        rate_content.append(f"{bank}: {val}")
     lines.append(f"<blockquote expandable>\n" + "\n".join(rate_content) + "\n</blockquote>")
-else: lines.append("<blockquote expandable>⚠️ Scraping Failed</blockquote>")
+else:
+    lines.append("<blockquote expandable>⚠️ Scraping Failed</blockquote>")
 
-# Outlook Section
+# Outlook
 lines.append("\n🔮 <b>Rates Outlook</b>")
-outlook_content = [f"{bank}: {base_outlook.get(bank, ['-','-'])[0]} | {base_outlook.get(bank, ['-','-'])[1]} | {scraped_meetings.get(bank, 'TBA')}" for bank in ["RBA", "BoC", "SNB", "ECB", "BoE", "BoJ", "RBNZ", "Fed"]]
+outlook_content = []
+order = ["RBA", "BoC", "SNB", "ECB", "BoE", "BoJ", "RBNZ", "Fed"]
+for bank in order:
+    probs = base_outlook.get(bank, ["-", "-"])
+    meet_date = scraped_meetings.get(bank, "TBA") if scraped_meetings else "TBA"
+    outlook_content.append(f"{bank}: {probs[0]} | {probs[1]} | {meet_date}")
 lines.append(f"<blockquote expandable>\n" + "\n".join(outlook_content) + "\n</blockquote>")
 
-# Telegram Send
+# Telegram Bot Dispatch
 print("Sending to Telegram...")
 try:
-    requests.post(f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage", 
-                  json={"chat_id": CHAT_ID, "text": "\n".join(lines), "parse_mode": "HTML", "disable_web_page_preview": True})
+    response = requests.post(f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage", 
+                             json={
+                                 "chat_id": CHAT_ID, 
+                                 "text": "\n".join(lines), 
+                                 "parse_mode": "HTML", 
+                                 "disable_web_page_preview": True
+                             })
+    print(f"Status: {response.status_code}")
 except Exception as e:
-    print(f"Error: {e}")
+    print(f"Telegram Error: {e}")
