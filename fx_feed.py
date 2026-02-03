@@ -21,13 +21,12 @@ from selenium_stealth import stealth
 TELEGRAM_TOKEN = "7649050168:AAHNIYnrHzLOTcjNuMpeKgyUbfJB9x9an3c"
 CHAT_ID = "876384974"
 
-# IANA Timezone Objects (Handles DST changes automatically)
+# IANA Timezone Objects
 SGT = ZoneInfo("Asia/Singapore")
-CT = ZoneInfo("America/Chicago")
 ET = ZoneInfo("America/New_York")
 
 now_sgt = datetime.now(SGT)
-now_ct = datetime.now(CT)
+now_et = datetime.now(ET)
 
 TARGET_PAIRS = {
     "AUDCAD": "AUDCAD=X", "AUDCHF": "AUDCHF=X", "AUDJPY": "AUDJPY=X", "AUDNZD": "AUDNZD=X", "AUDUSD": "AUDUSD=X",
@@ -72,25 +71,26 @@ def setup_driver():
     
     driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=options)
     
-    # Force New York Timezone at the browser level to stabilize ForexFactory
+    # Force New York Timezone at the browser level to stabilize ForexFactory input
     driver.execute_cdp_cmd('Emulation.setTimezoneOverride', {'timezoneId': 'America/New_York'})
     
     stealth(driver, languages=["en-US", "en"], vendor="Google Inc.", platform="Win32", webgl_vendor="Intel Inc.", renderer="Intel Iris OpenGL Engine", fix_hairline=True)
     return driver
 
 def convert_time_to_sgt(date_str, time_str):
-    """Dynamic conversion from ET (ForexFactory) to SGT via IANA database."""
+    """Dynamic conversion from ET (ForexFactory) to SGT AM/PM."""
     if not time_str or any(x in time_str for x in ["All Day", "Tentative"]): return time_str
     try:
         current_year = datetime.now().year
         dt_str = f"{date_str} {current_year} {time_str}"
         naive_dt = datetime.strptime(dt_str, "%a %b %d %Y %I:%M%p")
         
-        # Localize as New York (ET), then cast to Singapore (SGT)
+        # Localize as ET, then convert to SGT
         et_dt = naive_dt.replace(tzinfo=ET)
         sgt_dt = et_dt.astimezone(SGT)
         
-        return sgt_dt.strftime("%H:%M")
+        # Return in 12-hour format with AM/PM
+        return sgt_dt.strftime("%I:%M %p")
     except: return time_str
 
 # ===== SCRAPERS =====
@@ -197,13 +197,14 @@ def scrape_forex_factory():
                 if not time_str: time_str = last_valid_time
                 else: last_valid_time = time_str
                 
-                sgt_time = convert_time_to_sgt(current_date_str, time_str)
+                # Conversion to 12-hour SGT
+                sgt_time_formatted = convert_time_to_sgt(current_date_str, time_str)
                 
                 act = row.find_element(By.CSS_SELECTOR, "td.calendar__actual").text.strip()
                 cons = row.find_element(By.CSS_SELECTOR, "td.calendar__forecast").text.strip()
                 prev = row.find_element(By.CSS_SELECTOR, "td.calendar__previous").text.strip()
                 flag_map = {"USD":"🇺🇸", "EUR":"🇪🇺", "GBP":"🇬🇧", "JPY":"🇯🇵", "CAD":"🇨🇦", "AUD":"🇦🇺", "NZD":"🇳🇿", "CHF":"🇨🇭"}
-                releases.append({"date": current_date_str, "flag": flag_map.get(currency, "🌍"), "title": f"{currency} {event}", "time_sgt": sgt_time, "act": act or "-", "cons": cons or "-", "prev": prev or "-"})
+                releases.append({"date": current_date_str, "flag": flag_map.get(currency, "🌍"), "title": f"{currency} {event}", "time_sgt": sgt_time_formatted, "act": act or "-", "cons": cons or "-", "prev": prev or "-"})
             except: continue
         return releases
     except Exception as e:
@@ -264,8 +265,8 @@ scraped_meetings = scrape_cbrates_meetings()
 calendar_events = scrape_forex_factory()
 base_movers = calculate_base_movers(fx_results)
 
-# Build Header
-lines = [f"📊 <b>G8 FX Update</b> — {now_sgt.strftime('%H:%M')} SGT / {now_ct.strftime('%H:%M')} CT\n", "🔥 <b>Top Movers (Base Index)</b>"]
+# Build Header with SGT / ET
+lines = [f"📊 <b>G8 FX Update</b> — {now_sgt.strftime('%H:%M')} SGT / {now_et.strftime('%H:%M')} ET\n", "🔥 <b>Top Movers (Base Index)</b>"]
 for curr, vals in sorted(base_movers.items()):
     lines.append(f"{curr}: {vals[0]:+} pips d/d | {vals[1]:+} w/w")
 
@@ -293,11 +294,11 @@ for base, pairs in groups.items():
 
 lines.append(f"<blockquote expandable>\n" + "\n\n".join(all_crosses_content) + "\n</blockquote>")
 
-# ADDED SPACE: 1 Blank line before Economic Calendar
+# 1 Blank line before Economic Calendar
 lines.append("") 
 
-# CALENDAR SECTION
-lines.append("📅 <b>Economic Calendar (SGT)</b>") 
+# CALENDAR SECTION - Updated Header to (ET)
+lines.append("📅 <b>Economic Calendar (ET)</b>") 
 if calendar_events:
     cal_content = []
     for e in calendar_events:
@@ -307,7 +308,7 @@ if calendar_events:
     lines.append(f"<blockquote expandable>\n" + "\n".join(cal_content) + "\n</blockquote>")
 else: lines.append("<blockquote expandable>No high impact events today.</blockquote>")
 
-# ADDED SPACE: 1 Blank line before Central Bank Rates
+# 1 Blank line before Central Bank Rates
 lines.append("") 
 
 # POLICY RATES SECTION
