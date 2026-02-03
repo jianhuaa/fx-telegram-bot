@@ -4,7 +4,8 @@ import re
 import pandas as pd
 import yfinance as yf
 from bs4 import BeautifulSoup
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo 
 
 # Selenium Imports
 from selenium import webdriver
@@ -20,12 +21,13 @@ from selenium_stealth import stealth
 TELEGRAM_TOKEN = "7649050168:AAHNIYnrHzLOTcjNuMpeKgyUbfJB9x9an3c"
 CHAT_ID = "876384974"
 
-# Timezone Logic
-SGT_TZ = timezone(timedelta(hours=8))
-CT_TZ = timezone(timedelta(hours=-6)) # Central Standard Time
+# IANA Timezone Objects (Fixes DST automatically)
+SGT = ZoneInfo("Asia/Singapore")
+CT = ZoneInfo("America/Chicago")
+ET = ZoneInfo("America/New_York")
 
-now_sgt = datetime.now(SGT_TZ)
-now_ct = datetime.now(CT_TZ)
+now_sgt = datetime.now(SGT)
+now_ct = datetime.now(CT)
 
 TARGET_PAIRS = {
     "AUDCAD": "AUDCAD=X", "AUDCHF": "AUDCHF=X", "AUDJPY": "AUDJPY=X", "AUDNZD": "AUDNZD=X", "AUDUSD": "AUDUSD=X",
@@ -67,32 +69,42 @@ def setup_driver():
     options.add_experimental_option("excludeSwitches", ["enable-automation"])
     
     options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36")
+    
     driver = webdriver.Chrome(service=Service(ChromeDriverManager().install()), options=options)
+    
+    # Force New York Timezone at the browser level to stabilize ForexFactory
+    driver.execute_cdp_cmd('Emulation.setTimezoneOverride', {'timezoneId': 'America/New_York'})
     
     stealth(driver, languages=["en-US", "en"], vendor="Google Inc.", platform="Win32", webgl_vendor="Intel Inc.", renderer="Intel Iris OpenGL Engine", fix_hairline=True)
     return driver
 
 def convert_time_to_sgt(date_str, time_str):
+    """Dynamic conversion from ET (ForexFactory) to SGT via UTC bridge."""
     if not time_str or any(x in time_str for x in ["All Day", "Tentative"]): return time_str
     try:
         current_year = datetime.now().year
         dt_str = f"{date_str} {current_year} {time_str}"
-        dt_obj = datetime.strptime(dt_str, "%a %b %d %Y %I:%M%p")
-        # Logic remains unchanged per user request
-        sgt_time = dt_obj + timedelta(hours=13) 
-        return sgt_time.strftime("%H:%M")
+        naive_dt = datetime.strptime(dt_str, "%a %b %d %Y %I:%M%p")
+        
+        # Localize as New York (ET), then cast to Singapore (SGT)
+        et_dt = naive_dt.replace(tzinfo=ET)
+        sgt_dt = et_dt.astimezone(SGT)
+        
+        return sgt_dt.strftime("%H:%M")
     except: return time_str
 
 # ===== SCRAPERS =====
 
 def scrape_cbrates_current():
-    print("🏛️ Scraping Current Rates...")
+    print("🏛️ Scraping Current Rates (cbrates.com) [v3 Robust]...")
     url = "https://www.cbrates.com/"
     rates = {}
+    
     identifier_map = {
         "(Fed)": "Fed", "(ECB)": "ECB", "(BoE)": "BoE", "(BoJ)": "BoJ",
         "(BoC)": "BoC", "(SNB)": "SNB", "Australia": "RBA", "New Zealand": "RBNZ"
     }
+
     try:
         r = requests.get(url, headers={'User-Agent': 'Mozilla/5.0'})
         soup = BeautifulSoup(r.text, 'html.parser')
@@ -119,7 +131,7 @@ def scrape_cbrates_current():
         print(f"⚠️ CBRates Rates Failed: {e}"); return None
 
 def scrape_cbrates_meetings():
-    print("🗓️ Scraping Meeting Dates...")
+    print("🗓️ Scraping Meeting Dates (cbrates.com/meetings)...")
     url = "https://www.cbrates.com/meetings.htm"
     upcoming_meetings = {}
     identifiers = {
@@ -159,7 +171,7 @@ def scrape_cbrates_meetings():
         print(f"⚠️ CBRates Meetings Failed: {e}"); return None
 
 def scrape_forex_factory():
-    print("📅 Scraping ForexFactory...")
+    print("📅 Scraping ForexFactory (Today)...")
     driver = None
     releases = []
     try:
@@ -184,7 +196,9 @@ def scrape_forex_factory():
                 time_str = row.find_element(By.CSS_SELECTOR, "td.calendar__time").text.strip()
                 if not time_str: time_str = last_valid_time
                 else: last_valid_time = time_str
+                
                 sgt_time = convert_time_to_sgt(current_date_str, time_str)
+                
                 act = row.find_element(By.CSS_SELECTOR, "td.calendar__actual").text.strip()
                 cons = row.find_element(By.CSS_SELECTOR, "td.calendar__forecast").text.strip()
                 prev = row.find_element(By.CSS_SELECTOR, "td.calendar__previous").text.strip()
@@ -199,12 +213,14 @@ def scrape_forex_factory():
 
 # ===== CALCULATIONS =====
 def fetch_fx_data():
-    print("📈 Fetching FX Data...")
+    print("📈 Fetching FX Data (Institutional Anchor: 05:00 SGT)...")
     tickers = list(TARGET_PAIRS.values())
     data = yf.download(tickers, period="10d", interval="1h", progress=False)
+    
     if isinstance(data.columns, pd.MultiIndex):
         closes = data.xs('Close', level=0, axis=1)
     else: closes = data['Close']
+    
     results = {}
     for pair, ticker in TARGET_PAIRS.items():
         if ticker in closes.columns:
@@ -212,12 +228,14 @@ def fetch_fx_data():
             if not series.empty:
                 curr = float(series.iloc[-1])
                 ny_cut_candles = series[series.index.hour == 5]
+                
                 if not ny_cut_candles.empty:
                     p_day = float(ny_cut_candles.iloc[-1])
                     p_week = float(ny_cut_candles.iloc[0])
                 else:
                     p_day = float(series.iloc[0])
                     p_week = float(series.iloc[0])
+                
                 mult = 100 if "JPY" in pair else 10000
                 results[pair] = {
                     "price": curr, 
@@ -246,12 +264,12 @@ scraped_meetings = scrape_cbrates_meetings()
 calendar_events = scrape_forex_factory()
 base_movers = calculate_base_movers(fx_results)
 
-# HEADER WITH DUAL TIMEZONES
+# Build Header with Dual Timezone
 lines = [f"📊 <b>G8 FX Update</b> — {now_sgt.strftime('%H:%M')} SGT / {now_ct.strftime('%H:%M')} CT\n", "🔥 <b>Top Movers (Base Index)</b>"]
 for curr, vals in sorted(base_movers.items()):
     lines.append(f"{curr}: {vals[0]:+} pips d/d | {vals[1]:+} w/w")
 
-# FX CROSSES SECTION - Swapped to Finance Emoji
+# FX Crosses Vault
 lines.append("\n💰 <b>28 FX G8 Crosses</b>")
 groups = {
     "AUD": ["AUDCAD", "AUDCHF", "AUDJPY", "AUDNZD", "AUDUSD"],
@@ -262,65 +280,56 @@ groups = {
     "NZD": ["NZDCAD", "NZDCHF", "NZDJPY", "NZDUSD"],
     "USD": ["USDCAD", "USDCHF", "USDJPY"]
 }
-all_crosses_seg = []
+
+all_crosses_content = []
 for base, pairs in groups.items():
-    group_lines = [f"<b>{base}</b>"]
+    seg = [f"<b>{base}</b>"]
     for pair in pairs:
         if pair in fx_results:
             d = fx_results[pair]
             p_fmt = f"{d['price']:.2f}" if d['is_jpy'] else f"{d['price']:.4f}"
-            group_lines.append(f"{pair} <code>{p_fmt}</code> {d['dd']:+} d/d | {d['ww']:+} w/w")
-    all_crosses_seg.append("\n".join(group_lines))
-lines.append(f"<blockquote expandable>\n" + "\n\n".join(all_crosses_seg) + "\n</blockquote>")
+            seg.append(f"{pair} <code>{p_fmt}</code> {d['dd']:+} d/d | {d['ww']:+} w/w")
+    all_crosses_content.append("\n".join(seg))
 
-# CALENDAR SECTION - Updated Title
-lines.append("📅 <b>Economic Calendar (Central Time)</b>") 
+lines.append(f"<blockquote expandable>\n" + "\n\n".join(all_crosses_content) + "\n</blockquote>")
+
+# Calendar Section
+lines.append("📅 <b>Economic Calendar (SGT)</b>") 
 if calendar_events:
-    cal_seg = []
+    cal_content = []
     for e in calendar_events:
-        event_line = f"[{e['date']}] {e['flag']} {e['title']} | {e['time_sgt']}"
-        if e['act'] != "-": 
-            event_line += f"\n   Act: {e['act']} | C: {e['cons']} | P: {e['prev']}"
-        cal_seg.append(event_line)
-    lines.append(f"<blockquote expandable>\n" + "\n".join(cal_seg) + "\n</blockquote>")
+        txt = f"[{e['date']}] {e['flag']} {e['title']} | {e['time_sgt']}"
+        if e['act'] != "-": txt += f"\n   Act: {e['act']} | C: {e['cons']} | P: {e['prev']}"
+        cal_content.append(txt)
+    lines.append(f"<blockquote expandable>\n" + "\n".join(cal_content) + "\n</blockquote>")
 else: lines.append("<blockquote expandable>No high impact events today.</blockquote>")
 
-# POLICY RATES SECTION
+# Policy Rates
 lines.append("🏛 <b>Central Bank Rates</b>")
 if scraped_rates:
-    rate_seg = []
+    rate_content = []
     order = ["RBA", "BoC", "SNB", "ECB", "BoE", "BoJ", "RBNZ", "Fed"]
     for bank in order:
         rate = scraped_rates.get(bank, "N/A")
-        rate_seg.append(f"{bank}: {rate}")
-    lines.append(f"<blockquote expandable>\n" + "\n".join(rate_seg) + "\n</blockquote>")
+        rate_content.append(f"{bank}: {rate}")
+    lines.append(f"<blockquote expandable>\n" + "\n".join(rate_content) + "\n</blockquote>")
 else: lines.append("<blockquote expandable>⚠️ Scraping Failed</blockquote>")
 
-# OUTLOOK SECTION
-lines.append("🔮 <b>Rates Outlook</b>")
-outlook_seg = []
+# Outlook
+lines.append("\n🔮 <b>Rates Outlook</b>")
+outlook_content = []
 order = ["RBA", "BoC", "SNB", "ECB", "BoE", "BoJ", "RBNZ", "Fed"]
 for bank in order:
     probs = base_outlook.get(bank, ["-", "-"])
     date_str = scraped_meetings.get(bank, "TBA") if scraped_meetings else "TBA"
-    outlook_seg.append(f"{bank}: {probs[0]} | {probs[1]} | {date_str}")
-lines.append(f"<blockquote expandable>\n" + "\n".join(outlook_seg) + "\n</blockquote>")
+    outlook_content.append(f"{bank}: {probs[0]} | {probs[1]} | {date_str}")
+lines.append(f"<blockquote expandable>\n" + "\n".join(outlook_content) + "\n</blockquote>")
 
-def send_telegram_message(message_text):
-    print("Sending to Telegram...")
-    url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
-    payload = {
-        "chat_id": CHAT_ID,
-        "text": message_text,
-        "parse_mode": "HTML",
-        "disable_web_page_preview": True
-    }
-    try:
-        response = requests.post(url, json=payload)
-        print(f"Status Code: {response.status_code}")
-        return response.json()
-    except Exception as e:
-        print(f"Telegram Error: {e}")
-        return None
-
-send_telegram_message("\n".join(lines))
+# Final Sender
+print("Sending to Telegram...")
+try:
+    response = requests.post(f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage", 
+                             json={"chat_id": CHAT_ID, "text": "\n".join(lines), "parse_mode": "HTML", "disable_web_page_preview": True})
+    print(f"Status Code: {response.status_code}")
+except Exception as e:
+    print(f"Error sending message: {e}")
