@@ -20,8 +20,12 @@ from selenium_stealth import stealth
 TELEGRAM_TOKEN = "7649050168:AAHNIYnrHzLOTcjNuMpeKgyUbfJB9x9an3c"
 CHAT_ID = "876384974"
 
+# Timezone Logic
 SGT_TZ = timezone(timedelta(hours=8))
+CT_TZ = timezone(timedelta(hours=-6)) # Central Standard Time
+
 now_sgt = datetime.now(SGT_TZ)
+now_ct = datetime.now(CT_TZ)
 
 TARGET_PAIRS = {
     "AUDCAD": "AUDCAD=X", "AUDCHF": "AUDCHF=X", "AUDJPY": "AUDJPY=X", "AUDNZD": "AUDNZD=X", "AUDUSD": "AUDUSD=X",
@@ -74,6 +78,7 @@ def convert_time_to_sgt(date_str, time_str):
         current_year = datetime.now().year
         dt_str = f"{date_str} {current_year} {time_str}"
         dt_obj = datetime.strptime(dt_str, "%a %b %d %Y %I:%M%p")
+        # Logic remains unchanged per user request
         sgt_time = dt_obj + timedelta(hours=13) 
         return sgt_time.strftime("%H:%M")
     except: return time_str
@@ -241,13 +246,13 @@ scraped_meetings = scrape_cbrates_meetings()
 calendar_events = scrape_forex_factory()
 base_movers = calculate_base_movers(fx_results)
 
-# Clean, tight formatting
-lines = [f"📊 <b>G8 FX Update</b> — {now_sgt.strftime('%H:%M')} SGT\n", "🔥 <b>Top Movers (Base Index)</b>"]
+# HEADER WITH DUAL TIMEZONES
+lines = [f"📊 <b>G8 FX Update</b> — {now_sgt.strftime('%H:%M')} SGT / {now_ct.strftime('%H:%M')} CT\n", "🔥 <b>Top Movers (Base Index)</b>"]
 for curr, vals in sorted(base_movers.items()):
     lines.append(f"{curr}: {vals[0]:+} pips d/d | {vals[1]:+} w/w")
 
-# FX CROSSES SECTION
-lines.append("\n💎 <b>28 FX G8 Crosses</b>")
+# FX CROSSES SECTION - Swapped to Finance Emoji
+lines.append("\n💰 <b>28 FX G8 Crosses</b>")
 groups = {
     "AUD": ["AUDCAD", "AUDCHF", "AUDJPY", "AUDNZD", "AUDUSD"],
     "CAD": ["CADCHF", "CADJPY"],
@@ -268,8 +273,8 @@ for base, pairs in groups.items():
     all_crosses_seg.append("\n".join(group_lines))
 lines.append(f"<blockquote expandable>\n" + "\n\n".join(all_crosses_seg) + "\n</blockquote>")
 
-# CALENDAR SECTION
-lines.append("📅 <b>Economic Calendar</b>") 
+# CALENDAR SECTION - Updated Title
+lines.append("📅 <b>Economic Calendar (Central Time)</b>") 
 if calendar_events:
     cal_seg = []
     for e in calendar_events:
