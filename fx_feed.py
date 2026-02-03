@@ -81,7 +81,7 @@ def convert_time_to_sgt(date_str, time_str):
 # ===== SCRAPERS =====
 
 def scrape_cbrates_current():
-    print("🏛️ Scraping Current Rates (cbrates.com) [v3 Robust]...")
+    print("🏛️ Scraping Current Rates (cbrates.com)...")
     url = "https://www.cbrates.com/"
     rates = {}
     identifier_map = {
@@ -114,7 +114,7 @@ def scrape_cbrates_current():
         print(f"⚠️ CBRates Rates Failed: {e}"); return None
 
 def scrape_cbrates_meetings():
-    print("🗓️ Scraping Meeting Dates (cbrates.com/meetings)...")
+    print("🗓️ Scraping Meeting Dates...")
     url = "https://www.cbrates.com/meetings.htm"
     upcoming_meetings = {}
     identifiers = {
@@ -154,7 +154,7 @@ def scrape_cbrates_meetings():
         print(f"⚠️ CBRates Meetings Failed: {e}"); return None
 
 def scrape_forex_factory():
-    print("📅 Scraping ForexFactory (Today)...")
+    print("📅 Scraping ForexFactory...")
     driver = None
     releases = []
     try:
@@ -194,7 +194,7 @@ def scrape_forex_factory():
 
 # ===== CALCULATIONS =====
 def fetch_fx_data():
-    print("📈 Fetching FX Data (Institutional Anchor: 05:00 SGT)...")
+    print("📈 Fetching FX Data...")
     tickers = list(TARGET_PAIRS.values())
     data = yf.download(tickers, period="10d", interval="1h", progress=False)
     if isinstance(data.columns, pd.MultiIndex):
@@ -241,13 +241,15 @@ scraped_meetings = scrape_cbrates_meetings()
 calendar_events = scrape_forex_factory()
 base_movers = calculate_base_movers(fx_results)
 
-# Switch to HTML tags for Telegram Expandable Quotes
+# Starting the message construction
 lines = [f"📊 <b>G8 FX Update</b> — {now_sgt.strftime('%H:%M')} SGT\n", "🔥 <b>Top Movers (Base Index)</b>"]
 for curr, vals in sorted(base_movers.items()):
     lines.append(f"{curr}: {vals[0]:+} pips d/d | {vals[1]:+} w/w")
 
 lines.append("\n---")
 
+# Consolidating all 28 pairs into one "Vault"
+lines.append("💎 <b>28 FX G8 Crosses</b>")
 groups = {
     "AUD": ["AUDCAD", "AUDCHF", "AUDJPY", "AUDNZD", "AUDUSD"],
     "CAD": ["CADCHF", "CADJPY"],
@@ -258,20 +260,21 @@ groups = {
     "USD": ["USDCAD", "USDCHF", "USDJPY"]
 }
 
+all_crosses_seg = []
 for base, pairs in groups.items():
-    seg = []
+    group_lines = [f"<b>{base}</b>"]
     for pair in pairs:
         if pair in fx_results:
             d = fx_results[pair]
             p_fmt = f"{d['price']:.2f}" if d['is_jpy'] else f"{d['price']:.4f}"
-            seg.append(f"{pair} <code>{p_fmt}</code>  {d['dd']:+} d/d | {d['ww']:+} w/w")
-    if seg:
-        lines.append(f"<b>{base} Pairs</b>")
-        # WRAPPER: Expandable blockquote for each currency group
-        lines.append(f"<blockquote expandable>\n" + "\n".join(seg) + "\n</blockquote>")
+            group_lines.append(f"{pair} <code>{p_fmt}</code>  {d['dd']:+} d/d | {d['ww']:+} w/w")
+    all_crosses_seg.append("\n".join(group_lines))
+
+# Wrap the entire list of 28 pairs in ONE expandable block
+lines.append(f"<blockquote expandable>\n" + "\n\n".join(all_crosses_seg) + "\n</blockquote>")
 
 lines.append("---")
-lines.append("📅 <b>Weekly Economic Calendar</b>") 
+lines.append("📅 <b>Economic Calendar</b>") 
 if calendar_events:
     cal_seg = []
     for e in calendar_events:
@@ -279,12 +282,11 @@ if calendar_events:
         if e['act'] != "-": 
             event_line += f"\n   Act: {e['act']} | C: {e['cons']} | P: {e['prev']}"
         cal_seg.append(event_line)
-    # WRAPPER: Expandable blockquote for the calendar
     lines.append(f"<blockquote expandable>\n" + "\n".join(cal_seg) + "\n</blockquote>")
 else: lines.append("No high impact events today.")
 
 lines.append("\n---")
-lines.append("🏛 <b>Central Bank Policy Rates</b>")
+lines.append("🏛 <b>Central Bank Rates</b>")
 if scraped_rates:
     rate_seg = []
     order = ["RBA", "BoC", "SNB", "ECB", "BoE", "BoJ", "RBNZ", "Fed"]
@@ -320,5 +322,4 @@ def send_telegram_message(message_text):
         print(f"Telegram Error: {e}")
         return None
 
-# Trigger the send
 send_telegram_message("\n".join(lines))
