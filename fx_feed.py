@@ -21,7 +21,7 @@ from selenium_stealth import stealth
 TELEGRAM_TOKEN = "7649050168:AAHNIYnrHzLOTcjNuMpeKgyUbfJB9x9an3c"
 CHAT_ID = "876384974"
 
-# IANA Timezone Objects (Fixes DST automatically)
+# IANA Timezone Objects (Handles DST changes automatically)
 SGT = ZoneInfo("Asia/Singapore")
 CT = ZoneInfo("America/Chicago")
 ET = ZoneInfo("America/New_York")
@@ -79,7 +79,7 @@ def setup_driver():
     return driver
 
 def convert_time_to_sgt(date_str, time_str):
-    """Dynamic conversion from ET (ForexFactory) to SGT via UTC bridge."""
+    """Dynamic conversion from ET (ForexFactory) to SGT via IANA database."""
     if not time_str or any(x in time_str for x in ["All Day", "Tentative"]): return time_str
     try:
         current_year = datetime.now().year
@@ -264,12 +264,12 @@ scraped_meetings = scrape_cbrates_meetings()
 calendar_events = scrape_forex_factory()
 base_movers = calculate_base_movers(fx_results)
 
-# Build Header with Dual Timezone
+# Build Header
 lines = [f"📊 <b>G8 FX Update</b> — {now_sgt.strftime('%H:%M')} SGT / {now_ct.strftime('%H:%M')} CT\n", "🔥 <b>Top Movers (Base Index)</b>"]
 for curr, vals in sorted(base_movers.items()):
     lines.append(f"{curr}: {vals[0]:+} pips d/d | {vals[1]:+} w/w")
 
-# FX Crosses Vault
+# 28 FX CROSSES SECTION
 lines.append("\n💰 <b>28 FX G8 Crosses</b>")
 groups = {
     "AUD": ["AUDCAD", "AUDCHF", "AUDJPY", "AUDNZD", "AUDUSD"],
@@ -293,7 +293,10 @@ for base, pairs in groups.items():
 
 lines.append(f"<blockquote expandable>\n" + "\n\n".join(all_crosses_content) + "\n</blockquote>")
 
-# Calendar Section
+# ADDED SPACE: 1 Blank line before Economic Calendar
+lines.append("") 
+
+# CALENDAR SECTION
 lines.append("📅 <b>Economic Calendar (SGT)</b>") 
 if calendar_events:
     cal_content = []
@@ -304,7 +307,10 @@ if calendar_events:
     lines.append(f"<blockquote expandable>\n" + "\n".join(cal_content) + "\n</blockquote>")
 else: lines.append("<blockquote expandable>No high impact events today.</blockquote>")
 
-# Policy Rates
+# ADDED SPACE: 1 Blank line before Central Bank Rates
+lines.append("") 
+
+# POLICY RATES SECTION
 lines.append("🏛 <b>Central Bank Rates</b>")
 if scraped_rates:
     rate_content = []
@@ -315,7 +321,7 @@ if scraped_rates:
     lines.append(f"<blockquote expandable>\n" + "\n".join(rate_content) + "\n</blockquote>")
 else: lines.append("<blockquote expandable>⚠️ Scraping Failed</blockquote>")
 
-# Outlook
+# OUTLOOK SECTION
 lines.append("\n🔮 <b>Rates Outlook</b>")
 outlook_content = []
 order = ["RBA", "BoC", "SNB", "ECB", "BoE", "BoJ", "RBNZ", "Fed"]
