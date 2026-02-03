@@ -81,7 +81,7 @@ def convert_time_to_sgt(date_str, time_str):
 # ===== SCRAPERS =====
 
 def scrape_cbrates_current():
-    print("🏛️ Scraping Current Rates (cbrates.com)...")
+    print("🏛️ Scraping Current Rates...")
     url = "https://www.cbrates.com/"
     rates = {}
     identifier_map = {
@@ -241,15 +241,13 @@ scraped_meetings = scrape_cbrates_meetings()
 calendar_events = scrape_forex_factory()
 base_movers = calculate_base_movers(fx_results)
 
-# Starting the message construction
+# Clean, tight formatting
 lines = [f"📊 <b>G8 FX Update</b> — {now_sgt.strftime('%H:%M')} SGT\n", "🔥 <b>Top Movers (Base Index)</b>"]
 for curr, vals in sorted(base_movers.items()):
     lines.append(f"{curr}: {vals[0]:+} pips d/d | {vals[1]:+} w/w")
 
-lines.append("\n---")
-
-# Consolidating all 28 pairs into one "Vault"
-lines.append("💎 <b>28 FX G8 Crosses</b>")
+# FX CROSSES SECTION
+lines.append("\n💎 <b>28 FX G8 Crosses</b>")
 groups = {
     "AUD": ["AUDCAD", "AUDCHF", "AUDJPY", "AUDNZD", "AUDUSD"],
     "CAD": ["CADCHF", "CADJPY"],
@@ -259,7 +257,6 @@ groups = {
     "NZD": ["NZDCAD", "NZDCHF", "NZDJPY", "NZDUSD"],
     "USD": ["USDCAD", "USDCHF", "USDJPY"]
 }
-
 all_crosses_seg = []
 for base, pairs in groups.items():
     group_lines = [f"<b>{base}</b>"]
@@ -267,13 +264,11 @@ for base, pairs in groups.items():
         if pair in fx_results:
             d = fx_results[pair]
             p_fmt = f"{d['price']:.2f}" if d['is_jpy'] else f"{d['price']:.4f}"
-            group_lines.append(f"{pair} <code>{p_fmt}</code>  {d['dd']:+} d/d | {d['ww']:+} w/w")
+            group_lines.append(f"{pair} <code>{p_fmt}</code> {d['dd']:+} d/d | {d['ww']:+} w/w")
     all_crosses_seg.append("\n".join(group_lines))
-
-# Wrap the entire list of 28 pairs in ONE expandable block
 lines.append(f"<blockquote expandable>\n" + "\n\n".join(all_crosses_seg) + "\n</blockquote>")
 
-lines.append("---")
+# CALENDAR SECTION
 lines.append("📅 <b>Economic Calendar</b>") 
 if calendar_events:
     cal_seg = []
@@ -283,9 +278,9 @@ if calendar_events:
             event_line += f"\n   Act: {e['act']} | C: {e['cons']} | P: {e['prev']}"
         cal_seg.append(event_line)
     lines.append(f"<blockquote expandable>\n" + "\n".join(cal_seg) + "\n</blockquote>")
-else: lines.append("No high impact events today.")
+else: lines.append("<blockquote expandable>No high impact events today.</blockquote>")
 
-lines.append("\n---")
+# POLICY RATES SECTION
 lines.append("🏛 <b>Central Bank Rates</b>")
 if scraped_rates:
     rate_seg = []
@@ -294,9 +289,10 @@ if scraped_rates:
         rate = scraped_rates.get(bank, "N/A")
         rate_seg.append(f"{bank}: {rate}")
     lines.append(f"<blockquote expandable>\n" + "\n".join(rate_seg) + "\n</blockquote>")
-else: lines.append("⚠️ <i>Scraping Failed</i>")
+else: lines.append("<blockquote expandable>⚠️ Scraping Failed</blockquote>")
 
-lines.append("\n🔮 <b>Rates Outlook</b>")
+# OUTLOOK SECTION
+lines.append("🔮 <b>Rates Outlook</b>")
 outlook_seg = []
 order = ["RBA", "BoC", "SNB", "ECB", "BoE", "BoJ", "RBNZ", "Fed"]
 for bank in order:
