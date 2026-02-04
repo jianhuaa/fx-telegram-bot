@@ -98,12 +98,10 @@ def scrape_cbrates_current():
             text = row.get_text(" ", strip=True)
             for identifier, code in identifier_map.items():
                 if identifier in text:
-                    # Clean the rate string
                     match = re.search(r"(\d+\.\d{2})", text)
                     if match:
                         range_match = re.search(r"(\d+\.\d{2})\s*-\s*(\d+\.\d{2})", text)
                         if range_match and code == "Fed":
-                            # Use midpoint for Fed calculations
                             rates[code] = (float(range_match.group(1)) + float(range_match.group(2))) / 2
                         elif range_match:
                             rates[code] = float(range_match.group(2))
@@ -150,8 +148,8 @@ def scrape_cbrates_meetings():
         print(f"⚠️ CBRates Meetings Failed: {e}"); return None
 
 def scrape_barchart_outlook(current_rates):
-    """Calculates implied rates from STIR futures on Barchart."""
-    print("📈 Scraping Barchart Futures for Dynamic Outlook...")
+    """Calculates implied probability of a 25bp hike/cut."""
+    print("📈 Scraping Barchart Futures for Dynamic Probabilities...")
     scraper = cloudscraper.create_scraper()
     results = {}
     
@@ -160,25 +158,30 @@ def scrape_barchart_outlook(current_rates):
             url = f"https://www.barchart.com/futures/quotes/{symbol}/overview"
             r = scraper.get(url)
             
-            # Find the price in the JSON/Script blobs on the page
             match = re.search(r'"lastPrice"\s*:\s*"([\d\.]+)"', r.text)
             if not match: match = re.search(r'"lastPrice"\s*:\s*([\d\.]+)', r.text)
             if not match: match = re.search(r'"settlementPrice"\s*:\s*"([\d\.]+)"', r.text)
 
-            if match:
+            if match and current_rates:
                 price = float(match.group(1))
                 implied_rate = 100.0 - price
+                current_bench = current_rates.get(bank, implied_rate)
                 
-                # Compare to current rate for color coding
-                current = current_rates.get(bank, implied_rate)
-                if implied_rate < (current - 0.05): emoji = "🔴⬇️"
-                elif implied_rate > (current + 0.05): emoji = "🟢⬆️"
-                else: emoji = "🟡➡️"
+                # Math: Difference relative to a standard 25bp (0.25%) move
+                diff = implied_rate - current_bench
+                probability = abs(int((diff / 0.25) * 100))
                 
-                results[bank] = f"{emoji}{implied_rate:.2f}%"
+                if diff < -0.01: # Market pricing lower than current (Cut)
+                    emoji = f"🔴⬇️ {probability}%"
+                elif diff > 0.01: # Market pricing higher than current (Hike)
+                    emoji = f"🟢⬆️ {probability}%"
+                else: # Neutral
+                    emoji = "🟡➡️ 0%"
+                
+                results[bank] = emoji
             else:
                 results[bank] = "⚪ N/A"
-            time.sleep(1) # Courtesy delay
+            time.sleep(1)
         except:
             results[bank] = "⚪ N/A"
     return results
@@ -206,7 +209,6 @@ def scrape_forex_factory():
                 currency = row.find_element(By.CSS_SELECTOR, "td.calendar__currency").text.strip()
                 event = row.find_element(By.CSS_SELECTOR, "span.calendar__event-title").text.strip()
                 time_str = row.find_element(By.CSS_SELECTOR, "td.calendar__time").text.strip()
-                
                 if not time_str: time_str = last_valid_time
                 else: last_valid_time = time_str
                 
@@ -225,7 +227,7 @@ def scrape_forex_factory():
 # ===== CALCULATIONS =====
 def fetch_fx_data():
     """Downloads Yahoo Finance data and calculates pip changes."""
-    print("📈 Fetching FX Data (Institutional Anchor)...")
+    print("📈 Fetching FX Data...")
     tickers = list(TARGET_PAIRS.values())
     data = yf.download(tickers, period="10d", interval="1h", progress=False)
     if isinstance(data.columns, pd.MultiIndex):
@@ -238,19 +240,10 @@ def fetch_fx_data():
             if not series.empty:
                 curr = float(series.iloc[-1])
                 ny_cut_candles = series[series.index.hour == 5]
-                if not ny_cut_candles.empty:
-                    p_day = float(ny_cut_candles.iloc[-1])
-                    p_week = float(ny_cut_candles.iloc[0])
-                else:
-                    p_day = float(series.iloc[0])
-                    p_week = float(series.iloc[0])
+                p_day = float(ny_cut_candles.iloc[-1]) if not ny_cut_candles.empty else float(series.iloc[0])
+                p_week = float(ny_cut_candles.iloc[0]) if not ny_cut_candles.empty else float(series.iloc[0])
                 mult = 100 if "JPY" in pair else 10000
-                results[pair] = {
-                    "price": curr, 
-                    "dd": int((curr - p_day) * mult), 
-                    "ww": int((curr - p_week) * mult), 
-                    "is_jpy": "JPY" in pair
-                }
+                results[pair] = {"price": curr, "dd": int((curr - p_day) * mult), "ww": int((curr - p_week) * mult), "is_jpy": "JPY" in pair}
     return results
 
 def calculate_base_movers(fx_data):
@@ -274,22 +267,13 @@ dynamic_outlook = scrape_barchart_outlook(scraped_rates)
 calendar_events = scrape_forex_factory()
 base_movers = calculate_base_movers(fx_results)
 
-# Build Header
+# Build Telegram Message
 lines = [f"📊 <b>G8 FX Update</b> — {now_sgt.strftime('%I:%M%p').lower()} SGT / {now_et.strftime('%I:%M%p').lower()} ET\n", "🔥 <b>Top Movers</b>"]
 for curr, vals in sorted(base_movers.items()):
     lines.append(f"{curr}: {vals[0]:+} pips d/d | {vals[1]:+} w/w")
 
-# FX Crosses Vault
 lines.append("\n💰 <b>28 FX G8 Crosses</b>")
-groups = {
-    "AUD": ["AUDCAD", "AUDCHF", "AUDJPY", "AUDNZD", "AUDUSD"],
-    "CAD": ["CADCHF", "CADJPY"],
-    "CHF": ["CHFJPY"],
-    "EUR": ["EURAUD", "EURCAD", "EURCHF", "EURGBP", "EURJPY", "EURNZD", "EURUSD"],
-    "GBP": ["GBPAUD", "GBPCAD", "GBPCHF", "GBPJPY", "GBPNZD", "GBPUSD"],
-    "NZD": ["NZDCAD", "NZDCHF", "NZDJPY", "NZDUSD"],
-    "USD": ["USDCAD", "USDCHF", "USDJPY"]
-}
+groups = {"AUD": ["AUDCAD", "AUDCHF", "AUDJPY", "AUDNZD", "AUDUSD"], "CAD": ["CADCHF", "CADJPY"], "CHF": ["CHFJPY"], "EUR": ["EURAUD", "EURCAD", "EURCHF", "EURGBP", "EURJPY", "EURNZD", "EURUSD"], "GBP": ["GBPAUD", "GBPCAD", "GBPCHF", "GBPJPY", "GBPNZD", "GBPUSD"], "NZD": ["NZDCAD", "NZDCHF", "NZDJPY", "NZDUSD"], "USD": ["USDCAD", "USDCHF", "USDJPY"]}
 
 all_crosses_content = []
 for base, pairs in groups.items():
@@ -300,23 +284,14 @@ for base, pairs in groups.items():
             p_fmt = f"{d['price']:.2f}" if d['is_jpy'] else f"{d['price']:.4f}"
             seg.append(f"{pair} <code>{p_fmt}</code> {d['dd']:+} d/d | {d['ww']:+} w/w")
     all_crosses_content.append("\n".join(seg))
-
 lines.append(f"<blockquote expandable>\n" + "\n\n".join(all_crosses_content) + "\n</blockquote>\n")
 
-# Calendar Section
 lines.append("📅 <b>Economic Calendar (ET)</b>") 
 if calendar_events:
-    cal_content = []
-    for e in calendar_events:
-        txt = f"[{e['date']}] {e['flag']} {e['title']} | {e['time_et']} ET"
-        if e['act'] != "-": 
-            txt += f"\n    Act: {e['act']} | C: {e['cons']} | P: {e['prev']}"
-        cal_content.append(txt)
+    cal_content = [f"[{e['date']}] {e['flag']} {e['title']} | {e['time_et']} ET" + (f"\n    Act: {e['act']} | C: {e['cons']} | P: {e['prev']}" if e['act'] != "-" else "") for e in calendar_events]
     lines.append(f"<blockquote expandable>\n" + "\n".join(cal_content) + "\n</blockquote>\n")
-else:
-    lines.append("<blockquote expandable>No high impact events today.</blockquote>\n")
+else: lines.append("<blockquote expandable>No high impact events today.</blockquote>\n")
 
-# Central Bank Rates
 lines.append("🏛 <b>Central Bank Rates</b>")
 if scraped_rates:
     rate_content = []
@@ -326,29 +301,19 @@ if scraped_rates:
         fmt_val = f"{val:.2f}%" if isinstance(val, float) else val
         rate_content.append(f"{bank}: {fmt_val}")
     lines.append(f"<blockquote expandable>\n" + "\n".join(rate_content) + "\n</blockquote>\n")
-else:
-    lines.append("<blockquote expandable>⚠️ Scraping Failed</blockquote>\n")
+else: lines.append("<blockquote expandable>⚠️ Scraping Failed</blockquote>\n")
 
-# Outlook (Now Dynamic)
 lines.append("🔮 <b>Rates Outlook</b>")
 outlook_content = []
 order = ["RBA", "BoC", "SNB", "ECB", "BoE", "BoJ", "RBNZ", "Fed"]
 for bank in order:
-    implied = dynamic_outlook.get(bank, "⚪ N/A")
+    implied_prob = dynamic_outlook.get(bank, "⚪ N/A")
     meet_date = scraped_meetings.get(bank, "TBA") if scraped_meetings else "TBA"
-    outlook_content.append(f"{bank}: {implied} | {meet_date}")
+    outlook_content.append(f"{bank}: {implied_prob} | {meet_date}")
 lines.append(f"<blockquote expandable>\n" + "\n".join(outlook_content) + "\n</blockquote>")
 
-# Telegram Bot Dispatch
 print("Sending to Telegram...")
 try:
-    response = requests.post(f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage", 
-                             json={
-                                 "chat_id": CHAT_ID, 
-                                 "text": "\n".join(lines), 
-                                 "parse_mode": "HTML", 
-                                 "disable_web_page_preview": True
-                             })
-    print(f"Status: {response.status_code}")
-except Exception as e:
-    print(f"Telegram Error: {e}")
+    requests.post(f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage", 
+                 json={"chat_id": CHAT_ID, "text": "\n".join(lines), "parse_mode": "HTML", "disable_web_page_preview": True})
+except Exception as e: print(f"Telegram Error: {e}")
