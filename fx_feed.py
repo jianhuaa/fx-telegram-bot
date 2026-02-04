@@ -99,6 +99,7 @@ def scrape_cbrates_current():
                     if code == "Fed":
                         range_match = re.search(r"(\d+\.\d{2})\s*-\s*(\d+\.\d{2})", text)
                         if range_match: 
+                            # EDIT: Strictly use Higher End (Upper Bound)
                             rates[code] = float(range_match.group(2))
                         else:
                             match = re.search(r"(\d+\.\d{2})", text)
@@ -155,6 +156,7 @@ def scrape_cbrates_meetings():
         print(f"⚠️ CBRates Meetings Failed: {e}"); return None
 
 def scrape_barchart_outlook(current_rates):
+    """Calculates implied probability of a 25bp hike/cut with a yellow neutral zone."""
     print("📈 Scraping Barchart Futures for Dynamic Outlook...")
     scraper = cloudscraper.create_scraper()
     results = {}
@@ -172,10 +174,11 @@ def scrape_barchart_outlook(current_rates):
                 implied_rate = 100.0 - price
                 current_bench = current_rates.get(bank, implied_rate)
                 
+                # Math: Calculate probability of a 0.25% (25bps) move
                 diff = implied_rate - current_bench
                 probability = abs(int((diff / 0.25) * 100))
                 
-                # Logic for colors based on the 20% threshold
+                # Color Rule: < 20% is Yellow Neutral
                 if probability < 20:
                     emoji = f"🟡➡️ {probability}%"
                 elif diff < 0:
@@ -198,6 +201,7 @@ def scrape_forex_factory():
     try:
         driver = setup_driver()
         driver.get("https://www.forexfactory.com/calendar?week=this")
+        # FAITHFUL: Restoring original scroll logic and timing
         for i in range(1, 4):
             driver.execute_script(f"window.scrollTo(0, document.body.scrollHeight * {i/3});")
             time.sleep(1.5)
@@ -281,7 +285,7 @@ dynamic_outlook = scrape_barchart_outlook(scraped_rates)
 calendar_events = scrape_forex_factory()
 base_movers = calculate_base_movers(fx_results)
 
-# Message Construction
+# Build Header
 lines = [f"📊 <b>G8 FX Update</b> — {now_sgt.strftime('%I:%M%p').lower()} SGT / {now_et.strftime('%I:%M%p').lower()} ET\n", "🔥 <b>Top Movers</b>"]
 for curr, vals in sorted(base_movers.items()):
     lines.append(f"{curr}: {vals[0]:+} pips d/d | {vals[1]:+} w/w")
@@ -302,35 +306,19 @@ lines.append(f"<blockquote expandable>\n" + "\n\n".join(all_crosses_content) + "
 
 lines.append("📅 <b>Economic Calendar (ET)</b>") 
 if calendar_events:
-    cal_content = []
-    for e in calendar_events:
-        txt = f"[{e['date']}] {e['flag']} {e['title']} | {e['time_et']} ET"
-        if e['act'] != "-": 
-            txt += f"\n    Act: {e['act']} | C: {e['cons']} | P: {e['prev']}"
-        cal_content.append(txt)
+    cal_content = [f"[{e['date']}] {e['flag']} {e['title']} | {e['time_et']} ET" + (f"\n    Act: {e['act']} | C: {e['cons']} | P: {e['prev']}" if e['act'] != "-" else "") for e in calendar_events]
     lines.append(f"<blockquote expandable>\n" + "\n".join(cal_content) + "\n</blockquote>\n")
-else:
-    lines.append("<blockquote expandable>No high impact events today.</blockquote>\n")
+else: lines.append("<blockquote expandable>No high impact events today.</blockquote>\n")
 
 lines.append("🏛 <b>Central Bank Rates</b>")
 if scraped_rates:
-    rate_content = []
     order = ["RBA", "BoC", "SNB", "ECB", "BoE", "BoJ", "RBNZ", "Fed"]
-    for bank in order:
-        val = scraped_rates.get(bank, "N/A")
-        rate_content.append(f"{bank}: {val:.2f}%" if isinstance(val, float) else f"{bank}: N/A")
-    lines.append(f"<blockquote expandable>\n" + "\n".join(rate_content) + "\n</blockquote>\n")
-else:
-    lines.append("<blockquote expandable>⚠️ Scraping Failed</blockquote>\n")
+    lines.append("<blockquote expandable>\n" + "\n".join([f"{b}: {scraped_rates.get(b, 'N/A'):.2f}%" for b in order]) + "\n</blockquote>\n")
+else: lines.append("<blockquote expandable>⚠️ Scraping Failed</blockquote>\n")
 
 lines.append("🔮 <b>Rates Outlook</b>")
-outlook_content = []
 order = ["RBA", "BoC", "SNB", "ECB", "BoE", "BoJ", "RBNZ", "Fed"]
-for bank in order:
-    implied_prob = dynamic_outlook.get(bank, "⚪ N/A")
-    meet_date = scraped_meetings.get(bank, "TBA")
-    outlook_content.append(f"{bank}: {implied_prob} | {meet_date}")
-lines.append(f"<blockquote expandable>\n" + "\n".join(outlook_content) + "\n</blockquote>")
+lines.append("<blockquote expandable>\n" + "\n".join([f"{b}: {dynamic_outlook.get(b, '⚪ N/A')} | {scraped_meetings.get(b, 'TBA')}" for b in order]) + "\n</blockquote>")
 
 print("Sending to Telegram...")
 try:
