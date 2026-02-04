@@ -99,7 +99,7 @@ def scrape_cbrates_current():
                     if code == "Fed":
                         range_match = re.search(r"(\d+\.\d{2})\s*-\s*(\d+\.\d{2})", text)
                         if range_match: 
-                            rates[code] = (float(range_match.group(1)) + float(range_match.group(2))) / 2
+                            rates[code] = float(range_match.group(2))
                         else:
                             match = re.search(r"(\d+\.\d{2})", text)
                             if match: rates[code] = float(match.group(1))
