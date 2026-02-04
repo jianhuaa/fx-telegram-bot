@@ -3,6 +3,7 @@ import requests
 import re
 import pandas as pd
 import yfinance as yf
+import cloudscraper
 from bs4 import BeautifulSoup
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo 
@@ -38,20 +39,21 @@ TARGET_PAIRS = {
     "USDCAD": "USDCAD=X", "USDCHF": "USDCHF=X", "USDJPY": "USDJPY=X"
 }
 
-# Probabilities (Static)
-base_outlook = {
-    "Fed":  ["🔴⬇️65%", "🟡➡️35%"],
-    "ECB":  ["🔴⬇️45%", "🟡➡️55%"],
-    "BoE":  ["🔴⬇️30%", "🟢⬆️15%"],
-    "BoJ":  ["🔴⬇️20%", "🟢⬆️30%"],
-    "SNB":  ["🔴⬇️55%", "🟡➡️45%"],
-    "RBA":  ["🟢⬆️40%", "🟡➡️60%"],
-    "BoC":  ["🔴⬇️35%", "🟡➡️65%"],
-    "RBNZ": ["🔴⬇️25%", "🟢⬆️20%"]
+# Dynamic Futures Mapping for Implied Rates
+FUTURES_MAP = {
+    "Fed": "ZQ*1",  # 30-Day Fed Funds
+    "BoE": "J8*1",  # 3-Month SONIA
+    "ECB": "IM*1",  # 3-Month Euribor
+    "BoC": "RG*1",  # 3-Month CORRA
+    "RBNZ": "BF*1", # 90-Day Bank Bill
+    "BoJ": "T0*1",  # 3-Month TONA
+    "SNB": "J2*1",  # 3-Month SARON
+    "RBA": "IR*1"   # 30-Day Interbank Cash Rate
 }
 
 # ===== HELPERS =====
 def setup_driver():
+    """Initializes a headless Chrome driver with stealth settings."""
     options = Options()
     options.add_argument("--headless=new")
     options.add_argument("--no-sandbox")
@@ -80,42 +82,42 @@ def setup_driver():
 # ===== SCRAPERS =====
 
 def scrape_cbrates_current():
-    print("🏛️ Scraping Current Rates (cbrates.com) [v3 Robust]...")
-    url = "https://www.cbrates.com/"
+    """Scrapes current benchmark rates from cbrates.com using cloudscraper."""
+    print("🏛️ Scraping Current Rates (cbrates.com)...")
+    scraper = cloudscraper.create_scraper()
     rates = {}
     identifier_map = {
         "(Fed)": "Fed", "(ECB)": "ECB", "(BoE)": "BoE", "(BoJ)": "BoJ",
         "(BoC)": "BoC", "(SNB)": "SNB", "Australia": "RBA", "New Zealand": "RBNZ"
     }
     try:
-        r = requests.get(url, headers={'User-Agent': 'Mozilla/5.0'})
+        r = scraper.get("https://www.cbrates.com/")
         soup = BeautifulSoup(r.text, 'html.parser')
         rows = soup.find_all('tr')
         for row in rows:
             text = row.get_text(" ", strip=True)
             for identifier, code in identifier_map.items():
                 if identifier in text:
-                    if code == "Fed":
+                    # Clean the rate string
+                    match = re.search(r"(\d+\.\d{2})", text)
+                    if match:
                         range_match = re.search(r"(\d+\.\d{2})\s*-\s*(\d+\.\d{2})", text)
-                        if range_match: 
-                            rates[code] = range_match.group(2) + "%"
+                        if range_match and code == "Fed":
+                            # Use midpoint for Fed calculations
+                            rates[code] = (float(range_match.group(1)) + float(range_match.group(2))) / 2
+                        elif range_match:
+                            rates[code] = float(range_match.group(2))
                         else:
-                            match = re.search(r"(\d+\.\d{2})", text)
-                            if match: rates[code] = match.group(1) + "%"
-                    else:
-                        match = re.search(r"(\d+\.\d{2})\s*%", text)
-                        if match: rates[code] = match.group(1) + "%"
-                        else:
-                            match = re.search(r"(\d+\.\d{2})", text)
-                            if match: rates[code] = match.group(1) + "%"
+                            rates[code] = float(match.group(1))
                     break
         return rates
     except Exception as e:
         print(f"⚠️ CBRates Rates Failed: {e}"); return None
 
 def scrape_cbrates_meetings():
+    """Scrapes upcoming central bank meeting dates."""
     print("🗓️ Scraping Meeting Dates (cbrates.com/meetings)...")
-    url = "https://www.cbrates.com/meetings.htm"
+    scraper = cloudscraper.create_scraper()
     upcoming_meetings = {}
     identifiers = {
         "Federal Reserve": "Fed", "European Central Bank": "ECB", 
@@ -124,11 +126,10 @@ def scrape_cbrates_meetings():
         "Reserve Bank of New Zealand": "RBNZ", "Bank of Canada": "BoC"
     }
     try:
-        r = requests.get(url, headers={'User-Agent': 'Mozilla/5.0'})
+        r = scraper.get("https://www.cbrates.com/meetings.htm")
         soup = BeautifulSoup(r.text, 'html.parser')
         rows = soup.find_all('tr')
         today = datetime.now()
-        current_year = today.year
         found_meetings = {code: [] for code in identifiers.values()}
         for row in rows:
             text = row.get_text(" ", strip=True)
@@ -136,33 +137,61 @@ def scrape_cbrates_meetings():
             if date_match:
                 month_str, day_str = date_match.group(1), date_match.group(2)
                 try:
-                    meeting_date = datetime.strptime(f"{month_str} {day_str} {current_year}", "%b %d %Y")
+                    meeting_date = datetime.strptime(f"{month_str} {day_str} {today.year}", "%b %d %Y")
                     for identifier, code in identifiers.items():
                         if identifier in text: found_meetings[code].append(meeting_date)
                 except: continue
         for code, dates in found_meetings.items():
             dates.sort()
-            future_date_found = False
-            for d in dates:
-                if d.date() >= today.date():
-                    upcoming_meetings[code] = d.strftime("%b %d")
-                    future_date_found = True
-                    break
-            if not future_date_found: upcoming_meetings[code] = "TBA"
+            future_date = next((d for d in dates if d.date() >= today.date()), None)
+            upcoming_meetings[code] = future_date.strftime("%b %d") if future_date else "TBA"
         return upcoming_meetings
     except Exception as e:
         print(f"⚠️ CBRates Meetings Failed: {e}"); return None
 
+def scrape_barchart_outlook(current_rates):
+    """Calculates implied rates from STIR futures on Barchart."""
+    print("📈 Scraping Barchart Futures for Dynamic Outlook...")
+    scraper = cloudscraper.create_scraper()
+    results = {}
+    
+    for bank, symbol in FUTURES_MAP.items():
+        try:
+            url = f"https://www.barchart.com/futures/quotes/{symbol}/overview"
+            r = scraper.get(url)
+            
+            # Find the price in the JSON/Script blobs on the page
+            match = re.search(r'"lastPrice"\s*:\s*"([\d\.]+)"', r.text)
+            if not match: match = re.search(r'"lastPrice"\s*:\s*([\d\.]+)', r.text)
+            if not match: match = re.search(r'"settlementPrice"\s*:\s*"([\d\.]+)"', r.text)
+
+            if match:
+                price = float(match.group(1))
+                implied_rate = 100.0 - price
+                
+                # Compare to current rate for color coding
+                current = current_rates.get(bank, implied_rate)
+                if implied_rate < (current - 0.05): emoji = "🔴⬇️"
+                elif implied_rate > (current + 0.05): emoji = "🟢⬆️"
+                else: emoji = "🟡➡️"
+                
+                results[bank] = f"{emoji}{implied_rate:.2f}%"
+            else:
+                results[bank] = "⚪ N/A"
+            time.sleep(1) # Courtesy delay
+        except:
+            results[bank] = "⚪ N/A"
+    return results
+
 def scrape_forex_factory():
+    """Scrapes high-impact calendar events using Selenium."""
     print("📅 Scraping ForexFactory (Today)...")
     driver = None
     releases = []
     try:
         driver = setup_driver()
         driver.get("https://www.forexfactory.com/calendar?week=this")
-        for i in range(1, 4):
-            driver.execute_script(f"window.scrollTo(0, document.body.scrollHeight * {i/3});")
-            time.sleep(1.5)
+        time.sleep(5)
         rows = driver.find_elements(By.CSS_SELECTOR, "tr.calendar__row")
         current_date_str, last_valid_time = "", ""
         for row in rows:
@@ -178,7 +207,6 @@ def scrape_forex_factory():
                 event = row.find_element(By.CSS_SELECTOR, "span.calendar__event-title").text.strip()
                 time_str = row.find_element(By.CSS_SELECTOR, "td.calendar__time").text.strip()
                 
-                # RAW TIME FROM SOURCE (ET)
                 if not time_str: time_str = last_valid_time
                 else: last_valid_time = time_str
                 
@@ -196,7 +224,8 @@ def scrape_forex_factory():
 
 # ===== CALCULATIONS =====
 def fetch_fx_data():
-    print("📈 Fetching FX Data (Institutional Anchor: 05:00 SGT)...")
+    """Downloads Yahoo Finance data and calculates pip changes."""
+    print("📈 Fetching FX Data (Institutional Anchor)...")
     tickers = list(TARGET_PAIRS.values())
     data = yf.download(tickers, period="10d", interval="1h", progress=False)
     if isinstance(data.columns, pd.MultiIndex):
@@ -225,6 +254,7 @@ def fetch_fx_data():
     return results
 
 def calculate_base_movers(fx_data):
+    """Calculates weighted strength indices for major currencies."""
     currencies = ["AUD", "CAD", "CHF", "EUR", "GBP", "NZD", "USD", "JPY"]
     movers = {}
     for c in currencies:
@@ -240,10 +270,11 @@ def calculate_base_movers(fx_data):
 fx_results = fetch_fx_data()
 scraped_rates = scrape_cbrates_current() 
 scraped_meetings = scrape_cbrates_meetings()
+dynamic_outlook = scrape_barchart_outlook(scraped_rates)
 calendar_events = scrape_forex_factory()
 base_movers = calculate_base_movers(fx_results)
 
-# Build Header: Compact Lowercase
+# Build Header
 lines = [f"📊 <b>G8 FX Update</b> — {now_sgt.strftime('%I:%M%p').lower()} SGT / {now_et.strftime('%I:%M%p').lower()} ET\n", "🔥 <b>Top Movers</b>"]
 for curr, vals in sorted(base_movers.items()):
     lines.append(f"{curr}: {vals[0]:+} pips d/d | {vals[1]:+} w/w")
@@ -270,26 +301,20 @@ for base, pairs in groups.items():
             seg.append(f"{pair} <code>{p_fmt}</code> {d['dd']:+} d/d | {d['ww']:+} w/w")
     all_crosses_content.append("\n".join(seg))
 
-lines.append(f"<blockquote expandable>\n" + "\n\n".join(all_crosses_content) + "\n</blockquote>")
+lines.append(f"<blockquote expandable>\n" + "\n\n".join(all_crosses_content) + "\n</blockquote>\n")
 
-# Blank Line Space
-lines.append("")
-
-# Calendar Section (ET Strictly)
+# Calendar Section
 lines.append("📅 <b>Economic Calendar (ET)</b>") 
 if calendar_events:
     cal_content = []
     for e in calendar_events:
         txt = f"[{e['date']}] {e['flag']} {e['title']} | {e['time_et']} ET"
         if e['act'] != "-": 
-            txt += f"\n   Act: {e['act']} | C: {e['cons']} | P: {e['prev']}"
+            txt += f"\n    Act: {e['act']} | C: {e['cons']} | P: {e['prev']}"
         cal_content.append(txt)
-    lines.append(f"<blockquote expandable>\n" + "\n".join(cal_content) + "\n</blockquote>")
+    lines.append(f"<blockquote expandable>\n" + "\n".join(cal_content) + "\n</blockquote>\n")
 else:
-    lines.append("<blockquote expandable>No high impact events today.</blockquote>")
-
-# Blank Line Space
-lines.append("")
+    lines.append("<blockquote expandable>No high impact events today.</blockquote>\n")
 
 # Central Bank Rates
 lines.append("🏛 <b>Central Bank Rates</b>")
@@ -298,19 +323,20 @@ if scraped_rates:
     order = ["RBA", "BoC", "SNB", "ECB", "BoE", "BoJ", "RBNZ", "Fed"]
     for bank in order:
         val = scraped_rates.get(bank, "N/A")
-        rate_content.append(f"{bank}: {val}")
-    lines.append(f"<blockquote expandable>\n" + "\n".join(rate_content) + "\n</blockquote>")
+        fmt_val = f"{val:.2f}%" if isinstance(val, float) else val
+        rate_content.append(f"{bank}: {fmt_val}")
+    lines.append(f"<blockquote expandable>\n" + "\n".join(rate_content) + "\n</blockquote>\n")
 else:
-    lines.append("<blockquote expandable>⚠️ Scraping Failed</blockquote>")
+    lines.append("<blockquote expandable>⚠️ Scraping Failed</blockquote>\n")
 
-# Outlook
-lines.append("\n🔮 <b>Rates Outlook</b>")
+# Outlook (Now Dynamic)
+lines.append("🔮 <b>Rates Outlook</b>")
 outlook_content = []
 order = ["RBA", "BoC", "SNB", "ECB", "BoE", "BoJ", "RBNZ", "Fed"]
 for bank in order:
-    probs = base_outlook.get(bank, ["-", "-"])
+    implied = dynamic_outlook.get(bank, "⚪ N/A")
     meet_date = scraped_meetings.get(bank, "TBA") if scraped_meetings else "TBA"
-    outlook_content.append(f"{bank}: {probs[0]} | {probs[1]} | {meet_date}")
+    outlook_content.append(f"{bank}: {implied} | {meet_date}")
 lines.append(f"<blockquote expandable>\n" + "\n".join(outlook_content) + "\n</blockquote>")
 
 # Telegram Bot Dispatch
