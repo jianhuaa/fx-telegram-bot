@@ -6,51 +6,47 @@ CHAT_ID = "876384974"
 
 def format_telegram_update(trade_date, data):
     """
-    Formats the FX Options data into a stacked, mobile-friendly layout
-    optimized for Telegram's monospaced blocks on iPhone 13 Pro.
-    Layout: METRIC | CALL/PUT | VOL
+    Ultra-dense layout optimized for iPhone 13 Pro 'Zero-Scroll'.
+    Flags moved to a dedicated left column to save vertical space.
+    Header: 🌎 | METRIC | CALL / PUT | VOL
     """
-    # Updated Title format
+    # Header defines the structure once to save vertical space
     output = [
-        f"<b>FX Options — {trade_date}</b>\n"
+        f"📊 <b>FX Options — {trade_date}</b>",
+        "<code>🌎 | METRIC | CALL / PUT | VOL</code>",
+        "<code>---|--------|--------------|-------</code>"
     ]
 
     for entry in data:
-        # Currency Header
-        header = f"{entry['flag']} <b>{entry['code']}</b>"
-        output.append(header)
-        
-        # New 3-column table structure: METRIC | CALL/PUT | VOL
-        table = ["<code>METRIC  | CALL/PUT | VOL</code>"]
-        
         metrics = [
-            ('NOTIONAL', 'nv'),
-            ('OPEN INT', 'oi'),
-            ('EXP ≤1W ', 'e1'),
-            ('EXP >1W ', 'e8')
+            ('NOTNL', 'nv'),
+            ('O.INT', 'oi'),
+            ('≤1W  ', 'e1'),
+            ('>1W  ', 'e8')
         ]
         
-        for label, key in metrics:
+        for i, (label, key) in enumerate(metrics):
             call_pct = entry[f'{key}_c']
             put_pct = 100 - call_pct
             vol = str(entry[f'{key}_v']).strip()
             
-            # Remove leading zeros for <10% while keeping columns aligned
+            # Formatting percentages: Remove leading zeros (e.g., 7% not 07%)
             c_str = f"{call_pct}%"
             p_str = f"{put_pct}%"
             
-            # Row Construction:
-            # Metric(8) | GreenBall + Call%(3) + RedBall + Put%(3) | Volume
-            # Padding :>3 ensures the layout doesn't break when % digits change
-            row = f"<code>{label}| 🟢{c_str:>3} 🔴{p_str:>3} | {vol}</code>"
-            table.append(row)
-        
-        output.append("\n".join(table) + "\n")
+            # The flag is only shown on the first row of each currency block
+            flag_col = entry['flag'] if i == 0 else "  "
+            
+            # Row Construction (Approx 40 characters wide):
+            # Flag | Metric | 🟢Call% 🔴Put% | Volume
+            # Padding :>3 ensures columns stay aligned for 1-3 digit percentages
+            row = f"<code>{flag_col} | {label} | 🟢{c_str:>3} 🔴{p_str:>3} | {vol}</code>"
+            output.append(row)
 
     return "\n".join(output)
 
 def send_telegram_message(message):
-    """Sends the formatted HTML message to Telegram."""
+    """Sends the formatted HTML message to the specified Telegram chat."""
     url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage"
     payload = {
         "chat_id": CHAT_ID,
@@ -63,9 +59,10 @@ def send_telegram_message(message):
         response.raise_for_status()
         print("✅ Options Report sent successfully to Telegram.")
     except Exception as e:
-        print(f"❌ Failed to send Options message: {e}")
+        print(f"❌ Failed to send message: {e}")
 
-# --- MOCK DATA (As specified in Master Prompt v2.0) ---
+# --- DATA (Mocked for 05 Feb 2026 based on CME PDF structures) ---
+# Note: In production, this list would be populated by your PDF scraping logic.
 test_data = [
     {'flag': '🇦🇺', 'code': 'AUD', 'nv_c': 18, 'nv_v': '$29M', 'oi_c': 46, 'oi_v': '$465M', 'e1_c': 24, 'e1_v': '$39M', 'e8_c': 66, 'e8_v': '$238M'},
     {'flag': '🇨🇦', 'code': 'CAD', 'nv_c': 2, 'nv_v': '$55M', 'oi_c': 56, 'oi_v': '$651M', 'e1_c': 7, 'e1_v': '$168M', 'e8_c': 26, 'e8_v': '$149M'},
@@ -76,15 +73,15 @@ test_data = [
 ]
 
 if __name__ == "__main__":
-    # Current Trade Date from CME
-    trade_date = "05 Feb 2026"
+    # Trade date for title
+    trade_date_str = "05 Feb 2026"
     
-    # Generate the report
-    report_content = format_telegram_update(trade_date, test_data)
+    # Generate the formatted content
+    final_report = format_telegram_update(trade_date_str, test_data)
     
-    # Log to console for debugging
-    print("--- GENERATED OUTPUT ---")
-    print(report_content)
+    # Debug preview
+    print("--- PREVIEW ---")
+    print(final_report)
     
-    # Fire the message
-    send_telegram_message(report_content)
+    # Execute the live send
+    send_telegram_message(final_report)
