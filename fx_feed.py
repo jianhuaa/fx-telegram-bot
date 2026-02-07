@@ -41,14 +41,14 @@ TARGET_PAIRS = {
 
 # Dynamic Futures Mapping for the NEXT TWO contracts
 FUTURES_MAP = {
-    "Fed": ["ZQ*0", "ZQ*1"],  # 30-Day Fed Funds
-    "BoE": ["J8*0", "J8*1"],  # 3-Month SONIA
-    "ECB": ["IM*0", "IM*1"],  # 3-Month Euribor
-    "BoC": ["RG*0", "RG*1"],  # 3-Month CORRA
-    "RBNZ": ["BF*0", "BF*1"], # 90-Day Bank Bill
-    "BoJ": ["T0*0", "T0*1"],  # 3-Month TONA
-    "SNB": ["J2*0", "J2*1"],  # 3-Month SARON
-    "RBA": ["IR*0", "IR*1"]   # 30-Day Interbank Cash Rate
+    "Fed": ["ZQ*1", "ZQ*2"],  # 30-Day Fed Funds
+    "BoE": ["J8*1", "J8*2"],  # 3-Month SONIA
+    "ECB": ["IM*1", "IM*2"],  # 3-Month Euribor
+    "BoC": ["RG*1", "RG*2"],  # 3-Month CORRA
+    "RBNZ": ["BF*1", "BF*2"], # 90-Day Bank Bill
+    "BoJ": ["T0*1", "T0*2"],  # 3-Month TONA
+    "SNB": ["J2*1", "J2*2"],  # 3-Month SARON
+    "RBA": ["IR*1", "IR*2"]   # 30-Day Interbank Cash Rate
 }
 
 # ===== HELPERS =====
@@ -164,7 +164,7 @@ def get_barchart_probability(symbol, current_rate, scraper):
             diff = implied_rate - current_rate
             probability = abs(int((diff / 0.25) * 100))
             
-            if probability < 20: emoji = f"🟡➡️{probability}%"
+            if probability < 20: emoji = f"🟡⬆️{probability}%"
             elif diff < 0: emoji = f"🔴⬇️{probability}%"
             else: emoji = f"🟢⬆️{probability}%"
             return emoji
