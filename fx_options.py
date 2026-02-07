@@ -2,14 +2,13 @@ import requests
 import pdfplumber
 import io
 import re
+import sys
 from datetime import datetime
 
 # ===== CONFIGURATION =====
-# As provided in the Master Prompt/Setup
 TELEGRAM_TOKEN = "7649050168:AAHNIYnrHzLOTcjNuMpeKgyUbfJB9x9an3c"
 CHAT_ID = "876384974"
 
-# Strict display order and names for extraction
 CURRENCIES = [
     {'code': 'AUD', 'name': 'AUD Options', 'flag': '🇦🇺', 'full': 'AUSTRALIAN DOLLAR'},
     {'code': 'CAD', 'name': 'CAD Options', 'flag': '🇨🇦', 'full': 'CANADIAN DOLLAR'},
@@ -27,7 +26,10 @@ def clean_numeric(val):
     if val is None or str(val).strip() in ['', '-', 'None']:
         return 0.0
     cleaned = re.sub(r'[^\d.]', '', str(val))
-    return float(cleaned) if cleaned else 0.0
+    try:
+        return float(cleaned)
+    except ValueError:
+        return 0.0
 
 def format_vol(val):
     """Formats volume as $M or $B rounded to 0.1M."""
@@ -39,10 +41,16 @@ def format_vol(val):
 def get_pdf(url):
     """Downloads PDF with headers to bypass potential scraping blocks."""
     headers = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36'
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
+        'Accept': 'application/pdf'
     }
     resp = requests.get(url, headers=headers, timeout=30)
     resp.raise_for_status()
+    
+    # Verify we actually got a PDF
+    if not resp.content.startswith(b'%PDF'):
+        raise ValueError(f"Downloaded content from {url} is not a valid PDF. It might be an HTML error page.")
+        
     return io.BytesIO(resp.content)
 
 def parse_fx_report(pdf_stream):
@@ -59,27 +67,28 @@ def parse_fx_report(pdf_stream):
         date_match = re.search(r'Trade Date:?\s*(\d{1,2}/\d{1,2}/\d{2,4})', header_text)
         if date_match:
             raw_date = date_match.group(1)
-            dt_obj = datetime.strptime(raw_date, '%m/%d/%y' if len(raw_date.split('/')[-1])==2 else '%m/%d/%Y')
-            trade_date = dt_obj.strftime('%d %b %Y')
+            try:
+                dt_obj = datetime.strptime(raw_date, '%m/%d/%y' if len(raw_date.split('/')[-1])==2 else '%m/%d/%Y')
+                trade_date = dt_obj.strftime('%d %b %Y')
+            except Exception as e:
+                print(f"⚠️ Date parsing error: {e}")
 
         for page in pdf.pages:
             text = page.extract_text() or ""
             table = page.extract_table()
             if not table: continue
 
-            # Page 2: Notional Value Breakdown
             if "Notional Value: Put-Call Breakdown" in text:
                 for row in table:
-                    if not row: continue
+                    if not row or len(row) < 3: continue
                     for c in CURRENCIES:
                         if row[0] and c['name'] in row[0]:
                             results[c['code']]['nv_c'] = clean_numeric(row[1])
                             results[c['code']]['nv_p'] = clean_numeric(row[2])
 
-            # Page 3: Notional Open Interest Breakdown
             elif "Notional Open Interest: Put-Call Breakdown" in text:
                 for row in table:
-                    if not row: continue
+                    if not row or len(row) < 3: continue
                     for c in CURRENCIES:
                         if row[0] and c['name'] in row[0]:
                             results[c['code']]['oi_c'] = clean_numeric(row[1])
@@ -90,29 +99,27 @@ def parse_fx_report(pdf_stream):
 def parse_expiry_breakdown(pdf_stream, results):
     """Extracts Expiry data from fx-put-call.pdf using the Shift Rule."""
     with pdfplumber.open(pdf_stream) as pdf:
-        current_currency = None
         for page in pdf.pages:
             text = (page.extract_text() or "").upper()
             
-            # Identify which currency section we are currently in
+            current_currency = None
             for c in CURRENCIES:
                 if c['full'] in text:
                     current_currency = c['code']
+                    break # Found the currency for this page
             
             if not current_currency: continue
             
             tables = page.extract_tables()
             for table in tables:
                 for row in table:
-                    # Filter for rows: [Date, DTE, Call, Put, Total]
                     if len(row) < 4: continue
                     dte_val = str(row[1]).strip()
                     if not dte_val.isdigit(): continue
                     
                     dte = int(dte_val)
                     
-                    # MASTER PROMPT SHIFT RULE:
-                    # If the Call cell is empty, Call is $0 and index 3 is Put.
+                    # Shift Rule logic
                     if row[2] is None or str(row[2]).strip() in ['', '-', 'None']:
                         c_val = 0.0
                         p_val = clean_numeric(row[3])
@@ -135,19 +142,13 @@ def format_telegram_update(trade_date, data):
 
     for c in CURRENCIES:
         entry = data[c['code']]
-        metrics = [
-            ('NOTIONAL', 'nv'),
-            ('OPEN INT.', 'oi'),
-            ('≤1W', 'e1'),
-            ('>1W', 'e8')
-        ]
+        metrics = [('NOTIONAL', 'nv'), ('OPEN INT.', 'oi'), ('≤1W', 'e1'), ('>1W', 'e8')]
         
         for label, key in metrics:
             c_v = entry.get(f'{key}_c', 0)
             p_v = entry.get(f'{key}_p', 0)
             total = c_v + p_v
             
-            # Percentage Calculation with rounding
             if total > 0:
                 call_pct = int(round((c_v / total) * 100))
                 put_pct = 100 - call_pct
@@ -155,11 +156,7 @@ def format_telegram_update(trade_date, data):
                 call_pct = put_pct = 0
             
             vol_str = format_vol(total)
-            c_str = f"{call_pct}%"
-            p_str = f"{put_pct}%"
-            
-            # Monospaced Grid Construction
-            row = f"<code>{c['flag']} | {label:<10} | 🟢{c_str:>3} 🔴{p_str:>3} | {vol_str:>6}</code>"
+            row = f"<code>{c['flag']} | {label:<10} | 🟢{call_pct:>3}% 🔴{put_pct:>3}% | {vol_str:>6}</code>"
             output.append(row)
 
     return "\n".join(output)
@@ -173,38 +170,30 @@ def send_telegram_message(message):
         "parse_mode": "HTML",
         "disable_web_page_preview": True
     }
-    try:
-        response = requests.post(url, json=payload, timeout=25)
-        response.raise_for_status()
-        print("✅ Live Report sent successfully.")
-    except Exception as e:
-        print(f"❌ Error sending message: {e}")
+    response = requests.post(url, json=payload, timeout=25)
+    response.raise_for_status()
+    print("✅ Live Report sent successfully.")
 
 if __name__ == "__main__":
     print("🚀 Initiating CME FX Options Data Extraction...")
     try:
-        # Step 1: Parse Notional and Open Interest
         print("...Processing fx-report.pdf")
         report_pdf = get_pdf(URL_REPORT)
         trade_date, data = parse_fx_report(report_pdf)
         
-        # Step 2: Parse Expiry Date Breakdown
         print("...Processing fx-put-call.pdf")
         expiry_pdf = get_pdf(URL_PUT_CALL)
         final_data = parse_expiry_breakdown(expiry_pdf, data)
         
-        # Step 3: Format and Dispatch
         if trade_date:
             report_content = format_telegram_update(trade_date, final_data)
-            
-            # Console Preview
             print("\n--- FINAL OUTPUT PREVIEW ---")
             print(report_content)
-            print("----------------------------\n")
-            
             send_telegram_message(report_content)
         else:
             print("❌ Failure: Could not extract Trade Date from CME PDFs.")
+            sys.exit(1)
             
     except Exception as e:
         print(f"💥 Fatal Error: {e}")
+        sys.exit(1)
