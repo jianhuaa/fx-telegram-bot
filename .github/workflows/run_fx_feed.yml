@@ -22,7 +22,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install requests selenium webdriver-manager selenium-stealth yfinance pandas beautifulsoup4 cloudscraper
+          pip install requests selenium webdriver-manager selenium-stealth yfinance pandas beautifulsoup4 cloudscraper pdfplumber
 
       - name: Run FX Feed Script
         run: python fx_feed.py
