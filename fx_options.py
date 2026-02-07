@@ -6,13 +6,12 @@ CHAT_ID = "876384974"
 
 def format_telegram_update(trade_date, data):
     """
-    Layout optimized for alignment using monospaced font blocks.
-    Condensed version for iPhone 13 Pro.
+    Ultra-dense layout for iPhone 13 Pro.
+    Last row of each block acts as the delineator/underline.
     """
     output = [
         f"📊 <b>FX Options — {trade_date}</b>",
-        "<code>🌎 | METRIC     | CALL / PUT   | VOL</code>",
-        "<code>---|------------|--------------|-------</code>"
+        "<code>🌎 | METRIC     | CALL / PUT   | VOL</code>"
     ]
 
     for entry in data:
@@ -20,7 +19,7 @@ def format_telegram_update(trade_date, data):
             ('NOTIONAL', 'nv'),
             ('OPEN INT.', 'oi'),
             ('≤1W', 'e1'),
-            ('>1W', 'e8')
+            ('>1W', 'e8') # This will be our underlined row
         ]
         
         for i, (label, key) in enumerate(metrics):
@@ -28,18 +27,21 @@ def format_telegram_update(trade_date, data):
             put_pct = 100 - call_pct
             vol = str(entry[f'{key}_v']).strip()
             
-            # Formatting: Remove leading zeros (7% vs 07%)
             c_str = f"{call_pct}%"
             p_str = f"{put_pct}%"
             
             # Row Construction
-            # We use :<10 for label and :>3 for percentages to keep columns locked
             row = f"<code>{entry['flag']} | {label:<10} | 🟢{c_str:>3} 🔴{p_str:>3} | {vol}</code>"
             output.append(row)
-        
-        # Small invisible separator to make groups easier to scan
-        # We add a dot or just an empty code line if scroll-height allows
-        # output.append(" ") 
+            
+            # Add the "Underline" delineator ONLY after the last metric (>1W)
+            if label == '>1W':
+                # Using a sequence of macrons or underscores to create a clean break
+                output.append("<code>   ‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾‾</code>")
+
+    # Remove the very last underline so the message ends cleanly
+    if output[-1].startswith("<code>   ‾‾‾"):
+        output.pop()
 
     return "\n".join(output)
 
@@ -59,7 +61,7 @@ def send_telegram_message(message):
     except Exception as e:
         print(f"❌ Failed to send message: {e}")
 
-# --- DATA (Mocked for 05 Feb 2026 based on CME PDF structures) ---
+# --- DATA (Mocked for 05 Feb 2026) ---
 test_data = [
     {'flag': '🇦🇺', 'code': 'AUD', 'nv_c': 18, 'nv_v': '$29M', 'oi_c': 46, 'oi_v': '$465M', 'e1_c': 24, 'e1_v': '$39M', 'e8_c': 66, 'e8_v': '$238M'},
     {'flag': '🇨🇦', 'code': 'CAD', 'nv_c': 2, 'nv_v': '$55M', 'oi_c': 56, 'oi_v': '$651M', 'e1_c': 7, 'e1_v': '$168M', 'e8_c': 26, 'e8_v': '$149M'},
@@ -72,8 +74,5 @@ test_data = [
 if __name__ == "__main__":
     trade_date_str = "05 Feb 2026"
     final_report = format_telegram_update(trade_date_str, test_data)
-    
-    print("--- PREVIEW ---")
     print(final_report)
-    
     send_telegram_message(final_report)
