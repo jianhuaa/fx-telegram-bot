@@ -6,15 +6,14 @@ CHAT_ID = "876384974"
 
 def format_telegram_update(trade_date, data):
     """
-    Layout optimized for standard Telegram font.
+    Layout optimized for alignment using monospaced font blocks.
     Uses full words: NOTIONAL, OPEN INTEREST.
     Flags repeat on every line.
-    No divider line, no monospacing for the body.
     """
-    # Title remains bold, no monospacing for the header row
+    # Title remains bold, header uses code for alignment
     output = [
         f"📊 <b>FX Options — {trade_date}</b>",
-        "🌎 | METRIC | CALL / PUT | VOL"
+        "<code>🌎 | METRIC         | CALL / PUT   | VOL</code>"
     ]
 
     for entry in data:
@@ -30,14 +29,13 @@ def format_telegram_update(trade_date, data):
             put_pct = 100 - call_pct
             vol = str(entry[f'{key}_v']).strip()
             
-            # Remove leading zeros for <10%
+            # Remove leading zeros for <10% while keeping padding for alignment
             c_str = f"{call_pct}%"
             p_str = f"{put_pct}%"
             
-            # Using standard text instead of <code> tags.
-            # Flags now repeat on every line.
-            # We use standard spaces for a cleaner, non-technical look.
-            row = f"{entry['flag']} | {label} | 🟢 {c_str} 🔴 {p_str} | {vol}"
+            # Using <code> tags for each row to ensure vertical alignment.
+            # Padding: Flag(2) | Label(13) | Call(4) Put(4) | Vol
+            row = f"<code>{entry['flag']} | {label:<13} | 🟢{c_str:>3} 🔴{p_str:>3} | {vol}</code>"
             output.append(row)
 
     return "\n".join(output)
