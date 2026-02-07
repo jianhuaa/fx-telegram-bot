@@ -9,11 +9,10 @@ def format_telegram_update(trade_date, data):
     Layout optimized for alignment using monospaced font blocks.
     Condensed version for iPhone 13 Pro.
     """
-    # Title remains bold, header uses code for alignment
-    # Reduced metric column width in header
     output = [
         f"📊 <b>FX Options — {trade_date}</b>",
-        "<code>🌎 | METRIC     | CALL / PUT   | VOL</code>"
+        "<code>🌎 | METRIC     | CALL / PUT   | VOL</code>",
+        "<code>---|------------|--------------|-------</code>"
     ]
 
     for entry in data:
@@ -24,19 +23,23 @@ def format_telegram_update(trade_date, data):
             ('>1W', 'e8')
         ]
         
-        for label, key in metrics:
+        for i, (label, key) in enumerate(metrics):
             call_pct = entry[f'{key}_c']
             put_pct = 100 - call_pct
             vol = str(entry[f'{key}_v']).strip()
             
-            # Remove leading zeros for <10% while keeping padding for alignment
+            # Formatting: Remove leading zeros (7% vs 07%)
             c_str = f"{call_pct}%"
             p_str = f"{put_pct}%"
             
-            # Using <code> tags for each row to ensure vertical alignment.
-            # Reduced padding from 13 to 10 to tighten the grid.
+            # Row Construction
+            # We use :<10 for label and :>3 for percentages to keep columns locked
             row = f"<code>{entry['flag']} | {label:<10} | 🟢{c_str:>3} 🔴{p_str:>3} | {vol}</code>"
             output.append(row)
+        
+        # Small invisible separator to make groups easier to scan
+        # We add a dot or just an empty code line if scroll-height allows
+        # output.append(" ") 
 
     return "\n".join(output)
 
