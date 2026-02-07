@@ -7,8 +7,7 @@ CHAT_ID = "876384974"
 def format_telegram_update(trade_date, data):
     """
     Ultra-dense layout for iPhone 13 Pro.
-    Removed extra delineator line to prevent vertical overflow.
-    Uses bolding on the last row to signal the break between blocks.
+    Returns to a clean, non-bolded monospaced grid for maximum readability.
     """
     output = [
         f"📊 <b>FX Options — {trade_date}</b>",
@@ -31,16 +30,8 @@ def format_telegram_update(trade_date, data):
             c_str = f"{call_pct}%"
             p_str = f"{put_pct}%"
             
-            # Row Construction
-            content = f"{entry['flag']} | {label:<10} | 🟢{c_str:>3} 🔴{p_str:>3} | {vol}"
-            
-            # If it's the last row of the block (>1W), we wrap it in <b> as a delineator
-            # This makes the row "heavier" visually without adding vertical pixels.
-            if label == '>1W':
-                row = f"<b><code>{content}</code></b>"
-            else:
-                row = f"<code>{content}</code>"
-                
+            # Row Construction using standard monospaced formatting
+            row = f"<code>{entry['flag']} | {label:<10} | 🟢{c_str:>3} 🔴{p_str:>3} | {vol}</code>"
             output.append(row)
 
     return "\n".join(output)
