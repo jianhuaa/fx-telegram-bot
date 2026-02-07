@@ -6,41 +6,38 @@ CHAT_ID = "876384974"
 
 def format_telegram_update(trade_date, data):
     """
-    Ultra-dense layout optimized for iPhone 13 Pro 'Zero-Scroll'.
-    Flags moved to a dedicated left column to save vertical space.
-    Header: 🌎 | METRIC | CALL / PUT | VOL
+    Layout optimized for standard Telegram font.
+    Uses full words: NOTIONAL, OPEN INTEREST.
+    Flags repeat on every line.
+    No divider line, no monospacing for the body.
     """
-    # Header defines the structure once to save vertical space
+    # Title remains bold, no monospacing for the header row
     output = [
         f"📊 <b>FX Options — {trade_date}</b>",
-        "<code>🌎 | METRIC | CALL / PUT | VOL</code>",
-        "<code>---|--------|--------------|-------</code>"
+        "🌎 | METRIC | CALL / PUT | VOL"
     ]
 
     for entry in data:
         metrics = [
-            ('NOTNL', 'nv'),
-            ('O.INT', 'oi'),
-            ('≤1W  ', 'e1'),
-            ('>1W  ', 'e8')
+            ('NOTIONAL', 'nv'),
+            ('OPEN INTEREST', 'oi'),
+            ('EXPIRY ≤1W', 'e1'),
+            ('EXPIRY >1W', 'e8')
         ]
         
-        for i, (label, key) in enumerate(metrics):
+        for label, key in metrics:
             call_pct = entry[f'{key}_c']
             put_pct = 100 - call_pct
             vol = str(entry[f'{key}_v']).strip()
             
-            # Formatting percentages: Remove leading zeros (e.g., 7% not 07%)
+            # Remove leading zeros for <10%
             c_str = f"{call_pct}%"
             p_str = f"{put_pct}%"
             
-            # The flag is only shown on the first row of each currency block
-            flag_col = entry['flag'] if i == 0 else "  "
-            
-            # Row Construction (Approx 40 characters wide):
-            # Flag | Metric | 🟢Call% 🔴Put% | Volume
-            # Padding :>3 ensures columns stay aligned for 1-3 digit percentages
-            row = f"<code>{flag_col} | {label} | 🟢{c_str:>3} 🔴{p_str:>3} | {vol}</code>"
+            # Using standard text instead of <code> tags.
+            # Flags now repeat on every line.
+            # We use standard spaces for a cleaner, non-technical look.
+            row = f"{entry['flag']} | {label} | 🟢 {c_str} 🔴 {p_str} | {vol}"
             output.append(row)
 
     return "\n".join(output)
@@ -62,7 +59,6 @@ def send_telegram_message(message):
         print(f"❌ Failed to send message: {e}")
 
 # --- DATA (Mocked for 05 Feb 2026 based on CME PDF structures) ---
-# Note: In production, this list would be populated by your PDF scraping logic.
 test_data = [
     {'flag': '🇦🇺', 'code': 'AUD', 'nv_c': 18, 'nv_v': '$29M', 'oi_c': 46, 'oi_v': '$465M', 'e1_c': 24, 'e1_v': '$39M', 'e8_c': 66, 'e8_v': '$238M'},
     {'flag': '🇨🇦', 'code': 'CAD', 'nv_c': 2, 'nv_v': '$55M', 'oi_c': 56, 'oi_v': '$651M', 'e1_c': 7, 'e1_v': '$168M', 'e8_c': 26, 'e8_v': '$149M'},
@@ -73,15 +69,10 @@ test_data = [
 ]
 
 if __name__ == "__main__":
-    # Trade date for title
     trade_date_str = "05 Feb 2026"
-    
-    # Generate the formatted content
     final_report = format_telegram_update(trade_date_str, test_data)
     
-    # Debug preview
     print("--- PREVIEW ---")
     print(final_report)
     
-    # Execute the live send
     send_telegram_message(final_report)
