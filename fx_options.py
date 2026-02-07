@@ -7,7 +7,7 @@ CHAT_ID = "876384974"
 def format_telegram_update(trade_date, data):
     """
     Layout optimized for alignment using monospaced font blocks.
-    Uses full words: NOTIONAL, OPEN INTEREST.
+    Uses: NOTIONAL, OPEN INT., and EXPIRY.
     Flags repeat on every line.
     """
     # Title remains bold, header uses code for alignment
@@ -19,7 +19,7 @@ def format_telegram_update(trade_date, data):
     for entry in data:
         metrics = [
             ('NOTIONAL', 'nv'),
-            ('OPEN INTEREST', 'oi'),
+            ('OPEN INT.', 'oi'),
             ('EXPIRY ≤1W', 'e1'),
             ('EXPIRY >1W', 'e8')
         ]
