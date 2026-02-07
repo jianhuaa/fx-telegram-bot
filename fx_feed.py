@@ -301,7 +301,7 @@ calendar_events = scrape_forex_factory()
 base_movers = calculate_base_movers(fx_results)
 
 # Build Header
-lines = [f"📊 <b>G8 FX Update</b> — {now_sgt.strftime('%I:%M%p').lower()} SGT\n", "🔥 <b>Top Movers</b>"]
+lines = [f"📊 <b>G8 FX Update</b> — {now_sgt.strftime('%I:%M%p').lower()} SGT / {now_et.strftime('%I:%M%p').lower()} ET\n", "🔥 <b>Top Movers</b>"]
 for curr, vals in sorted(base_movers.items()):
     lines.append(f"{curr}: {vals[0]:+} d/d | {vals[1]:+} w/w | {vals[2]:+} m/m")
 
