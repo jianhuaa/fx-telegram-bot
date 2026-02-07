@@ -26,3 +26,6 @@ jobs:
 
       - name: Run FX Feed Script
         run: python fx_feed.py
+
+      - name: Run FX Options Script
+        run: python fx_options.py
