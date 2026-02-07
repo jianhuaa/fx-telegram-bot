@@ -8,10 +8,11 @@ def format_telegram_update(trade_date, data):
     """
     Formats the FX Options data into a stacked, mobile-friendly layout
     optimized for Telegram's monospaced blocks on iPhone 13 Pro.
+    Layout: METRIC | CALL/PUT | VOL
     """
+    # Updated Title format
     output = [
-        f"📊 <b>CME OPTIONS SKEW</b> — {trade_date}",
-        "Sentiment: Call 🟢 | Put 🔴\n"
+        f"<b>FX Options — {trade_date}</b>\n"
     ]
 
     for entry in data:
@@ -19,9 +20,8 @@ def format_telegram_update(trade_date, data):
         header = f"{entry['flag']} <b>{entry['code']}</b>"
         output.append(header)
         
-        # Start the monospaced block for alignment
-        # Header line width: ~34 characters
-        table = ["<code>METRIC  | CALL/PUT (VOL)  | %SKEW</code>"]
+        # New 3-column table structure: METRIC | CALL/PUT | VOL
+        table = ["<code>METRIC  | CALL/PUT | VOL</code>"]
         
         metrics = [
             ('NOTIONAL', 'nv'),
@@ -33,22 +33,16 @@ def format_telegram_update(trade_date, data):
         for label, key in metrics:
             call_pct = entry[f'{key}_c']
             put_pct = 100 - call_pct
-            vol = entry[f'{key}_v']
+            vol = str(entry[f'{key}_v']).strip()
             
-            # Generate the 4-segment sparkline logic (25% increments)
-            green_count = round(call_pct / 25)
-            red_count = 4 - green_count
-            sparkline = "🟢" * green_count + "🔴" * red_count
-            
-            # Formatting percentages: Remove leading zeros (7% vs 07%)
-            # We use :>3 padding to keep the next element (Red Ball) aligned
+            # Remove leading zeros for <10% while keeping columns aligned
             c_str = f"{call_pct}%"
             p_str = f"{put_pct}%"
             
             # Row Construction:
-            # Metric(8) | GreenBall + Call%(3) + RedBall + Put%(3) + (Vol)(6) | Sparkline(4)
-            # Total width: ~42 characters (Safe for iPhone 13 Pro)
-            row = f"<code>{label}| 🟢{c_str:>3} 🔴{p_str:>3} ({vol:>6}) | {sparkline}</code>"
+            # Metric(8) | GreenBall + Call%(3) + RedBall + Put%(3) | Volume
+            # Padding :>3 ensures the layout doesn't break when % digits change
+            row = f"<code>{label}| 🟢{c_str:>3} 🔴{p_str:>3} | {vol}</code>"
             table.append(row)
         
         output.append("\n".join(table) + "\n")
@@ -83,7 +77,7 @@ test_data = [
 
 if __name__ == "__main__":
     # Current Trade Date from CME
-    trade_date = "05 FEB 2026"
+    trade_date = "05 Feb 2026"
     
     # Generate the report
     report_content = format_telegram_update(trade_date, test_data)
