@@ -1,4 +1,4 @@
-import requests
+import cloudscraper
 import pdfplumber
 import io
 import re
@@ -39,19 +39,27 @@ def format_vol(val):
     return f"${val_m:.1f}M"
 
 def get_pdf(url):
-    """Downloads PDF with headers to bypass potential scraping blocks."""
-    headers = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
-        'Accept': 'application/pdf'
-    }
-    resp = requests.get(url, headers=headers, timeout=30)
-    resp.raise_for_status()
-    
-    # Verify we actually got a PDF
-    if not resp.content.startswith(b'%PDF'):
-        raise ValueError(f"Downloaded content from {url} is not a valid PDF. It might be an HTML error page.")
+    """Downloads PDF using cloudscraper to bypass bot protection."""
+    scraper = cloudscraper.create_scraper(
+        browser={
+            'browser': 'chrome',
+            'platform': 'windows',
+            'desktop': True
+        }
+    )
+    try:
+        resp = scraper.get(url, timeout=45)
+        resp.raise_for_status()
         
-    return io.BytesIO(resp.content)
+        # Verify PDF signature
+        if not resp.content.startswith(b'%PDF'):
+            print(f"❌ Error: Content from {url} is not a PDF. Headers: {resp.headers}")
+            raise ValueError("CME returned a non-PDF response (likely a bot-block page).")
+            
+        return io.BytesIO(resp.content)
+    except Exception as e:
+        print(f"❌ Network/Scraping Error for {url}: {e}")
+        raise
 
 def parse_fx_report(pdf_stream):
     """Extracts Notional Value (Pg 2) and Open Interest (Pg 3) from fx-report.pdf."""
@@ -73,12 +81,13 @@ def parse_fx_report(pdf_stream):
             except Exception as e:
                 print(f"⚠️ Date parsing error: {e}")
 
-        for page in pdf.pages:
+        for page_idx, page in enumerate(pdf.pages):
             text = page.extract_text() or ""
             table = page.extract_table()
             if not table: continue
 
             if "Notional Value: Put-Call Breakdown" in text:
+                print(f"✅ Found Notional table on page {page_idx + 1}")
                 for row in table:
                     if not row or len(row) < 3: continue
                     for c in CURRENCIES:
@@ -87,6 +96,7 @@ def parse_fx_report(pdf_stream):
                             results[c['code']]['nv_p'] = clean_numeric(row[2])
 
             elif "Notional Open Interest: Put-Call Breakdown" in text:
+                print(f"✅ Found Open Interest table on page {page_idx + 1}")
                 for row in table:
                     if not row or len(row) < 3: continue
                     for c in CURRENCIES:
@@ -99,14 +109,14 @@ def parse_fx_report(pdf_stream):
 def parse_expiry_breakdown(pdf_stream, results):
     """Extracts Expiry data from fx-put-call.pdf using the Shift Rule."""
     with pdfplumber.open(pdf_stream) as pdf:
-        for page in pdf.pages:
+        for page_idx, page in enumerate(pdf.pages):
             text = (page.extract_text() or "").upper()
             
             current_currency = None
             for c in CURRENCIES:
                 if c['full'] in text:
                     current_currency = c['code']
-                    break # Found the currency for this page
+                    break 
             
             if not current_currency: continue
             
@@ -119,7 +129,7 @@ def parse_expiry_breakdown(pdf_stream, results):
                     
                     dte = int(dte_val)
                     
-                    # Shift Rule logic
+                    # Shift Rule logic: Empty index 2 means index 3 is Put
                     if row[2] is None or str(row[2]).strip() in ['', '-', 'None']:
                         c_val = 0.0
                         p_val = clean_numeric(row[3])
@@ -170,18 +180,19 @@ def send_telegram_message(message):
         "parse_mode": "HTML",
         "disable_web_page_preview": True
     }
-    response = requests.post(url, json=payload, timeout=25)
+    import requests as req_basic
+    response = req_basic.post(url, json=payload, timeout=25)
     response.raise_for_status()
     print("✅ Live Report sent successfully.")
 
 if __name__ == "__main__":
     print("🚀 Initiating CME FX Options Data Extraction...")
     try:
-        print("...Processing fx-report.pdf")
+        print("...Downloading fx-report.pdf")
         report_pdf = get_pdf(URL_REPORT)
         trade_date, data = parse_fx_report(report_pdf)
         
-        print("...Processing fx-put-call.pdf")
+        print("...Downloading fx-put-call.pdf")
         expiry_pdf = get_pdf(URL_PUT_CALL)
         final_data = parse_expiry_breakdown(expiry_pdf, data)
         
