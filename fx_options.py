@@ -7,21 +7,21 @@ CHAT_ID = "876384974"
 def format_telegram_update(trade_date, data):
     """
     Layout optimized for alignment using monospaced font blocks.
-    Uses: NOTIONAL, OPEN INT., and EXPIRY.
-    Flags repeat on every line.
+    Condensed version for iPhone 13 Pro.
     """
     # Title remains bold, header uses code for alignment
+    # Reduced metric column width in header
     output = [
         f"📊 <b>FX Options — {trade_date}</b>",
-        "<code>🌎 | METRIC         | CALL / PUT   | VOL</code>"
+        "<code>🌎 | METRIC     | CALL / PUT   | VOL</code>"
     ]
 
     for entry in data:
         metrics = [
             ('NOTIONAL', 'nv'),
             ('OPEN INT.', 'oi'),
-            ('EXPIRY ≤1W', 'e1'),
-            ('EXPIRY >1W', 'e8')
+            ('≤1W', 'e1'),
+            ('>1W', 'e8')
         ]
         
         for label, key in metrics:
@@ -34,8 +34,8 @@ def format_telegram_update(trade_date, data):
             p_str = f"{put_pct}%"
             
             # Using <code> tags for each row to ensure vertical alignment.
-            # Padding: Flag(2) | Label(13) | Call(4) Put(4) | Vol
-            row = f"<code>{entry['flag']} | {label:<13} | 🟢{c_str:>3} 🔴{p_str:>3} | {vol}</code>"
+            # Reduced padding from 13 to 10 to tighten the grid.
+            row = f"<code>{entry['flag']} | {label:<10} | 🟢{c_str:>3} 🔴{p_str:>3} | {vol}</code>"
             output.append(row)
 
     return "\n".join(output)
