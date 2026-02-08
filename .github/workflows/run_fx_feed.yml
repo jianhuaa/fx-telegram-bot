@@ -29,3 +29,6 @@ jobs:
 
       - name: Run FX Options Script
         run: python fx_options.py
+
+      - name: Run NASDAQ Script
+        run: python nasdaq.py
