@@ -3,7 +3,17 @@ name: G8 FX Telegram Feed
 on:
   repository_dispatch:
     types: [trigger-fx-feed]
-  workflow_dispatch: # Allows manual run from GitHub UI
+  workflow_dispatch: # Updated to allow selective runs from your Bot
+    inputs:
+      run_mode:
+        description: 'Which script to run?'
+        required: true
+        default: 'FX_Feed'
+        type: choice
+        options:
+          - FX_Feed
+          - FX_Options
+          - NASDAQ
 
 jobs:
   fx_feed:
@@ -24,11 +34,17 @@ jobs:
         run: |
           pip install requests selenium webdriver-manager selenium-stealth yfinance pandas beautifulsoup4 cloudscraper pdfplumber
 
+      # Runs if it's an automatic trigger OR if FX_Feed is selected
       - name: Run FX Feed Script
+        if: github.event_name == 'repository_dispatch' || github.event.inputs.run_mode == 'FX_Feed'
         run: python fx_feed.py
 
+      # ONLY runs if FX_Options is selected via Telegram/Manual
       - name: Run FX Options Script
+        if: github.event.inputs.run_mode == 'FX_Options'
         run: python fx_options.py
 
+      # ONLY runs if NASDAQ is selected via Telegram/Manual
       - name: Run NASDAQ Script
+        if: github.event.inputs.run_mode == 'NASDAQ'
         run: python nasdaq.py
