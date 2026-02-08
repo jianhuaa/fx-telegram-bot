@@ -68,7 +68,7 @@ def parse_fx_report(pdf_stream):
                 raw_date = date_match.group(1)
                 try:
                     fmt = '%m/%d/%y' if len(raw_date.split('/')[-1]) == 2 else '%m/%d/%Y'
-                    trade_date = datetime.strptime(raw_date, fmt).strftime('%d %b %Y')
+                    trade_date = datetime.strptime(raw_date, fmt).strftime('%b %d %Y')
                     break
                 except: continue
 
