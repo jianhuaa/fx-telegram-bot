@@ -1,22 +1,15 @@
 name: G8 FX Telegram Feed
 
 on:
+  # This listens for the ping from cron-job.org
   repository_dispatch:
     types: [trigger-fx-feed]
-  workflow_dispatch: # Updated to allow selective runs from your Bot
-    inputs:
-      run_mode:
-        description: 'Which script to run?'
-        required: true
-        default: 'FX_Feed'
-        type: choice
-        options:
-          - FX_Feed
-          - FX_Options
-          - NASDAQ
+  
+  # Allows you to still click "Run workflow" manually in GitHub
+  workflow_dispatch:
 
 jobs:
-  fx_feed:
+  execute-all-feeds:
     runs-on: ubuntu-latest
     timeout-minutes: 15 
 
@@ -25,26 +18,16 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Setup Python
-        uses: actions/setup-python@v4
+        uses: actions/setup-python@v5
         with:
           python-version: '3.10'
-          cache: 'pip'
 
       - name: Install dependencies
         run: |
           pip install requests selenium webdriver-manager selenium-stealth yfinance pandas beautifulsoup4 cloudscraper pdfplumber
 
-      # Runs if it's an automatic trigger OR if FX_Feed is selected
-      - name: Run FX Feed Script
-        if: github.event_name == 'repository_dispatch' || github.event.inputs.run_mode == 'FX_Feed'
-        run: python fx_feed.py
-
-      # ONLY runs if FX_Options is selected via Telegram/Manual
-      - name: Run FX Options Script
-        if: github.event.inputs.run_mode == 'FX_Options'
-        run: python fx_options.py
-
-      # ONLY runs if NASDAQ is selected via Telegram/Manual
-      - name: Run NASDAQ Script
-        if: github.event.inputs.run_mode == 'NASDAQ'
-        run: python nasdaq.py
+      - name: Run Market Scripts
+        run: |
+          python fx_feed.py
+          python fx_options.py
+          python nasdaq.py
