@@ -8,7 +8,7 @@ from datetime import datetime
 from itertools import combinations
 
 # ===== CONFIGURATION =====
-TELEGRAM_TOKEN = "7649050168:AAHNIYnrHzLOTcjNuMpeKgyUbfJB9x9an3c"
+TELEGRAM_TOKEN = "8577879935:AAEpSjAz4wdcZ9Lb7AJpURRk8haADlPCbHo"
 CHAT_ID = "876384974"
 
 # Logic-based Currency Configuration - AUD terms expanded for safety
