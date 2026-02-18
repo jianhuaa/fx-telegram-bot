@@ -31,3 +31,4 @@ jobs:
           python fx_feed.py
           python fx_options.py
           python nasdaq.py
+          python bitcoin.py
