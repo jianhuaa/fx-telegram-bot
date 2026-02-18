@@ -283,7 +283,7 @@ def run_comprehensive_vacuum():
         f"🟠 <b>BITCOIN - {trade_date}</b>",
         "",
         "<b>FUTURES (STANDARD UNITS)</b>",
-        "<code>MO   |TYP|  ST  | CHG | VOL | OI  | ΔOI</code>",
+        "<code>MO   |TYP|  ST  |  CHG | VOL| OI  | ΔOI</code>",
     ]
 # Sort the months and slice to keep only the first 6
     sorted_months = sorted(f_sum.keys(), key=get_month_score)[:6] 
