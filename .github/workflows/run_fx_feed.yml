@@ -33,3 +33,4 @@ jobs:
           python nasdaq.py
           python russell.py
           python bitcoin.py
+          python metals.py
