@@ -1,3 +1,9 @@
+import cloudscraper
+import pdfplumber
+import io
+import re
+import requests
+
 def run_comprehensive_vacuum():
     print("--- STARTING SECTOR VACUUM ---")
     scraper = cloudscraper.create_scraper(browser='chrome')
