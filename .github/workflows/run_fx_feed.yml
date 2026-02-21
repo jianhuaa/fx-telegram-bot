@@ -23,6 +23,8 @@ jobs:
           pip install requests selenium webdriver-manager selenium-stealth yfinance pandas beautifulsoup4 cloudscraper pdfplumber telegraph
 
       - name: Run Market Scripts
+        env:
+          GIST_TOKEN: ${{ secrets.GIST_TOKEN }}
         run: |
           python fx_feed.py || true
           python fx_options.py || true
