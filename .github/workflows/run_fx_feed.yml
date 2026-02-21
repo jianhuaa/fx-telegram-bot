@@ -24,7 +24,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install requests selenium webdriver-manager selenium-stealth yfinance pandas beautifulsoup4 cloudscraper pdfplumber
+          pip install requests selenium webdriver-manager selenium-stealth yfinance pandas beautifulsoup4 cloudscraper pdfplumber telegraph
 
       - name: Run Market Scripts
         run: |
