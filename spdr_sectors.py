@@ -6,27 +6,29 @@ import requests
 import os
 import csv
 import pandas as pd
-from telegraph import Telegraph
 from datetime import datetime
+from pathlib import Path
 
 # --- CONFIGURATION ---
-PDF_URL = "https://www.cmegroup.com/daily_bulletin/current/Section12_Equity_And_Index_Futures_Continued.pdf"
+PDF_URL        = "https://www.cmegroup.com/daily_bulletin/current/Section12_Equity_And_Index_Futures_Continued.pdf"
 TELEGRAM_TOKEN = "8577879935:AAEpSjAz4wdcZ9Lb7AJpURRk8haADlPCbHo"
-CHAT_ID = "876384974"
-CSV_FILE = "spdr_sectors_history.csv" 
+CHAT_ID        = "876384974"
+CSV_FILE       = "spdr_sectors_history.csv"
+GITHUB_TOKEN   = "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"
+GIST_ID_FILE   = "gist_id.txt"
 
 TARGET_SECTORS = {
-    "E-MINI COM SERVICES SELECT SECTOR": "COMM",
+    "E-MINI COM SERVICES SELECT SECTOR":   "COMM",
     "SP 500 CONS DISCRETIONARY SECTOR IX": "DISC",
-    "SP 500 ENERGY SECTOR INDEX": "ENER",
-    "SP 500 FINANCIAL SECTOR INDEX": "FINA",
-    "SP 500 HEALTH CARE SECTOR INDEX": "HLTH",
-    "SP 500 INDUSTRIAL SECTOR INDEX": "INDU",
-    "SP 500 MATERIALS SECTOR INDEX": "MATL",
-    "REAL ESTATE SELECT SECTOR FUTURES": "REIT",
-    "SP 500 CONSUMER STAPLES SECTOR IX": "STAP",
-    "SP 500 TECHNOLOGY SECTOR INDEX": "TECH",
-    "SP 500 UTILITIES SECTOR INDEX": "UTIL"
+    "SP 500 ENERGY SECTOR INDEX":          "ENER",
+    "SP 500 FINANCIAL SECTOR INDEX":       "FINA",
+    "SP 500 HEALTH CARE SECTOR INDEX":     "HLTH",
+    "SP 500 INDUSTRIAL SECTOR INDEX":      "INDU",
+    "SP 500 MATERIALS SECTOR INDEX":       "MATL",
+    "REAL ESTATE SELECT SECTOR FUTURES":   "REIT",
+    "SP 500 CONSUMER STAPLES SECTOR IX":   "STAP",
+    "SP 500 TECHNOLOGY SECTOR INDEX":      "TECH",
+    "SP 500 UTILITIES SECTOR INDEX":       "UTIL",
 }
 
 # --- HELPERS ---
@@ -93,16 +95,200 @@ def process_futures_block(product_name, line):
     except Exception:
         return None
 
-# --- STORAGE & INSTANT VIEW LOGIC ---
+# --- HTML PAGE BUILDER ---
+def build_html_page(df):
+    ids = sorted(df["ID"].unique().tolist())
+    filter_buttons = "\n    ".join(
+        f'<button onclick="filterID(\'{i}\')" data-id="{i}">{i}</button>'
+        for i in ids
+    )
+    rows_html = ""
+    for _, r in df.iterrows():
+        pct_val = str(r["Pct"])
+        try:
+            pct_num   = float(pct_val.replace("%", ""))
+            pct_class = "pos" if pct_num > 0 else ("neg" if pct_num < 0 else "")
+        except:
+            pct_class = ""
+        rows_html += (
+            f'<tr data-id="{r["ID"]}" data-date="{r["Date"]}">'
+            f'<td>{r["Date"]}</td>'
+            f'<td class="id-cell">{r["ID"]}</td>'
+            f'<td>{r["Sett"]}</td>'
+            f'<td class="{pct_class}">{r["Pct"]}</td>'
+            f'<td>{format_num(float(str(r["Vol"]).replace(",", "")))}</td>'
+            f'<td>{format_num(float(str(r["OI"]).replace(",", "")))}</td>'
+            f'<td>{format_num(float(str(r["Delta"]).replace(",", "")))}</td>'
+            f'</tr>\n'
+        )
+    dates        = sorted(df["Date"].unique().tolist(), reverse=True)
+    date_options = "\n".join(f'<option value="{d}">{d}</option>' for d in dates)
+
+    return f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>S&P 500 Sector Futures History</title>
+<style>
+  * {{ box-sizing: border-box; margin: 0; padding: 0; }}
+  body {{ font-family: 'Courier New', monospace; background: #0d0d0d; color: #e0e0e0; padding: 12px; }}
+  h2 {{ color: #00aaff; margin-bottom: 12px; font-size: 1.1rem; letter-spacing: 1px; }}
+  .controls {{ display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 10px; }}
+  .controls label {{ color: #888; font-size: 0.85rem; margin-right: -4px; }}
+  button {{ padding: 6px 13px; cursor: pointer; background: #1a1a1a; color: #ccc; border: 1px solid #444; border-radius: 4px; font-size: 0.85rem; font-family: inherit; transition: background 0.15s, color 0.15s; }}
+  button:hover {{ background: #2a2a2a; }}
+  button.active {{ background: #00aaff; color: #000; border-color: #00aaff; font-weight: bold; }}
+  select {{ padding: 6px 8px; background: #1a1a1a; color: #ccc; border: 1px solid #444; border-radius: 4px; font-size: 0.85rem; font-family: inherit; }}
+  .table-wrap {{ width: 100%; }}
+  table {{ border-collapse: collapse; font-size: 0.72rem; white-space: nowrap; width: 100%; table-layout: fixed; }}
+  th, td {{ border: 1px solid #2a2a2a; padding: 5px 3px; text-align: right; overflow: hidden; }}
+  th {{ text-align: left; }}
+  th:nth-child(1), td:nth-child(1) {{ width: 22%; }}
+  th:nth-child(2), td:nth-child(2) {{ width: 10%; }}
+  th:nth-child(3), td:nth-child(3) {{ width: 14%; }}
+  th:nth-child(4), td:nth-child(4) {{ width: 14%; }}
+  th:nth-child(5), td:nth-child(5) {{ width: 13%; }}
+  th:nth-child(6), td:nth-child(6) {{ width: 13%; }}
+  th:nth-child(7), td:nth-child(7) {{ width: 14%; }}
+  th {{ background: #161616; color: #00aaff; cursor: pointer; user-select: none; position: sticky; top: 0; z-index: 1; }}
+  th:hover {{ background: #1e1e1e; }}
+  th .arrow {{ font-size: 0.65rem; margin-left: 4px; color: #555; }}
+  th.sorted .arrow {{ color: #00aaff; }}
+  tr:hover td {{ background: #151515; }}
+  td.id-cell {{ color: #ffd700; font-weight: bold; text-align: center; }}
+  td.pos {{ color: #00e676; }}
+  td.neg {{ color: #ff5252; }}
+  .count {{ font-size: 0.8rem; color: #555; margin-bottom: 8px; }}
+</style>
+</head>
+<body>
+<h2>S&P 500 Sector Futures History</h2>
+<div class="controls">
+  <label>Sector:</label>
+  <button onclick="filterID('ALL')" data-id="ALL" class="active">ALL</button>
+  {filter_buttons}
+  <label style="margin-left:4px">Date:</label>
+  <select id="dateSelect" onchange="applyFilters()">
+    <option value="">All dates</option>
+    {date_options}
+  </select>
+</div>
+<div class="count" id="rowCount"></div>
+<div class="table-wrap">
+<table id="tbl">
+  <thead>
+    <tr>
+      <th onclick="sortTable(0)">Date <span class="arrow">&#9660;</span></th>
+      <th onclick="sortTable(1)">ID <span class="arrow">&#9660;</span></th>
+      <th onclick="sortTable(2)">Sett <span class="arrow">&#9660;</span></th>
+      <th onclick="sortTable(3)">%Chg <span class="arrow">&#9660;</span></th>
+      <th onclick="sortTable(4)">Vol <span class="arrow">&#9660;</span></th>
+      <th onclick="sortTable(5)">OI <span class="arrow">&#9660;</span></th>
+      <th onclick="sortTable(6)">&#916;OI <span class="arrow">&#9660;</span></th>
+    </tr>
+  </thead>
+  <tbody id="tbody">
+{rows_html}  </tbody>
+</table>
+</div>
+<script>
+let activeID = 'ALL', sortCol = 0, sortAsc = false;
+function filterID(id) {{
+  activeID = id;
+  document.querySelectorAll('button[data-id]').forEach(b => b.classList.toggle('active', b.dataset.id === id));
+  applyFilters();
+}}
+function applyFilters() {{
+  const dateQ = document.getElementById('dateSelect').value;
+  let visible = 0;
+  document.querySelectorAll('#tbody tr').forEach(row => {{
+    const show = (activeID === 'ALL' || row.dataset.id === activeID)
+              && (!dateQ || row.dataset.date === dateQ);
+    row.style.display = show ? '' : 'none';
+    if (show) visible++;
+  }});
+  document.getElementById('rowCount').textContent = 'Showing ' + visible + ' rows';
+}}
+function sortTable(col) {{
+  if (sortCol === col) sortAsc = !sortAsc; else {{ sortCol = col; sortAsc = true; }}
+  document.querySelectorAll('th').forEach((th, i) => {{
+    th.classList.toggle('sorted', i === col);
+    const a = th.querySelector('.arrow');
+    if (a) a.innerHTML = (i === col) ? (sortAsc ? '&#9650;' : '&#9660;') : '&#9660;';
+  }});
+  const tbody = document.getElementById('tbody');
+  Array.from(tbody.querySelectorAll('tr')).sort((a, b) => {{
+    let av = a.cells[col].textContent.trim(), bv = b.cells[col].textContent.trim();
+    const an = parseFloat(av.replace(/[%k,]/g,'')) * (av.includes('k') ? 1000 : 1);
+    const bn = parseFloat(bv.replace(/[%k,]/g,'')) * (bv.includes('k') ? 1000 : 1);
+    if (!isNaN(an) && !isNaN(bn)) return sortAsc ? an-bn : bn-an;
+    return sortAsc ? av.localeCompare(bv) : bv.localeCompare(av);
+  }}).forEach(r => tbody.appendChild(r));
+}}
+window.onload = () => applyFilters();
+</script>
+</body>
+</html>"""
+
+# --- GIST HELPERS ---
+def load_gist_id():
+    if os.path.isfile(GIST_ID_FILE):
+        return Path(GIST_ID_FILE).read_text().strip()
+    return ""
+
+def save_gist_id(gid):
+    Path(GIST_ID_FILE).write_text(gid)
+
+def push_to_gist(html_content):
+    headers = {
+        "Authorization": f"token {GITHUB_TOKEN}",
+        "Accept": "application/vnd.github+json",
+    }
+    payload = {
+        "description": "S&P 500 Sector Futures - Filterable History",
+        "public": True,
+        "files": {"sectors.html": {"content": html_content}},
+    }
+    gist_id = load_gist_id()
+    try:
+        if gist_id:
+            resp = requests.patch(
+                f"https://api.github.com/gists/{gist_id}",
+                headers=headers, json=payload, timeout=15,
+            )
+            if resp.status_code == 200:
+                raw_url = "https://htmlpreview.github.io/?" + resp.json()["files"]["sectors.html"]["raw_url"]
+                print(f">>> Gist updated: {raw_url}")
+                return raw_url
+            print(f">>> Gist update failed ({resp.status_code}) — creating new.")
+
+        resp = requests.post(
+            "https://api.github.com/gists",
+            headers=headers, json=payload, timeout=15,
+        )
+        if resp.status_code == 201:
+            data = resp.json()
+            save_gist_id(data["id"])
+            raw_url = "https://htmlpreview.github.io/?" + data["files"]["sectors.html"]["raw_url"]
+            print(f">>> Gist created: {raw_url}")
+            return raw_url
+        print(f">>> Gist create failed ({resp.status_code}): {resp.text}")
+        return None
+    except Exception as e:
+        print(f">>> Gist error: {e}")
+        return None
+
+# --- STORAGE & PUBLISH ---
 def archive_and_publish(sorted_sectors, trade_date):
     try:
         clean_date = datetime.strptime(trade_date, "%b %d, %Y").strftime("%Y-%m-%d")
     except:
-        clean_date = trade_date 
+        clean_date = trade_date
 
     file_exists = os.path.isfile(CSV_FILE)
     already_exists = False
-    
+
     if file_exists:
         try:
             with open(CSV_FILE, 'r') as f:
@@ -123,37 +309,22 @@ def archive_and_publish(sorted_sectors, trade_date):
             for s in sorted_sectors:
                 writer.writerow([clean_date, s['ID'], s['Sett'], f"{s['Pct']:.2f}%", s['Vol'], s['OI'], s['Delta']])
         print(f">>> Successfully archived data for {clean_date}.")
-    
-    # TELEGRAPH: Using Text-Grid (Pre) format to avoid 'table' tag errors
+
+    # Build HTML from full CSV history (no row limit)
     try:
         df = pd.read_csv(CSV_FILE)
-        # Show last 60 entries (approx 5 days)
-        df = df.sort_values(by=['Date', 'ID'], ascending=[False, True]).head(60)
-        
-        header = "DATE       | ID   | SETT   | %CHG   | VOL   | OI    | ΔOI\n"
-        sep    = "-----------|------|--------|--------|-------|-------|------\n"
-        rows_text = ""
-        for _, r in df.iterrows():
-            rows_text += f"{r['Date']} | {r['ID']:4} | {str(r['Sett']):>6} | {r['Pct']:>6} | {format_num(r['Vol']):>5} | {format_num(r['OI']):>5} | {format_num(r['Delta']):>4}\n"
-        
-        html_content = f"<h4>S&P 500 Sector History (Newest First)</h4><pre>{header}{sep}{rows_text}</pre>"
-        
-        telegraph = Telegraph()
-        telegraph.create_account(short_name='SectorBot')
-        response = telegraph.create_page(
-            title="S&P 500 Sectors Historical",
-            author_name="CME Vacuum",
-            html_content=html_content
-        )
-        return f"https://telegra.ph/{response['path']}"
+        df = df.sort_values(by=['Date', 'ID'], ascending=[False, True])
+        html_content = build_html_page(df)
+        Path("sectors.html").write_text(html_content, encoding="utf-8")
+        return push_to_gist(html_content)
     except Exception as e:
-        print(f"History/Telegraph Error: {e}")
+        print(f"HTML/Gist Error: {e}")
         return None
 
 # --- MAIN VACUUM ---
 def run_comprehensive_vacuum():
     print("=" * 80 + "\nSTARTING SECTOR VACUUM\n" + "=" * 80)
-    
+
     scraper = cloudscraper.create_scraper(browser='chrome')
     resp = scraper.get(PDF_URL)
     pdf_bytes = io.BytesIO(resp.content)
@@ -184,7 +355,7 @@ def run_comprehensive_vacuum():
                 m_match = re.search(r'\b(?:JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|OCT|NOV|DEC)\d{2}\b', clean)
                 if active_f and m_match and "TOTAL" not in clean:
                     res = process_futures_block(active_f, clean)
-                    if res: 
+                    if res:
                         futures_results.append(res)
                         print(f"[SECTOR] {TARGET_SECTORS[active_f]} | SETT: {res['Sett']} | CHG: {res['Change']}")
 
@@ -213,13 +384,13 @@ def run_comprehensive_vacuum():
     for s in sorted_sectors:
         row = f"<code>{s['ID']:4} |{s['Sett']:6.0f}|{s['Pct']:+6.2f}%|{format_num(s['Vol']):>5}|{format_num(s['OI']):>5}|{format_num(s['Delta']):>5}</code>"
         tg_msg.append(row)
-        
+
     if iv_link:
-        tg_msg.append(f"\n⚡️ <a href='{iv_link}'>INSTANT VIEW: Historical Trends</a>")
+        tg_msg.append(f"\n<a href='{iv_link}'>🔍 View History</a>")
 
     requests.post(
-        f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage", 
-        json={"chat_id": CHAT_ID, "text": "\n".join(tg_msg), "parse_mode": "HTML"}
+        f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage",
+        json={"chat_id": CHAT_ID, "text": "\n".join(tg_msg), "parse_mode": "HTML", "disable_web_page_preview": True}
     )
     print("\nDone.")
 
