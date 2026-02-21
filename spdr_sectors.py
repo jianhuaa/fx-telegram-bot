@@ -46,7 +46,6 @@ def format_num(val):
     else: return f"{sign}{round(abs_n/1000)}k"
 
 def normalize_tokens(tokens):
-    """Reunites separated + and - signs with their corresponding numbers."""
     split = []
     for t in tokens:
         m = re.match(r'^([+\-]?\d[\d,]*)([+\-])$', t)
@@ -96,13 +95,11 @@ def process_futures_block(product_name, line):
 
 # --- STORAGE & INSTANT VIEW LOGIC ---
 def archive_and_publish(sorted_sectors, trade_date):
-    # 1. Convert Date to ISO format (YYYY-MM-DD)
     try:
         clean_date = datetime.strptime(trade_date, "%b %d, %Y").strftime("%Y-%m-%d")
     except:
         clean_date = trade_date 
 
-    # 2. Check for Duplicates before appending
     file_exists = os.path.isfile(CSV_FILE)
     already_exists = False
     
@@ -111,15 +108,13 @@ def archive_and_publish(sorted_sectors, trade_date):
             with open(CSV_FILE, 'r') as f:
                 lines = f.readlines()
                 if len(lines) > 1:
-                    # Check the date in the last row
-                    last_line = lines[-1].split(',')
+                    last_line = lines[-1].strip().split(',')
                     if last_line[0] == clean_date:
                         already_exists = True
                         print(f">>> Data for {clean_date} already exists. Skipping append.")
         except Exception as e:
             print(f"Check Error: {e}")
 
-    # 3. Save to CSV only if it's new
     if not already_exists:
         with open(CSV_FILE, mode='a', newline='') as f:
             writer = csv.writer(f)
@@ -129,23 +124,19 @@ def archive_and_publish(sorted_sectors, trade_date):
                 writer.writerow([clean_date, s['ID'], s['Sett'], f"{s['Pct']:.2f}%", s['Vol'], s['OI'], s['Delta']])
         print(f">>> Successfully archived data for {clean_date}.")
     
-    # 4. Generate Instant View
+    # TELEGRAPH: Using Text-Grid (Pre) format to avoid 'table' tag errors
     try:
         df = pd.read_csv(CSV_FILE)
-        df = df.sort_values(by=['Date', 'ID'], ascending=[False, True])
+        # Show last 60 entries (approx 5 days)
+        df = df.sort_values(by=['Date', 'ID'], ascending=[False, True]).head(60)
         
-        html_content = f"<h4>Historical Trends (Latest: {clean_date})</h4>"
-        html_content += "<table style='width:100%; border-collapse:collapse; font-size:11px; font-family:sans-serif;'>"
-        html_content += "<thead><tr style='background-color:#f2f2f2; border-bottom:2px solid #333;'>"
-        html_content += "<th>Date</th><th>ID</th><th>Sett</th><th>%</th><th>Vol</th><th>OI</th><th>ΔOI</th></tr></thead>"
-        html_content += "<tbody>"
+        header = "DATE       | ID   | SETT   | %CHG   | VOL   | OI    | ΔOI\n"
+        sep    = "-----------|------|--------|--------|-------|-------|------\n"
+        rows_text = ""
+        for _, r in df.iterrows():
+            rows_text += f"{r['Date']} | {r['ID']:4} | {str(r['Sett']):>6} | {r['Pct']:>6} | {format_num(r['Vol']):>5} | {format_num(r['OI']):>5} | {format_num(r['Delta']):>4}\n"
         
-        # Limit to 100 rows for mobile performance
-        for _, row in df.head(100).iterrows():
-            html_content += "<tr style='border-bottom:1px solid #ddd; text-align:center;'>"
-            html_content += f"<td>{row['Date']}</td><td><b>{row['ID']}</b></td><td>{row['Sett']}</td><td>{row['Pct']}</td><td>{row['Vol']}</td><td>{row['OI']}</td><td>{row['Delta']}</td>"
-            html_content += "</tr>"
-        html_content += "</tbody></table>"
+        html_content = f"<h4>S&P 500 Sector History (Newest First)</h4><pre>{header}{sep}{rows_text}</pre>"
         
         telegraph = Telegraph()
         telegraph.create_account(short_name='SectorBot')
@@ -161,14 +152,11 @@ def archive_and_publish(sorted_sectors, trade_date):
 
 # --- MAIN VACUUM ---
 def run_comprehensive_vacuum():
-    print("=" * 80)
-    print("STARTING SECTOR VACUUM")
-    print("=" * 80)
+    print("=" * 80 + "\nSTARTING SECTOR VACUUM\n" + "=" * 80)
     
     scraper = cloudscraper.create_scraper(browser='chrome')
     resp = scraper.get(PDF_URL)
     pdf_bytes = io.BytesIO(resp.content)
-
     futures_results = []
     trade_date = "Unknown Date"
 
@@ -189,7 +177,7 @@ def run_comprehensive_vacuum():
                         active_f = f_key
                         found_target = True
                         if active_f != last_printed_target:
-                            print(f"\n>>> Locked onto Product: {TARGET_SECTORS[f_key]} ({f_key})")
+                            print(f"\n>>> Locked: {TARGET_SECTORS[f_key]}")
                             last_printed_target = active_f
                         break
                 if not found_target and "TOTAL" in clean: active_f = None
@@ -198,14 +186,9 @@ def run_comprehensive_vacuum():
                     res = process_futures_block(active_f, clean)
                     if res: 
                         futures_results.append(res)
-                        print(f"[SECTOR] P{p_idx} | {TARGET_SECTORS[active_f]:<4} {res['Month']} | SETT: {res['Sett']:>8.2f} | CHG: {res['Change']:>6.2f} | VOL: {res['Volume']:>6.0f} | OI: {res['OI']:>7.0f} | ΔOI: {res['Delta']:>+6.0f}")
+                        print(f"[SECTOR] {TARGET_SECTORS[active_f]} | SETT: {res['Sett']} | CHG: {res['Change']}")
 
-    # --- AGGREGATION & PERCENTAGE CALCULATION ---
     front_months = {}
-    print("\n" + "=" * 80)
-    print("CALCULATING PERCENTAGES")
-    print("=" * 80)
-    
     for r in futures_results:
         prod = r["Product"]
         if prod not in front_months:
@@ -213,18 +196,14 @@ def run_comprehensive_vacuum():
             actual_chg = r["Change"] / 100.0
             prev_sett = sett - actual_chg
             pct = (actual_chg / prev_sett * 100) if prev_sett != 0 else 0.0
-            print(f"[DEBUG MATH] {TARGET_SECTORS[prod]:4} | Raw Sett: {sett:8.2f} | Act Chg: {actual_chg:6.2f} | Prev Sett: {prev_sett:8.2f} | Pct: {pct:+.2f}%")
             front_months[prod] = {
                 "ID": TARGET_SECTORS[prod], "Sett": sett, "Pct": pct,
                 "Vol": r["Volume"], "OI": r["OI"], "Delta": r["Delta"]
             }
 
     sorted_sectors = sorted(front_months.values(), key=lambda x: x["ID"])
-
-    # --- ARCHIVE AND GET INSTANT VIEW LINK ---
     iv_link = archive_and_publish(sorted_sectors, trade_date)
 
-    # --- TELEGRAM ---
     tg_msg = [
         f"📊 <b>S&P 500 SECTORS - {trade_date}</b>",
         "",
@@ -242,7 +221,7 @@ def run_comprehensive_vacuum():
         f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage", 
         json={"chat_id": CHAT_ID, "text": "\n".join(tg_msg), "parse_mode": "HTML"}
     )
-    print(f"\nDone. Archive saved to {CSV_FILE} and Message Sent.")
+    print("\nDone.")
 
 if __name__ == "__main__":
     run_comprehensive_vacuum()
