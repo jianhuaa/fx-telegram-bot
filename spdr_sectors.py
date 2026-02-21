@@ -14,7 +14,7 @@ PDF_URL        = "https://www.cmegroup.com/daily_bulletin/current/Section12_Equi
 TELEGRAM_TOKEN = "8577879935:AAEpSjAz4wdcZ9Lb7AJpURRk8haADlPCbHo"
 CHAT_ID        = "876384974"
 CSV_FILE       = "spdr_sectors_history.csv"
-GITHUB_TOKEN   = "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"
+GITHUB_TOKEN   = "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"
 GIST_ID_FILE   = "gist_id.txt"
 
 TARGET_SECTORS = {
