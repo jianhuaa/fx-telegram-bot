@@ -1,18 +1,14 @@
 name: G8 FX Telegram Feed
-
 on:
   repository_dispatch:
     types: [trigger-fx-feed]
   workflow_dispatch:
-
 jobs:
   execute-all-feeds:
     runs-on: ubuntu-latest
-    timeout-minutes: 15 
-    # This gives the bot permission to push the CSV back to your repo
+    timeout-minutes: 15
     permissions:
       contents: write
-
     steps:
       - name: Checkout repo
         uses: actions/checkout@v4
@@ -28,19 +24,20 @@ jobs:
 
       - name: Run Market Scripts
         run: |
-          python fx_feed.py
-          python fx_options.py
-          python spdr_sectors.py
-          python nasdaq.py
-          python russell.py
-          python bitcoin.py
-          python metals.py
+          python fx_feed.py || true
+          python fx_options.py || true
+          python spdr_sectors.py || true
+          python nasdaq.py || true
+          python russell.py || true
+          python bitcoin.py || true
+          python metals.py || true
+          python energy.py || true
 
       - name: Commit and Push History
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           git add spdr_sectors_history.csv
-          git add gist_id.txt 2>/dev/null || true
+          if [ -f gist_id.txt ]; then git add gist_id.txt; fi
           git commit -m "Automated update of sector history [skip ci]" || exit 0
           git push
