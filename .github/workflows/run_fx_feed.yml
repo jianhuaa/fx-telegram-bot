@@ -1,17 +1,17 @@
 name: G8 FX Telegram Feed
 
 on:
-  # This listens for the ping from cron-job.org
   repository_dispatch:
     types: [trigger-fx-feed]
-  
-  # Allows you to still click "Run workflow" manually in GitHub
   workflow_dispatch:
 
 jobs:
   execute-all-feeds:
     runs-on: ubuntu-latest
     timeout-minutes: 15 
+    # This gives the bot permission to push the CSV back to your repo
+    permissions:
+      contents: write
 
     steps:
       - name: Checkout repo
@@ -35,3 +35,12 @@ jobs:
           python russell.py
           python bitcoin.py
           python metals.py
+
+      - name: Commit and Push History
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git add spdr_sectors_history.csv
+          # The '|| exit 0' prevents the action from failing if there are no new changes
+          git commit -m "Automated update of sector history [skip ci]" || exit 0
+          git push
