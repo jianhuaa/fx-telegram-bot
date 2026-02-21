@@ -14,7 +14,7 @@ PDF_URL        = "https://www.cmegroup.com/daily_bulletin/current/Section12_Equi
 TELEGRAM_TOKEN = "8577879935:AAEpSjAz4wdcZ9Lb7AJpURRk8haADlPCbHo"
 CHAT_ID        = "876384974"
 CSV_FILE       = "spdr_sectors_history.csv"
-GITHUB_TOKEN   = "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"
+GITHUB_TOKEN   = os.environ.get("GIST_TOKEN", "")
 GIST_ID_FILE   = "gist_id.txt"
 
 TARGET_SECTORS = {
@@ -241,6 +241,9 @@ def save_gist_id(gid):
     Path(GIST_ID_FILE).write_text(gid)
 
 def push_to_gist(html_content):
+    if not GITHUB_TOKEN:
+        print(">>> No GIST_TOKEN found — skipping Gist upload.")
+        return None
     headers = {
         "Authorization": f"token {GITHUB_TOKEN}",
         "Accept": "application/vnd.github+json",
@@ -310,7 +313,6 @@ def archive_and_publish(sorted_sectors, trade_date):
                 writer.writerow([clean_date, s['ID'], s['Sett'], f"{s['Pct']:.2f}%", s['Vol'], s['OI'], s['Delta']])
         print(f">>> Successfully archived data for {clean_date}.")
 
-    # Build HTML from full CSV history (no row limit)
     try:
         df = pd.read_csv(CSV_FILE)
         df = df.sort_values(by=['Date', 'ID'], ascending=[False, True])
