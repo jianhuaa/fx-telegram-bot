@@ -39,7 +39,14 @@ jobs:
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          
+          # Add SPDR Sectors files
           git add spdr_sectors_history.csv
           if [ -f gist_id.txt ]; then git add gist_id.txt; fi
-          git commit -m "Automated update of sector history [skip ci]" || exit 0
+          
+          # Add FX Options files (New)
+          if [ -f fx_options_history.csv ]; then git add fx_options_history.csv; fi
+          if [ -f gist_fx_id.txt ]; then git add gist_fx_id.txt; fi
+          
+          git commit -m "Automated update of market history [skip ci]" || exit 0
           git push
