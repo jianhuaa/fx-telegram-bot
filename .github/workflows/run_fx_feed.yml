@@ -29,6 +29,7 @@ jobs:
           python fx_feed.py || true
           python fx_options.py || true
           python spdr_sectors.py || true
+          python sp500.py || true
           python nasdaq.py || true
           python russell.py || true
           python bitcoin.py || true
