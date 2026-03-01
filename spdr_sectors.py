@@ -13,9 +13,10 @@ from pathlib import Path
 PDF_URL        = "https://www.cmegroup.com/daily_bulletin/current/Section12_Equity_And_Index_Futures_Continued.pdf"
 TELEGRAM_TOKEN = "8577879935:AAEpSjAz4wdcZ9Lb7AJpURRk8haADlPCbHo"
 CHAT_ID        = "876384974"
-CSV_FILE       = "spdr_sectors_history.csv"
+
 GITHUB_TOKEN   = os.environ.get("GIST_TOKEN", "")
-GIST_ID_FILE   = "gist_id.txt"
+CSV_FILE       = "spdr_sectors_history.csv"
+GIST_ID_FILE   = "spdr_sectors_gist.txt"
 
 TARGET_SECTORS = {
     "E-MINI COM SERVICES SELECT SECTOR":   "COMM",
