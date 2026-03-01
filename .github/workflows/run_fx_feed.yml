@@ -42,20 +42,20 @@ jobs:
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           
           # Add SPDR Sectors files
-          git add spdr_sectors_history.csv
-          if [ -f gist_id.txt ]; then git add gist_id.txt; fi
+          if [ -f spdr_sectors_history.csv ]; then git add spdr_sectors_history.csv; fi
+          if [ -f spdr_sectors_gist.txt ]; then git add spdr_sectors_gist.txt; fi
           
           # Add FX Options files
           if [ -f fx_options_history.csv ]; then git add fx_options_history.csv; fi
-          if [ -f gist_fx_id.txt ]; then git add gist_fx_id.txt; fi
+          if [ -f fx_options_gist.txt ]; then git add fx_options_gist.txt; fi
           
-          # Add S&P 500 files (New)
+          # Add S&P 500 files
           if [ -f sp500_history.csv ]; then git add sp500_history.csv; fi
-          if [ -f gist_sp500_id.txt ]; then git add gist_sp500_id.txt; fi
+          if [ -f sp500_gist.txt ]; then git add sp500_gist.txt; fi
           
           # Add Russell 2000 files
           if [ -f russell_history.csv ]; then git add russell_history.csv; fi
-          if [ -f gist_russell_id.txt ]; then git add gist_russell_id.txt; fi
+          if [ -f russell_gist.txt ]; then git add russell_gist.txt; fi
           
           git commit -m "Automated update of market history [skip ci]" || exit 0
           git push
