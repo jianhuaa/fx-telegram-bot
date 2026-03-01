@@ -291,7 +291,6 @@ function executeSort() {
                 else if (str.includes('M')) n *= 1000000;
                 return n;
             };
-            };
             const an = parse(av), bn = parse(bv);
             let res = (!isNaN(an) && !isNaN(bn)) ? an - bn : av.localeCompare(bv);
             if (res !== 0) return s.asc ? res : -res;
