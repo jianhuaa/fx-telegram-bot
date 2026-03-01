@@ -29,7 +29,7 @@ WANTED_OPTIONS = [
 
 GITHUB_TOKEN   = os.environ.get("GIST_TOKEN", "")
 CSV_FILE       = "sp500_history.csv"
-GIST_ID_FILE   = "gist_sp500_id.txt"
+GIST_ID_FILE   = "sp500_gist.txt"
 
 def to_int(val):
     if not val: return 0
