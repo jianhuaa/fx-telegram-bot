@@ -16,7 +16,7 @@ CHAT_ID = "876384974"
 
 CSV_FILE       = "russell_history.csv"
 GITHUB_TOKEN   = os.environ.get("GIST_TOKEN", "")
-GIST_ID_FILE   = "rty_gist_id.txt"
+GIST_ID_FILE   = "gist_russell_id.txt"
 
 def to_int(val):
     if not val: return 0
