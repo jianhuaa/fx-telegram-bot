@@ -14,7 +14,7 @@ PDF_URL = "https://www.cmegroup.com/daily_bulletin/current/Section40_Nasdaq_100_
 TELEGRAM_TOKEN = "8577879935:AAEpSjAz4wdcZ9Lb7AJpURRk8haADlPCbHo"
 CHAT_ID = "876384974"
 
-CSV_FILE       = "rty_history.csv"
+CSV_FILE       = "russell_history.csv"
 GITHUB_TOKEN   = os.environ.get("GIST_TOKEN", "")
 GIST_ID_FILE   = "rty_gist_id.txt"
 
