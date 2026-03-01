@@ -232,10 +232,11 @@ function executeSort() {{
     rows.sort((a, b) => {{
         for (let s of sortStack) {{
             let av = a.cells[s.col].textContent.trim(), bv = b.cells[s.col].textContent.trim();
-            const parse = (str) => {{ 
+            const parse = (str) => { 
+                if (/^\d{4}-\d{2}-\d{2}$/.test(str)) return Date.parse(str);
                 let n = parseFloat(str.replace(/[%k,]/g, '')); 
                 return str.includes('k') ? n * 1000 : n; 
-            }};
+            };
             const an = parse(av), bn = parse(bv);
             let res = (!isNaN(an) && !isNaN(bn)) ? an - bn : av.localeCompare(bv);
             if (res !== 0) return s.asc ? res : -res;
