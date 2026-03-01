@@ -14,9 +14,9 @@ PDF_URL = "https://www.cmegroup.com/daily_bulletin/current/Section40_Nasdaq_100_
 TELEGRAM_TOKEN = "8577879935:AAEpSjAz4wdcZ9Lb7AJpURRk8haADlPCbHo"
 CHAT_ID = "876384974"
 
-CSV_FILE       = "russell_history.csv"
 GITHUB_TOKEN   = os.environ.get("GIST_TOKEN", "")
-GIST_ID_FILE   = "gist_russell_id.txt"
+CSV_FILE       = "russell_history.csv"
+GIST_ID_FILE   = "russell_gist.txt"
 
 def to_int(val):
     if not val: return 0
