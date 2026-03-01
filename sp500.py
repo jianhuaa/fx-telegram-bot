@@ -27,7 +27,7 @@ WANTED_OPTIONS = [
     "MDW MID", "MMW MID", "MRW MID", "MTW MID", "EOM EMINI S&P P"
 ]
 
-CSV_FILE       = "sp500_master_history.csv"
+CSV_FILE       = "sp500_history.csv"
 GITHUB_TOKEN   = os.environ.get("GIST_TOKEN", "")
 GIST_ID_FILE   = "sp500_gist_id.txt"
 
