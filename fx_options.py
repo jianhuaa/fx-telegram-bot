@@ -285,10 +285,12 @@ function executeSort() {
         for (let s of sortStack) {
             let av = a.cells[s.col].textContent.trim(), bv = b.cells[s.col].textContent.trim();
             const parse = (str) => { 
+                if (/^\d{4}-\d{2}-\d{2}$/.test(str)) return Date.parse(str);
                 let n = parseFloat(str.replace(/[\$%BM,]/g, '')); 
                 if (str.includes('B')) n *= 1000000000;
                 else if (str.includes('M')) n *= 1000000;
                 return n;
+            };
             };
             const an = parse(av), bn = parse(bv);
             let res = (!isNaN(an) && !isNaN(bn)) ? an - bn : av.localeCompare(bv);
