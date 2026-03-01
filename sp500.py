@@ -27,9 +27,9 @@ WANTED_OPTIONS = [
     "MDW MID", "MMW MID", "MRW MID", "MTW MID", "EOM EMINI S&P P"
 ]
 
-CSV_FILE       = "sp500_history.csv"
 GITHUB_TOKEN   = os.environ.get("GIST_TOKEN", "")
-GIST_ID_FILE   = "sp500_gist_id.txt"
+CSV_FILE       = "sp500_history.csv"
+GIST_ID_FILE   = "gist_sp500_id.txt"
 
 def to_int(val):
     if not val: return 0
