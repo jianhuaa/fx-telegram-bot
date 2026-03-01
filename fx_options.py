@@ -15,9 +15,10 @@ from pathlib import Path
 # ===== CONFIGURATION =====
 TELEGRAM_TOKEN = "8577879935:AAEpSjAz4wdcZ9Lb7AJpURRk8haADlPCbHo"
 CHAT_ID = "876384974"
-CSV_FILE = "fx_options_history.csv"
-GITHUB_TOKEN = os.environ.get("GIST_TOKEN", "")
-GIST_ID_FILE = "gist_fx_id.txt"
+
+GITHUB_TOKEN   =  os.environ.get("GIST_TOKEN", "")
+CSV_FILE       = "fx_options_history.csv"
+GIST_ID_FILE   = "fx_options_gist.txt"
 
 CURRENCIES = [
     {'code': 'AUD', 'flag': '🇦🇺', 'search_report': 'AUD Options', 'search_pc': ['AUSTRALIAN DOLLAR', 'AUD/USD', 'ADU/USD']},
