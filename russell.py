@@ -316,16 +316,16 @@ def load_gist_id():
 def push_to_gist(html):
     if not GITHUB_TOKEN: return None
     headers = {"Authorization": f"token {GITHUB_TOKEN}", "Accept": "application/vnd.github+json"}
-    payload = {"description": "Russell 2000 Master", "public": True, "files": {"rty.html": {"content": html}}}
+    payload = {"description": "Russell 2000 Master", "public": True, "files": {"russell.html": {"content": html}}}
     gid = load_gist_id()
     try:
         if gid:
             resp = requests.patch(f"https://api.github.com/gists/{gid}", headers=headers, json=payload)
-            if resp.status_code == 200: return "https://htmlpreview.github.io/?" + resp.json()["files"]["rty.html"]["raw_url"]
+            if resp.status_code == 200: return "https://htmlpreview.github.io/?" + resp.json()["files"]["russell.html"]["raw_url"]
         resp = requests.post("https://api.github.com/gists", headers=headers, json=payload)
         if resp.status_code == 201:
             Path(GIST_ID_FILE).write_text(resp.json()["id"])
-            return "https://htmlpreview.github.io/?" + resp.json()["files"]["rty.html"]["raw_url"]
+            return "https://htmlpreview.github.io/?" + resp.json()["files"]["russell.html"]["raw_url"]
     except: pass
     return None
 
@@ -349,7 +349,7 @@ def archive_and_publish(records, trade_date):
     
     df = pd.read_csv(CSV_FILE).sort_values(by=['Date', 'Type', 'Month'], ascending=[False, True, True])
     html = build_html_page(df)
-    Path("rty.html").write_text(html, encoding="utf-8")
+    Path("russell.html").write_text(html, encoding="utf-8")
     return push_to_gist(html)
 
 def run_comprehensive_vacuum():
