@@ -56,6 +56,10 @@ jobs:
           # Add Russell 2000 files
           if [ -f russell_history.csv ]; then git add russell_history.csv; fi
           if [ -f russell_gist.txt ]; then git add russell_gist.txt; fi
+
+          # Add Bitcoin files
+          if [ -f bitcoin_history.csv ]; then git add bitcoin_history.csv; fi
+          if [ -f bitcoin_gist.txt ]; then git add bitcoin_gist.txt; fi
           
           git commit -m "Automated update of market history [skip ci]" || exit 0
           git push
