@@ -52,6 +52,10 @@ jobs:
           # Add S&P 500 files
           if [ -f sp500_history.csv ]; then git add sp500_history.csv; fi
           if [ -f sp500_gist.txt ]; then git add sp500_gist.txt; fi
+
+          # Add Nasdaq files
+          if [ -f nasdaq_history.csv ]; then git add nasdaq_history.csv; fi
+          if [ -f nasdaq_gist.txt ]; then git add nasdaq_gist.txt; fi
           
           # Add Russell 2000 files
           if [ -f russell_history.csv ]; then git add russell_history.csv; fi
