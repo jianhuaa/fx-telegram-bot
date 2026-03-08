@@ -64,6 +64,10 @@ jobs:
           # Add Bitcoin files
           if [ -f bitcoin_history.csv ]; then git add bitcoin_history.csv; fi
           if [ -f bitcoin_gist.txt ]; then git add bitcoin_gist.txt; fi
+
+          # Add Energy files
+          if [ -f energy_history.csv ]; then git add energy_history.csv; fi
+          if [ -f energy_gist.txt ]; then git add energy_gist.txt; fi
           
           git commit -m "Automated update of market history [skip ci]" || exit 0
           git push
