@@ -116,8 +116,8 @@ def build_html_page(df):
   th, td {{ border: 1px solid #2a2a2a; padding: 4px 2px; text-align: right; overflow: hidden; position: relative; }}
   th {{ text-align: left; background: #161616; color: #ff9900; cursor: pointer; user-select: none; touch-action: manipulation; }}
 
-  #tbl-fut th:nth-child(1), #tbl-fut td:nth-child(1) {{ width: 22%; }}
-  #tbl-fut th:nth-child(2), #tbl-fut td:nth-child(2) {{ width: 10%; }}
+  #tbl-fut th:nth-child(1), #tbl-fut td:nth-child(1) {{ width: 20%; }}
+  #tbl-fut th:nth-child(2), #tbl-fut td:nth-child(2) {{ width: 12%; }}
   #tbl-fut th:nth-child(3), #tbl-fut td:nth-child(3) {{ width: 9%; }}
   #tbl-fut th:nth-child(4), #tbl-fut td:nth-child(4) {{ width: 12%; }}
   #tbl-fut th:nth-child(5), #tbl-fut td:nth-child(5) {{ width: 12%; }}
