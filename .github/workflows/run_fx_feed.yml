@@ -40,14 +40,14 @@ jobs:
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
+
+          # Add FX Options files
+          if [ -f fx_options_history.csv ]; then git add fx_options_history.csv; fi
+          if [ -f fx_options_gist.txt ]; then git add fx_options_gist.txt; fi
           
           # Add SPDR Sectors files
           if [ -f spdr_sectors_history.csv ]; then git add spdr_sectors_history.csv; fi
           if [ -f spdr_sectors_gist.txt ]; then git add spdr_sectors_gist.txt; fi
-          
-          # Add FX Options files
-          if [ -f fx_options_history.csv ]; then git add fx_options_history.csv; fi
-          if [ -f fx_options_gist.txt ]; then git add fx_options_gist.txt; fi
           
           # Add S&P 500 files
           if [ -f sp500_history.csv ]; then git add sp500_history.csv; fi
@@ -64,6 +64,10 @@ jobs:
           # Add Bitcoin files
           if [ -f bitcoin_history.csv ]; then git add bitcoin_history.csv; fi
           if [ -f bitcoin_gist.txt ]; then git add bitcoin_gist.txt; fi
+
+          # Add Metals files
+          if [ -f metals_history.csv ]; then git add metals_history.csv; fi
+          if [ -f metals_gist.txt ]; then git add metals_gist.txt; fi
 
           # Add Energy files
           if [ -f energy_history.csv ]; then git add energy_history.csv; fi
