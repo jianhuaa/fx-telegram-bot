@@ -223,9 +223,10 @@ def scrape_forex_factory():
                 if not time_str: time_str = last_valid_time
                 else: last_valid_time = time_str
                 
-                act = row.find_element(By.CSS_SELECTOR, "td.calendar__actual").text.strip()
-                cons = row.find_element(By.CSS_SELECTOR, "td.calendar__forecast").text.strip()
-                prev = row.find_element(By.CSS_SELECTOR, "td.calendar__previous").text.strip()
+                # Replace < and > so Telegram doesn't mistake them for HTML tags
+                act = row.find_element(By.CSS_SELECTOR, "td.calendar__actual").text.strip().replace('<', '&lt;').replace('>', '&gt;')
+                cons = row.find_element(By.CSS_SELECTOR, "td.calendar__forecast").text.strip().replace('<', '&lt;').replace('>', '&gt;')
+                prev = row.find_element(By.CSS_SELECTOR, "td.calendar__previous").text.strip().replace('<', '&lt;').replace('>', '&gt;')
                 
                 flag_map = {"USD":"🇺🇸", "EUR":"🇪🇺", "GBP":"🇬🇧", "JPY":"🇯🇵", "CAD":"🇨🇦", "AUD":"🇦🇺", "NZD":"🇳🇿", "CHF":"🇨🇭"}
                 releases.append({
