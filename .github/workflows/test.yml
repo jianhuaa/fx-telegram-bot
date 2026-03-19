@@ -25,6 +25,8 @@ jobs:
       - name: Run Market Scripts
         env:
           GIST_TOKEN: ${{ secrets.GIST_TOKEN }}
+          TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: |
           python fx_feed.py || true
 
