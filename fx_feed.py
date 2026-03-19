@@ -352,6 +352,11 @@ lines.append("<blockquote expandable>\n" + "\n".join(outlook_lines) + "\n</block
 
 print("Sending to Telegram...")
 try:
-    requests.post(f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage", 
+    response = requests.post(f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage", 
                   json={"chat_id": CHAT_ID, "text": "\n".join(lines), "parse_mode": "HTML", "disable_web_page_preview": True})
-except Exception as e: print(f"Telegram Error: {e}")
+    response.raise_for_status() # This forces an exception if Telegram rejects it
+    print("✅ Sent successfully!")
+except Exception as e: 
+    print(f"Telegram Error: {e}")
+    if 'response' in locals():
+        print(f"Telegram API Response: {response.text}") # This tells you EXACTLY why it failed
