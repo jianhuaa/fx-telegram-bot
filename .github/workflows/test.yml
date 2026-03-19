@@ -29,11 +29,4 @@ jobs:
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: |
           python fx_feed.py || true
-
-      - name: Commit and Push History
-        run: |
-          git config --global user.name "github-actions[bot]"
-          git config --global user.email "github-actions[bot]@users.noreply.github.com"
           
-          git commit -m "Automated update of market history [skip ci]" || exit 0
-          git push
