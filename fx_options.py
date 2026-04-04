@@ -30,8 +30,8 @@ CURRENCIES = [
 ]
 
 t = int(time.time())
-URL_REPORT = f"https://www.cmegroup.com/reports/fx-report.pdf?t={t}"
-URL_PUT_CALL = f"https://www.cmegroup.com/reports/fx-put-call.pdf?t={t}"
+URL_REPORT = f"https://www.cmegroup.com/reports/fx-report.pdf"#?t={t}"
+URL_PUT_CALL = f"https://www.cmegroup.com/reports/fx-put-call.pdf"#?t={t}"
 
 # --- HELPERS ---
 def clean_numeric(val):
