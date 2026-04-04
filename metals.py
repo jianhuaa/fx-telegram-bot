@@ -1,10 +1,11 @@
-import cloudscraper
+from curl_cffi import requests as cureq
 import pdfplumber
 import io
 import re
 import requests
 import os
 import csv
+import time
 import pandas as pd
 from datetime import datetime
 from pathlib import Path
@@ -454,14 +455,17 @@ def archive_and_publish(records, trade_date):
     return push_to_gist(html)
 
 def run_combined_vacuum():
-    scraper = cloudscraper.create_scraper(browser='chrome')
+    headers = {
+        'Referer': 'https://www.cmegroup.com/market-data/volume-open-interest/exchange-volume.html',
+    }
 
     # --- PART 1: SCRAPE OPTIONS ---
     print("=" * 80)
     print("SCRAPING OPTIONS: G8 METALS MASTER")
     print("=" * 80)
 
-    resp_o = scraper.get(OPT_URL)
+    time.sleep(2)
+    resp_o = cureq.get(OPT_URL, impersonate="chrome120", headers=headers, timeout=45)
     results_o = []
     ALL_ANCHORS = {"GOLD OPTIONS ON FUTURES": "GOLD", "SILVER OPTIONS ON FUTURES": "SILVER", "COPPER OPTIONS ON FUTURES": "COPPER", "PLATINUM OPTIONS ON FUTURES": "PLATINUM"}
     TARGETS = {
@@ -561,7 +565,8 @@ def run_combined_vacuum():
     print("=" * 80)
 
     # --- PART 3: SCRAPE FUTURES ---
-    resp_f = scraper.get(FUT_URL)
+    time.sleep(2)
+    resp_f = cureq.get(FUT_URL, impersonate="chrome120", headers=headers, timeout=45)
     results_f, trade_date = [], "Unknown"
 
     # ── FIX: multiple platinum header variants to cover whatever the PDF uses ──
