@@ -1,10 +1,11 @@
-import cloudscraper
+from curl_cffi import requests as cureq
 import pdfplumber
 import io
 import re
 import requests
 import os
 import csv
+import time
 import pandas as pd
 from datetime import datetime
 from pathlib import Path
@@ -353,8 +354,12 @@ def archive_and_publish(records, trade_date):
     return push_to_gist(html)
 
 def run_comprehensive_vacuum():
-    scraper = cloudscraper.create_scraper(browser='chrome')
-    pdf_bytes = io.BytesIO(scraper.get(PDF_URL).content)
+    headers = {
+        'Referer': 'https://www.cmegroup.com/market-data/volume-open-interest/exchange-volume.html',
+    }
+    time.sleep(2)
+    resp = cureq.get(PDF_URL, impersonate="chrome120", headers=headers, timeout=45)
+    pdf_bytes = io.BytesIO(resp.content)
 
     WANTED_FUTURES = ["RTY FUT", "M2K FUT"]
     WANTED_OPTIONS = ["RTM EOM", "RTO OPT", "RMW MON", "RRW THU", "RTW TUE", "RWW WED", "QN4", "R1E", "R2E", "R4E"]
