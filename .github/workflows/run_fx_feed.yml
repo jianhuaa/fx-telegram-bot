@@ -75,4 +75,7 @@ jobs:
           if [ -f energy_gist.txt ]; then git add energy_gist.txt; fi
           
           git commit -m "Automated update of market history [skip ci]" || exit 0
+          
+          # THE FIX: Pull any new changes you made while the script was running, then push!
+          git pull --rebase
           git push
