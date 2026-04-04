@@ -1,10 +1,11 @@
-import cloudscraper
+from curl_cffi import requests as cureq
 import pdfplumber
 import io
 import re
 import requests
 import os
 import csv
+import time
 import pandas as pd
 from datetime import datetime
 from pathlib import Path
@@ -426,9 +427,13 @@ def process_options_total(name, month, line, page_num, side):
 
 def run_comprehensive_vacuum():
     print("[DEBUG - SYSTEM] --- STARTING NASDAQ CME PARSER ---")
-    scraper = cloudscraper.create_scraper(browser='chrome')
+    headers = {
+        'Referer': 'https://www.cmegroup.com/market-data/volume-open-interest/exchange-volume.html',
+    }
     print(f"[DEBUG - HTTP] Fetching PDF from: {PDF_URL}")
-    pdf_bytes = io.BytesIO(scraper.get(PDF_URL).content)
+    time.sleep(2)
+    resp = cureq.get(PDF_URL, impersonate="chrome120", headers=headers, timeout=45)
+    pdf_bytes = io.BytesIO(resp.content)
     print("[DEBUG - HTTP] PDF fetched successfully.")
 
     futures_results, options_results, seen_options = [], [], {}
