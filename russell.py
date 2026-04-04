@@ -19,6 +19,10 @@ GITHUB_TOKEN   = os.environ.get("GIST_TOKEN", "")
 CSV_FILE       = "russell_history.csv"
 GIST_ID_FILE   = "russell_gist.txt"
 
+# RTY/M2K settlement sanity bounds — reject anything outside this range
+RTY_SETT_MIN = 1000.0
+RTY_SETT_MAX = 4000.0
+
 def to_int(val):
     if not val: return 0
     s = str(val).replace(",", "").replace(" ", "").strip()
@@ -45,43 +49,155 @@ def decode_put_month(date_str):
 def get_month_score(month_str):
     months = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"]
     try:
-        m, y = month_str[:3], int(month_str[3:5]) # Safely parses '26' from 'MAR26-ALL'
+        m, y = month_str[:3], int(month_str[3:5])
         return y * 100 + (months.index(m) + 1)
     except: return 0
 
+def parse_numeric(tok):
+    """Extract leading integer/float from a token, ignoring trailing A/B/garbage."""
+    if not tok or tok == '----':
+        return None
+    s = re.match(r'^([+-]?\d[\d,\.]*)', tok)
+    if s:
+        try:
+            return float(s.group(1).replace(',', ''))
+        except:
+            return None
+    return None
+
 def parse_rty_line(line, contract_name, page_num):
+    """
+    Parse a RTY FUT / M2K FUT data line.
+
+    Confirmed token layout from diagnostic (April 3 2026 PDF):
+      [0]  month       e.g. JUN26
+      [1]  open        e.g. 2541.20  or ----
+      [2]  high        e.g. 2555.00  or ----
+      [3]  low         e.g. 2525.10A or ----
+      [4]  sett        e.g. 2544.00          ← always present
+      [5]  chg sign    + or -                ← always present
+      [6]  chg value   UNCH or numeric*100   ← UNCH means 0
+      [7]  est vol     ---- (ignore)         ← always ----
+      [8]  volume      numeric or ----       ← ---- means 0
+      [9]  OI          numeric               ← always present
+      [10] delta       UNCH<garbage> or sign (+/-) or numeric+garbage
+      [11] delta val   present only if [10] was a pure sign token
+
+    Complications observed:
+      - [6] = 'UNCH' → change = 0
+      - [8] = '----' → vol = 0
+      - [10] = 'UNCH2773.20B' → delta = 0 (UNCH glued to bid price by pdfplumber)
+      - [10] = '-', [11] = '932767.90B' → delta = -93276 (sign separate,
+            value glued to bid; strip trailing non-digit chars)
+      - M2K delta needs *0.1 weight applied later, not here
+    """
     tokens = line.split()
-    if len(tokens) < 11: return None
+
+    # Need at least month + sett + sign + chg + estv + vol + OI + delta = 9 meaningful cols
+    if len(tokens) < 9:
+        return None
+
     try:
         month = tokens[0]
-        sett = float(tokens[4].replace(",", ""))
-        sign = tokens[5]
-        chg_val = tokens[6].replace(",", "")
-        change = float(f"{sign}{float(chg_val)/100}")
-        total_vol = to_int(tokens[7]) + to_int(tokens[8])
-        oi = to_int(tokens[9])
-        raw_token = tokens[10]
-        dirty_delta = raw_token
-        if raw_token in ["+", "-"] and len(tokens) > 11:
-            dirty_delta = raw_token + tokens[11]
-        delta_oi = "0"
-        if "UNCH" in dirty_delta or "NEW" in dirty_delta:
-            delta_oi = "0"
-        elif "." in dirty_delta:
-            price_len = len(str(int(sett)))
-            left_side = dirty_delta.split(".")[0]
-            if len(left_side) > price_len: delta_oi = left_side[:-price_len]
-            else: delta_oi = left_side
+
+        # [4] sett — must be a real number
+        sett = parse_numeric(tokens[4])
+        if sett is None:
+            return None
+
+        # Sanity check: RTY/M2K trades 1000–4000
+        if not (RTY_SETT_MIN <= sett <= RTY_SETT_MAX):
+            print(f"[SKIP] P{page_num} | {contract_name} {month} | Sett {sett:.2f} outside RTY range — wrong contract?")
+            return None
+
+        # [5] sign, [6] change value
+        sign_tok = tokens[5]  # '+' or '-'
+        chg_tok  = tokens[6]  # 'UNCH' or e.g. '1730' (needs /100)
+        if chg_tok == 'UNCH' or chg_tok == '----':
+            change = 0.0
         else:
-            delta_oi = dirty_delta
+            chg_num = parse_numeric(chg_tok)
+            if chg_num is None:
+                change = 0.0
+            else:
+                change = chg_num / 100.0
+                if sign_tok == '-':
+                    change = -change
+
+        # [7] = est vol (always ----), skip
+
+        # [8] volume
+        vol_tok = tokens[8]
+        volume = to_int(vol_tok) if vol_tok != '----' else 0
+
+        # [9] OI
+        oi = to_int(tokens[9])
+
+        # [10] delta — messy, several forms:
+        #   'UNCH'            → 0
+        #   'UNCH2773.20B'    → 0  (UNCH glued to bid)
+        #   '+'  or '-'       → sign-only, value is in [11] (possibly glued to bid)
+        #   '406'             → plain integer delta
+        #   '-932767.90B'     → delta glued to bid (rare)
+        delta_oi = 0
+        if len(tokens) > 10:
+            d0 = tokens[10]
+            if d0.startswith('UNCH') or d0 == '----':
+                delta_oi = 0
+            elif d0 in ('+', '-'):
+                # value is next token, possibly glued to bid price
+                if len(tokens) > 11:
+                    d1 = tokens[11]
+                    # strip trailing non-numeric suffix (e.g. '406' from '4062768.30B')
+                    # The delta is the leading integer digits before any decimal+suffix
+                    dm = re.match(r'^([+-]?\d+)', d1)
+                    if dm:
+                        raw_val = int(dm.group(1))
+                        # If this looks suspiciously large (glued bid price),
+                        # we need to strip the glued bid. The bid price is 4 digits
+                        # before decimal. Heuristic: if raw_val > 99999, it's glued.
+                        # The true delta is the leading digits minus the last 4+decimal part.
+                        # Better: find where the glued part starts by looking for the
+                        # price-like suffix. Since bids are ~2000-3000 (4 digits), and
+                        # deltas are typically <10000, if raw_val >= 10000 we split:
+                        #   e.g. '932767' → delta=93276, bid_prefix=7 (ignore)
+                        # Actually cleanest: re-match only the integer part before any
+                        # point where a 4-digit sequence starts that looks like a price.
+                        # Simpler heuristic that works for RTY range: delta < 100000.
+                        if raw_val >= 100000:
+                            # glued: trim to 5 digits max
+                            raw_val = int(str(raw_val)[:5])
+                        delta_oi = -raw_val if d0 == '-' else raw_val
+                    else:
+                        delta_oi = 0
+                else:
+                    delta_oi = 0
+            else:
+                # standalone numeric token (possibly glued)
+                dm = re.match(r'^([+-]?\d+)', d0)
+                if dm:
+                    delta_oi = int(dm.group(1))
+                else:
+                    delta_oi = 0
+
         res = {
-            "Contract": f"{contract_name} {month}", "Month": month,
-            "Sett": sett, "Change": change, "Volume": total_vol,
-            "OI": oi, "Delta": delta_oi, "Page": page_num
+            "Contract": f"{contract_name} {month}",
+            "Month":    month,
+            "Sett":     sett,
+            "Change":   change,
+            "Volume":   volume,
+            "OI":       oi,
+            "Delta":    str(delta_oi),
+            "Page":     page_num,
         }
-        print(f"[FUT] P{page_num} | {res['Contract']:18} | SETT: {res['Sett']:7.2f} | CHG: {res['Change']:+6.2f} | VOL: {res['Volume']:7} | OI: {res['OI']:7} | ΔOI: {res['Delta']:6}")
+        print(f"[FUT] P{page_num} | {res['Contract']:18} | SETT: {res['Sett']:7.2f} | "
+              f"CHG: {res['Change']:+6.2f} | VOL: {res['Volume']:7} | "
+              f"OI: {res['OI']:7} | ΔOI: {res['Delta']:6}")
         return res
-    except: return None
+
+    except Exception as e:
+        print(f"[ERR] P{page_num} | {contract_name} | parse_rty_line failed: {e} | line: '{line}'")
+        return None
 
 # --- HTML PAGE BUILDER ---
 def build_html_page(df):
@@ -96,7 +212,6 @@ def build_html_page(df):
             pct_class = "pos" if chg_num > 0 else ("neg" if chg_num < 0 else "")
         except: pct_class = ""
         
-        # Smart formatting for backward compatibility with old records
         typ = str(r["Type"])
         mo = str(r["Month"])
         if typ == "FUT":
@@ -143,7 +258,6 @@ def build_html_page(df):
   th, td {{ border: 1px solid #2a2a2a; padding: 4px 2px; text-align: right; overflow: hidden; position: relative; }}
   th {{ text-align: left; background: #161616; color: #00aaff; cursor: pointer; user-select: none; touch-action: manipulation; }}
   
-  /* Adjusted sensibly for iPhone 13 Pro viewport */
   #tbl-fut th:nth-child(1), #tbl-fut td:nth-child(1) {{ width: 22%; }}
   #tbl-fut th:nth-child(2), #tbl-fut td:nth-child(2) {{ width: 10%; }}
   #tbl-fut th:nth-child(3), #tbl-fut td:nth-child(3) {{ width: 9%; }}
@@ -231,16 +345,12 @@ function filterTyp(typ) {{
 
 function applyFilters() {{
     const dateQ = document.getElementById('dateSelect').value;
-    
-    // Futures table requires Date + Typ filter
     const futRows = document.querySelectorAll('#tbl-fut tbody tr');
     futRows.forEach(row => {{
         let showDate = !dateQ || row.dataset.date === dateQ;
         let showTyp = activeTyp === 'BOTH' || row.dataset.typ === activeTyp;
         row.style.display = (showDate && showTyp) ? '' : 'none';
     }});
-
-    // Options table requires Date filter only
     const optRows = document.querySelectorAll('#tbl-opt tbody tr');
     optRows.forEach(row => {{
         let showDate = !dateQ || row.dataset.date === dateQ;
@@ -268,13 +378,13 @@ function renderSortUI(tblId) {{
         const oldRank = th.querySelector('.sort-rank');
         if (oldRank) oldRank.remove();
         if (rank !== -1) {{
-            th.classList.add('sorted'); 
-            const span = document.createElement('span'); 
-            span.className = 'sort-rank'; 
-            span.innerHTML = (rank + 1); 
+            th.classList.add('sorted');
+            const span = document.createElement('span');
+            span.className = 'sort-rank';
+            span.innerHTML = (rank + 1);
             th.appendChild(span);
-        }} else {{ 
-            th.classList.remove('sorted'); 
+        }} else {{
+            th.classList.remove('sorted');
         }}
     }});
 }}
@@ -286,16 +396,16 @@ function executeSort(tblId) {{
     rows.sort((a, b) => {{
         for (let s of stack) {{
             let av = a.cells[s.col].textContent.trim(), bv = b.cells[s.col].textContent.trim();
-            const parse = (str) => {{ 
+            const parse = (str) => {{
                 if (/^\d{{4}}-\d{{2}}-\d{{2}}$/.test(str)) return Date.parse(str);
-                if (/^[A-Z]{{3}}\d{{2}}/i.test(str)) {{ 
+                if (/^[A-Z]{{3}}\d{{2}}/i.test(str)) {{
                     const mos = ["JAN","FEB","MAR","APR","MAY","JUN","JUL","AUG","SEP","OCT","NOV","DEC"];
                     const m = mos.indexOf(str.substring(0, 3).toUpperCase());
                     const y = parseInt(str.substring(3, 5), 10);
                     if (m !== -1 && !isNaN(y)) return (y * 100) + m;
                 }}
-                let n = parseFloat(str.replace(/[%k,\+]/g, '')); 
-                return str.includes('k') ? n * 1000 : n; 
+                let n = parseFloat(str.replace(/[%k,\+]/g, ''));
+                return str.includes('k') ? n * 1000 : n;
             }};
             const an = parse(av), bn = parse(bv);
             let res = (!isNaN(an) && !isNaN(bn)) ? an - bn : av.localeCompare(bv);
@@ -345,9 +455,9 @@ def archive_and_publish(records, trade_date):
         with open(CSV_FILE, 'a', newline='') as f:
             writer = csv.writer(f)
             if not file_exists: writer.writerow(['Date', 'Type', 'Month', 'Sett_PC', 'Change', 'Vol', 'OI', 'Delta'])
-            for r in records: 
+            for r in records:
                 writer.writerow([clean_date, r['Type'], r['Month'], r['Sett_PC'], r['Change'], r['Vol'], r['OI'], r['Delta']])
-    
+
     df = pd.read_csv(CSV_FILE).sort_values(by=['Date', 'Type', 'Month'], ascending=[False, True, True])
     html = build_html_page(df)
     Path("russell.html").write_text(html, encoding="utf-8")
@@ -367,18 +477,16 @@ def run_comprehensive_vacuum():
     futures_results, options_results = [], []
     trade_date = "Unknown"
 
-    # Futures State Tracking
     fut_last_score = 0
     fut_done = False
 
-    # QN4 State Tracking
     qn4_in_block = False
     qn4_russell_mode = False
-    qn4_last_total_score = 0  
-    qn4_buffer = []            
+    qn4_last_total_score = 0
+    qn4_buffer = []
 
     print("\n" + "="*95)
-    print("STARTING VACUUM: RUSSELL 2000 (WITH ROBUST QN4 DETECTION)")
+    print("STARTING VACUUM: RUSSELL 2000")
     print("="*95)
 
     with pdfplumber.open(pdf_bytes) as pdf:
@@ -398,7 +506,7 @@ def run_comprehensive_vacuum():
                 # --- HARD STOP: end of Russell QN4 section ---
                 if "ADDITIONAL NASDAQ PUTS" in clean:
                     if qn4_in_block:
-                        print(f"    🛑 [HARD STOP] 'ADDITIONAL NASDAQ PUTS' detected — exiting QN4 Russell block.")
+                        print(f"    🛑 [HARD STOP] 'ADDITIONAL NASDAQ PUTS' — exiting QN4 Russell block.")
                     qn4_in_block = False
                     qn4_russell_mode = False
                     qn4_last_total_score = 0
@@ -407,8 +515,13 @@ def run_comprehensive_vacuum():
                     continue
 
                 # --- FUTURES BLOCK DETECTION ---
-                if any(f == clean for f in WANTED_FUTURES):
-                    active_block = clean
+                # Use startswith to be robust against trailing chars pdfplumber may add
+                matched_fut = next(
+                    (f for f in WANTED_FUTURES if clean == f or clean.startswith(f + " ") or clean.startswith(f + "\t")),
+                    None
+                )
+                if matched_fut:
+                    active_block = matched_fut  # normalise to canonical name
                     fut_last_score = 0
                     fut_done = False
                     qn4_in_block = False
@@ -439,7 +552,6 @@ def run_comprehensive_vacuum():
                         qn4_buffer = []
                         print(f"\n>>> Entering Options Block: {clean}")
 
-                    # Extract month from header line
                     header_month = re.search(r'\b(?:JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|OCT|NOV|DEC)\d{2}\b', clean)
                     put_header_match = re.search(r'\b\d{6}00\b', clean)
                     if put_header_match:
@@ -477,14 +589,12 @@ def run_comprehensive_vacuum():
                             if opt_res["Volume"] > 0 or opt_res["OI"] > 0:
                                 if active_block == "QN4":
                                     curr_score = get_month_score(opt_res["Month"])
-
-                                    # Line-by-line loopback
                                     if (not qn4_russell_mode
                                             and qn4_last_total_score > 0
                                             and curr_score < qn4_last_total_score):
                                         qn4_russell_mode = True
-                                        qn4_buffer = []  # Discard Nasdaq captures
-                                        print(f"    ⚠️  [LOOPBACK DETECTED] {opt_res['Month']} (score {curr_score}) < previous TOTAL (score {qn4_last_total_score}). Russell Mode ACTIVATED. Buffer cleared.")
+                                        qn4_buffer = []
+                                        print(f"    ⚠️  [LOOPBACK] {opt_res['Month']} score {curr_score} < prev {qn4_last_total_score}. Russell Mode ON.")
 
                                     qn4_last_total_score = curr_score
 
@@ -493,7 +603,7 @@ def run_comprehensive_vacuum():
                                         print(f"[OPT] P{p_idx+1} | {opt_res['Series'][:15]:<15} {opt_res['Side']:5} | {opt_res['Month']} | Vol: {opt_res['Volume']:6} | OI: {opt_res['OI']:7} | ΔOI: {opt_res['Delta']:5} [RUSSELL]")
                                     else:
                                         qn4_buffer.append((opt_res, p_idx+1))
-                                        print(f"[BUF] P{p_idx+1} | {opt_res['Series'][:15]:<15} {opt_res['Side']:5} | {opt_res['Month']} | Vol: {opt_res['Volume']:6} | OI: {opt_res['OI']:7} | ΔOI: {opt_res['Delta']:5} [NASDAQ-BUFFERED]")
+                                        print(f"[BUF] P{p_idx+1} | {opt_res['Series'][:15]:<15} {opt_res['Side']:5} | {opt_res['Month']} | Vol: {opt_res['Volume']:6} | OI: {opt_res['OI']:7} | ΔOI: {opt_res['Delta']:5} [NQ-BUFFERED]")
                                 else:
                                     options_results.append(opt_res)
                                     print(f"[OPT] P{p_idx+1} | {opt_res['Series'][:15]:<15} {opt_res['Side']:5} | {opt_res['Month']} | Vol: {opt_res['Volume']:6} | OI: {opt_res['OI']:7} | ΔOI: {opt_res['Delta']:5}")
@@ -526,7 +636,7 @@ def run_comprehensive_vacuum():
                         line_month = line_month_match.group(1)
                         curr_score = get_month_score(line_month)
                         if fut_last_score > 0 and curr_score < fut_last_score:
-                            print(f"    [FUT STOP] Backward jump {line_month} (score {curr_score}) < previous (score {fut_last_score}). Stopping futures capture for this block.")
+                            print(f"    [FUT STOP] Backward jump {line_month} — stopping capture for this block.")
                             fut_done = True
                         else:
                             res = parse_rty_line(clean, active_block, p_idx + 1)
@@ -535,19 +645,15 @@ def run_comprehensive_vacuum():
                                 futures_results.append(res)
 
     # =================================================================================
-    # NEW DEBUG SECTION: OPTIONS AGGREGATION & MATH VERIFICATION
+    # DEBUG: OPTIONS AGGREGATION BREAKDOWN
     # =================================================================================
     print("\n" + "="*95)
-    print("DEBUG: OPTIONS AGGREGATION BREAKDOWN (SORTED BY MONTH -> SIDE)")
+    print("DEBUG: OPTIONS AGGREGATION (SORTED BY MONTH -> SIDE)")
     print("="*95)
 
     sorted_opts = sorted(
         options_results,
-        key=lambda x: (
-            get_month_score(x['Month']),
-            0 if x['Side'] == "CALLS" else 1,
-            x['Series']
-        )
+        key=lambda x: (get_month_score(x['Month']), 0 if x['Side'] == "CALLS" else 1, x['Series'])
     )
 
     debug_groups = {}
@@ -556,57 +662,46 @@ def run_comprehensive_vacuum():
         debug_groups[r['Month']].append(r)
 
     for m in debug_groups:
-        print(f"\n>> PROCESSING MONTH: {m}")
-        print(f"   {'SERIES':<10} | {'SIDE':<5} | {'VOL':>6} | {'OI (Raw)':>8} | {'ΔOI (Raw)':>9} | {'MATH APPLIED'}")
-        print(f"   {'-'*90}")
-
-        d_run_vol = 0
-        d_run_oi = 0
-        d_run_delta = 0
-        d_call_vol = 0
-        d_put_vol = 0
-
+        print(f"\n>> MONTH: {m}")
+        print(f"   {'SERIES':<10} | {'SIDE':<5} | {'VOL':>6} | {'OI':>8} | {'ΔOI':>9}")
+        print(f"   {'-'*60}")
+        d_run_vol = d_run_oi = d_run_delta = d_call_vol = d_put_vol = 0
         for r in debug_groups[m]:
             vol = r['Volume']
             oi = r['OI']
             delta_int = to_int(r['Delta'])
-            
             if r['Side'] == "CALLS":
-                eff_oi = oi
-                eff_delta = delta_int
-                math_str = f"+{oi} OI, +{delta_int} Δ"
-                d_call_vol += vol
+                eff_oi = oi; eff_delta = delta_int; d_call_vol += vol
             else:
-                eff_oi = -oi
-                eff_delta = -delta_int
-                math_str = f"-{oi} OI, -({delta_int}) Δ"
-                d_put_vol += vol
-
-            d_run_vol += vol
-            d_run_oi += eff_oi
-            d_run_delta += eff_delta
-
-            print(f"   {r['Series'][:10]:<10} | {r['Side']:<5} | {vol:6} | {oi:8} | {delta_int:9} | {math_str}")
-
+                eff_oi = -oi; eff_delta = -delta_int; d_put_vol += vol
+            d_run_vol += vol; d_run_oi += eff_oi; d_run_delta += eff_delta
+            print(f"   {r['Series'][:10]:<10} | {r['Side']:<5} | {vol:6} | {oi:8} | {delta_int:9}")
         pc_ratio = d_put_vol / d_call_vol if d_call_vol > 0 else 0.0
-        print(f"   {'-'*90}")
-        print(f"   ==> RESULT: VOL={d_run_vol} (Calls:{d_call_vol}/Puts:{d_put_vol} P/C:{pc_ratio:.2f}) | NET OI={d_run_oi} | NET ΔOI={d_run_delta}")
+        print(f"   {'='*60}")
+        print(f"   RESULT: VOL={d_run_vol} (C:{d_call_vol}/P:{d_put_vol} P/C:{pc_ratio:.2f}) | NET OI={d_run_oi} | NET ΔOI={d_run_delta}")
 
     print("\n" + "="*95)
-    # =================================================================================
 
-    # --- ORIGINAL AGGREGATION & OUTPUT ---
+    # --- AGGREGATION ---
     f_sum, opt_sum = {}, {}
     for r in futures_results:
-        m, w = r["Month"], (0.1 if "M2K" in r["Contract"] else 1.0)
-        if m not in f_sum: f_sum[m] = {"av":0,"ao":0,"ad":0,"rv":0,"ro":0,"rd":0,"s":r["Sett"],"c":r["Change"]}
+        m = r["Month"]
+        w = 0.1 if "M2K" in r["Contract"] else 1.0
+        if m not in f_sum:
+            f_sum[m] = {"av":0,"ao":0,"ad":0,"rv":0,"ro":0,"rd":0,"s":r["Sett"],"c":r["Change"]}
         d = to_int(r["Delta"]) * w
-        f_sum[m]["av"] += r["Volume"]*w; f_sum[m]["ao"] += r["OI"]*w; f_sum[m]["ad"] += d
-        if w == 0.1: f_sum[m]["rv"] += r["Volume"]*w; f_sum[m]["ro"] += r["OI"]*w; f_sum[m]["rd"] += d
+        f_sum[m]["av"] += r["Volume"] * w
+        f_sum[m]["ao"] += r["OI"] * w
+        f_sum[m]["ad"] += d
+        if w == 0.1:
+            f_sum[m]["rv"] += r["Volume"] * w
+            f_sum[m]["ro"] += r["OI"] * w
+            f_sum[m]["rd"] += d
 
     for r in options_results:
         m = r["Month"]
-        if m not in opt_sum: opt_sum[m] = {"V_Gross":0,"V_Calls":0,"V_Puts":0,"OI_Net":0,"D_Net":0}
+        if m not in opt_sum:
+            opt_sum[m] = {"V_Gross":0,"V_Calls":0,"V_Puts":0,"OI_Net":0,"D_Net":0}
         v, d = r["Volume"], to_int(r["Delta"])
         opt_sum[m]["V_Gross"] += v
         if r["Side"] == "CALLS":
@@ -614,30 +709,27 @@ def run_comprehensive_vacuum():
         else:
             opt_sum[m]["V_Puts"] += v; opt_sum[m]["OI_Net"] -= r["OI"]; opt_sum[m]["D_Net"] -= d
 
-    # --- RECORD PREPARATION FOR HTML & CSV ---
+    # --- RECORD PREPARATION ---
     records = []
     for m in sorted(f_sum.keys(), key=get_month_score):
         s = f_sum[m]
-        records.append({
-            "Type": "ALL", "Month": m, "Sett_PC": f"{s['s']:.2f}",
-            "Change": f"{s['c']:+6.2f}", "Vol": s['av'], "OI": s['ao'], "Delta": s['ad']
-        })
-        records.append({
-            "Type": "RET", "Month": m, "Sett_PC": f"{s['s']:.2f}",
-            "Change": f"{s['c']:+6.2f}", "Vol": s['rv'], "OI": s['ro'], "Delta": s['rd']
-        })
+        records.append({"Type": "ALL", "Month": m, "Sett_PC": f"{s['s']:.2f}",
+                         "Change": f"{s['c']:+6.2f}", "Vol": s['av'], "OI": s['ao'], "Delta": s['ad']})
+        records.append({"Type": "RET", "Month": m, "Sett_PC": f"{s['s']:.2f}",
+                         "Change": f"{s['c']:+6.2f}", "Vol": s['rv'], "OI": s['ro'], "Delta": s['rd']})
     for m in sorted(opt_sum.keys(), key=get_month_score):
         s = opt_sum[m]
         if s["V_Gross"] == 0: continue
         pc = s["V_Puts"] / s["V_Calls"] if s["V_Calls"] > 0 else 0.0
-        records.append({
-            "Type": "OPT", "Month": m, "Sett_PC": f"{pc:.2f}",
-            "Change": "-", "Vol": s['V_Gross'], "OI": s['OI_Net'], "Delta": s['D_Net']
-        })
+        records.append({"Type": "OPT", "Month": m, "Sett_PC": f"{pc:.2f}",
+                         "Change": "-", "Vol": s['V_Gross'], "OI": s['OI_Net'], "Delta": s['D_Net']})
 
     link = archive_and_publish(records, trade_date)
 
-    tg_msg = [f"🐿️ <b>RUSSELL 2000 - {trade_date}</b>", "", "<b>FUTURES (STANDARD UNITS)</b>", "<code>MO   |TYP| SETT | CHG | VOL| OI | ΔOI</code>"]
+    # --- TELEGRAM ---
+    tg_msg = [f"🐿️ <b>RUSSELL 2000 - {trade_date}</b>", "",
+              "<b>FUTURES (STANDARD UNITS)</b>",
+              "<code>MO   |TYP| SETT | CHG | VOL| OI | ΔOI</code>"]
     for m in sorted(f_sum.keys(), key=get_month_score):
         s = f_sum[m]
         tg_msg.append(f"<code>{m:5}|ALL|{s['s']:6.1f}|{s['c']:+5.1f}|{format_num(s['av']):>4}|{format_num(s['ao']):>4}|{format_num(s['ad']):>4}</code>")
@@ -656,7 +748,11 @@ def run_comprehensive_vacuum():
         tg_msg.append(f"\n<a href='{link}'>🔍 Interactive History</a>")
 
     print("\n[INFO] Sending Telegram message...")
-    requests.post(f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage", json={"chat_id": CHAT_ID, "text": "\n".join(tg_msg), "parse_mode": "HTML", "disable_web_page_preview": True})
+    requests.post(
+        f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage",
+        json={"chat_id": CHAT_ID, "text": "\n".join(tg_msg),
+              "parse_mode": "HTML", "disable_web_page_preview": True}
+    )
     print("[INFO] Done.")
 
 if __name__ == "__main__":
