@@ -63,19 +63,31 @@ def get_month_score(m_str):
     except: return 0
 
 def parse_es_futures_line(line, page_num):
+    # Expected token layout (from CME daily bulletin):
+    # JUN26 6622.50 6639.00 6598.25 ---- 6622.25 + UNCH 90 71968 1908786 - 11817097.00B 5026.75A
+    #   0      1       2       3      4      5     6   7   8    9     10   11      12
     tokens = line.split()
     if len(tokens) < 11: return None
     try:
         month = tokens[0]
         sett = float(tokens[5].replace(",", "").replace("A", "").replace("B", ""))
+
+        # tokens[6] = sign (+/-), tokens[7] = change value or UNCH
         sign = tokens[6]
         chg_val = tokens[7].replace(",", "").replace("A", "").replace("B", "")
+        if sign in ["+", "-"] and chg_val != "UNCH":
+            try:
+                change = float(f"{sign}{float(chg_val)/100}")
+            except:
+                change = 0.0
+        else:
+            change = 0.0
 
-        change = float(f"{sign}{float(chg_val)/100}") if sign in ["+", "-"] else 0.0
-
+        # tokens[8] = RTH vol, tokens[9] = Globex vol, tokens[10] = OI
         total_vol = to_int(tokens[8]) + to_int(tokens[9])
         oi = to_int(tokens[10])
 
+        # tokens[11] onward = delta OI (may be "-", "+", "UNCH", or embedded)
         raw_token = tokens[11] if len(tokens) > 11 else "0"
         dirty_delta = raw_token
         if raw_token in ["+", "-"] and len(tokens) > 12:
@@ -342,6 +354,8 @@ def run_sp500_master_vacuum():
     }
     all_futures, all_options = [], []
     trade_date = "Unknown"
+    fut_last_score = 0
+    fut_done = False
 
     print("\n" + "="*95)
     print("SCRAPING S&P 500: INSTITUTIONAL MASTER (curl_cffi / chrome120)")
@@ -384,15 +398,17 @@ def run_sp500_master_vacuum():
                         continue
 
                     # --- 2. ANCHORS ---
-                    if "E-MINI S&P FUTURES" in clean:
+                    # Exact match only — avoids false trigger on "E-MINI S&P OPTIONS ON FUTURES"
+                    if clean == "E-MINI S&P FUTURES":
                         active_block = "FUTURES"
+                        fut_last_score = 0
+                        fut_done = False
                         print(f"\n>>> Locked onto Product: FUTURES")
                         continue
 
-                    if "WK EW-W" in clean or "E-MINI S&P CALLS" in clean or "E-MINI S&P PUTS" in clean:
-                        if active_block == "FUTURES":
-                            active_block = None
-                            print(f"\n>>> Exiting Futures, entering Options Stream")
+                    if active_block == "FUTURES" and ("WK EW-W" in clean or "E-MINI S&P 500 CALL OPTIONS" in clean or "E-MINI S&P 500 PUT OPTIONS" in clean):
+                        active_block = None
+                        print(f"\n>>> Exiting Futures, entering Options Stream")
 
                     # --- CONTEXT UPDATES ---
                     if "CALLS" in clean.upper(): current_side = "CALLS"
@@ -418,9 +434,18 @@ def run_sp500_master_vacuum():
                             continue
 
                     # --- DATA EXTRACTION ---
-                    if active_block == "FUTURES" and re.match(r'^[A-Z]{3}\d{2}', clean):
-                        res = parse_es_futures_line(clean, p_idx + 1)
-                        if res: all_futures.append(res)
+                    if active_block == "FUTURES" and not fut_done and re.match(r'^[A-Z]{3}\d{2}', clean):
+                        line_month_match = re.match(r'^([A-Z]{3}\d{2})', clean)
+                        if line_month_match:
+                            curr_score = get_month_score(line_month_match.group(1))
+                            if fut_last_score > 0 and curr_score < fut_last_score:
+                                print(f"    [FUT STOP] Backward jump detected. Stopping futures capture.")
+                                fut_done = True
+                            else:
+                                res = parse_es_futures_line(clean, p_idx + 1)
+                                if res:
+                                    fut_last_score = curr_score
+                                    all_futures.append(res)
                         continue
 
                     if "TOTAL" in clean and active_block and active_block != "FUTURES":
