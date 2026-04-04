@@ -3,7 +3,7 @@ import requests
 import re
 import pandas as pd
 import yfinance as yf
-import cloudscraper
+from curl_cffi import requests as cureq
 from bs4 import BeautifulSoup
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo 
@@ -80,14 +80,13 @@ def setup_driver():
 
 def scrape_cbrates_current():
     print("🏛️ Scraping Current Rates (cbrates.com)...")
-    scraper = cloudscraper.create_scraper()
     rates = {}
     identifier_map = {
         "(Fed)": "Fed", "(ECB)": "ECB", "(BoE)": "BoE", "(BoJ)": "BoJ",
         "(BoC)": "BoC", "(SNB)": "SNB", "Australia": "RBA", "New Zealand": "RBNZ"
     }
     try:
-        r = scraper.get("https://www.cbrates.com/")
+        r = cureq.get("https://www.cbrates.com/", impersonate="chrome120", timeout=45)
         soup = BeautifulSoup(r.text, 'html.parser')
         rows = soup.find_all('tr')
         for row in rows:
@@ -114,7 +113,6 @@ def scrape_cbrates_current():
 
 def scrape_cbrates_meetings():
     print("🗓️ Scraping Next TWO Meeting Dates...")
-    scraper = cloudscraper.create_scraper()
     upcoming_meetings = {}
     identifiers = {
         "Federal Reserve": "Fed", "European Central Bank": "ECB", 
@@ -123,7 +121,7 @@ def scrape_cbrates_meetings():
         "Reserve Bank of New Zealand": "RBNZ", "Bank of Canada": "BoC"
     }
     try:
-        r = scraper.get("https://www.cbrates.com/meetings.htm")
+        r = cureq.get("https://www.cbrates.com/meetings.htm", impersonate="chrome120", timeout=45)
         soup = BeautifulSoup(r.text, 'html.parser')
         rows = soup.find_all('tr')
         today = datetime.now()
@@ -156,7 +154,7 @@ def get_barchart_probability(symbol, current_rate, scraper):
     """Internal helper to scrape a single contract probability."""
     try:
         url = f"https://www.barchart.com/futures/quotes/{symbol}/overview"
-        r = scraper.get(url)
+        r = scraper.get(url, timeout=45)
         match = re.search(r'"lastPrice"\s*:\s*"([\d\.]+)"', r.text) or re.search(r'"lastPrice"\s*:\s*([\d\.]+)', r.text)
         if match:
             price = float(match.group(1))
@@ -173,7 +171,7 @@ def get_barchart_probability(symbol, current_rate, scraper):
 
 def scrape_barchart_outlook(current_rates):
     print("📈 Scraping Next 2 Contracts for Dynamic Outlook...")
-    scraper = cloudscraper.create_scraper()
+    scraper = cureq.Session(impersonate="chrome120")
     results = {}
     
     for bank, symbols in FUTURES_MAP.items():
