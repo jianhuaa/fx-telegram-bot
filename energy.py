@@ -1,10 +1,11 @@
-import cloudscraper
+from curl_cffi import requests as cureq
 import pdfplumber
 import io
 import re
 import requests
 import os
 import csv
+import time
 import pandas as pd
 from datetime import datetime
 from pathlib import Path
@@ -565,7 +566,9 @@ def archive_and_publish(records, spreads, trade_date):
 # MAIN
 # ─────────────────────────────────────────────
 def run_combined_vacuum():
-    scraper = cloudscraper.create_scraper(browser='chrome')
+    headers = {
+        'Referer': 'https://www.cmegroup.com/market-data/volume-open-interest/exchange-volume.html',
+    }
 
     # =========================================================================
     # PART 1: SCRAPE OPTIONS
@@ -574,7 +577,8 @@ def run_combined_vacuum():
     print("SCRAPING OPTIONS: G8 ENERGY MASTER")
     print("=" * 80)
 
-    resp_o = scraper.get(OPT_URL)
+    time.sleep(2)
+    resp_o = cureq.get(OPT_URL, impersonate="chrome120", headers=headers, timeout=45)
     results_o = []
 
     with pdfplumber.open(io.BytesIO(resp_o.content)) as pdf:
@@ -709,7 +713,8 @@ def run_combined_vacuum():
     print("CLEAN ENERGY VACUUM: NO GHOST BLOCKS")
     print("=" * 80)
 
-    resp_f = scraper.get(FUT_URL)
+    time.sleep(2)
+    resp_f = cureq.get(FUT_URL, impersonate="chrome120", headers=headers, timeout=45)
     results_f, trade_date = [], "Unknown"
 
     with pdfplumber.open(io.BytesIO(resp_f.content)) as pdf:
