@@ -1,10 +1,11 @@
-import cloudscraper
+from curl_cffi import requests as cureq
 import pdfplumber
 import io
 import re
 import requests
 import os
 import csv
+import time
 import pandas as pd
 from datetime import datetime
 from pathlib import Path
@@ -67,28 +68,73 @@ def normalize_tokens(tokens):
     return result
 
 def process_futures_block(product_name, line):
+    # Token layout (sector lines):
+    # JUN26 ---- ---- ---- 588.15 + UNCH ---- ---- 18028 UNCH 615.65B 562.50A
+    #   0    1    2    3     4    5   6    7    8     9    10    11      12
+    # Settlement is always the last numeric token before the "+ UNCH" or "+ N.NN" pair.
     raw_tokens = line.split()
-    tokens = normalize_tokens(raw_tokens)
-    if len(tokens) < 6: return None
+    if len(raw_tokens) < 6: return None
     try:
-        chg_idx = -1
-        for i in range(1, len(tokens)):
-            t = tokens[i]
-            if t == "UNCH" or (len(t) > 1 and t[0] in "+-" and t[1].isdigit()):
-                chg_idx = i; break
-        if chg_idx == -1: return None
-        sett = to_float(tokens[chg_idx - 1])
-        chg = to_float(tokens[chg_idx])
-        trailing_data = tokens[chg_idx+1:]
-        nums = [t for t in trailing_data if '.' not in t]
-        if len(nums) >= 3:
-            vol = sum(int(to_float(n)) for n in nums[:-2])
-            oi = int(to_float(nums[-2]))
-            delta = int(to_float(nums[-1]))
-        elif len(nums) == 2:
-            vol, oi, delta = 0, int(to_float(nums[-2])), int(to_float(nums[-1]))
+        # Find the "+" sign token, which always precedes UNCH or the change value
+        plus_idx = -1
+        for i in range(1, len(raw_tokens)):
+            if raw_tokens[i] == "+" or raw_tokens[i] == "-":
+                plus_idx = i
+                break
+        if plus_idx == -1: return None
+
+        # Settlement price is the token just before the +/- sign
+        sett = to_float(raw_tokens[plus_idx - 1])
+
+        # Change: token after +/- is either UNCH or a numeric value
+        chg_token = raw_tokens[plus_idx + 1] if plus_idx + 1 < len(raw_tokens) else "UNCH"
+        if chg_token == "UNCH":
+            chg = 0.0
+        else:
+            sign = raw_tokens[plus_idx]
+            try: chg = float(f"{sign}{chg_token.replace(',', '')}")
+            except: chg = 0.0
+
+        # Everything after the change token is trailing data (vol, OI, delta)
+        trailing = raw_tokens[plus_idx + 2:]
+
+        # Filter to pure integer-like tokens (no decimal, no letters except trailing B/A)
+        def is_int_token(t):
+            cleaned = t.rstrip('BA').replace(',', '').replace('-', '').replace('+', '')
+            return cleaned.isdigit() and '.' not in t
+
+        nums = [t for t in trailing if is_int_token(t)]
+
+        # Layout: [rth_vol?, globex_vol?, oi, delta?]
+        # For sector lines with no volume: ---- ---- OI UNCH
+        # UNCH in trailing means delta = 0, not a number
+        trailing_no_unch = [t for t in trailing if t != "UNCH" and t != "----"]
+        int_nums = [t for t in trailing_no_unch if is_int_token(t)]
+
+        if len(int_nums) >= 3:
+            vol = sum(int(to_float(n)) for n in int_nums[:-2])
+            oi = int(to_float(int_nums[-2]))
+            delta = int(to_float(int_nums[-1]))
+        elif len(int_nums) == 2:
+            vol = int(to_float(int_nums[0]))
+            oi = int(to_float(int_nums[1]))
+            delta = 0
+        elif len(int_nums) == 1:
+            vol = 0
+            oi = int(to_float(int_nums[0]))
+            delta = 0
         else:
             vol = oi = delta = 0
+
+        # Check if delta token explicitly present (has +/- prefix after OI)
+        # e.g. "18028 - 1" or "16987 - 1"
+        for j, t in enumerate(trailing):
+            if (t == "+" or t == "-") and j + 1 < len(trailing):
+                next_t = trailing[j + 1]
+                if next_t.replace(',', '').isdigit():
+                    delta = int(to_float(t + next_t))
+                    break
+
         return {"Product": product_name, "Sett": sett, "Change": chg, "Volume": vol, "OI": oi, "Delta": delta}
     except: return None
 
@@ -233,11 +279,11 @@ function executeSort() {{
     rows.sort((a, b) => {{
         for (let s of sortStack) {{
             let av = a.cells[s.col].textContent.trim(), bv = b.cells[s.col].textContent.trim();
-            const parse = (str) => {{ 
-                if (/^\d{{4}}-\d{{2}}-\d{{2}}$/.test(str)) return Date.parse(str);
-                let n = parseFloat(str.replace(/[%k,]/g, '')); 
-                return str.includes('k') ? n * 1000 : n; 
-            }};
+            const parse = (str) => {{ 
+                if (/^\d{{4}}-\d{{2}}-\d{{2}}$/.test(str)) return Date.parse(str);
+                let n = parseFloat(str.replace(/[%k,]/g, '')); 
+                return str.includes('k') ? n * 1000 : n; 
+            }};
             const an = parse(av), bn = parse(bv);
             let res = (!isNaN(an) && !isNaN(bn)) ? an - bn : av.localeCompare(bv);
             if (res !== 0) return s.asc ? res : -res;
@@ -287,7 +333,7 @@ def archive_and_publish(sorted_sectors, trade_date):
             writer = csv.writer(f)
             if not file_exists: writer.writerow(['Date', 'ID', 'Sett', 'Pct', 'Vol', 'OI', 'Delta'])
             for s in sorted_sectors: writer.writerow([clean_date, s['ID'], s['Sett'], f"{s['Pct']:.2f}%", s['Vol'], s['OI'], s['Delta']])
-    
+
     df = pd.read_csv(CSV_FILE).sort_values(by=['Date', 'ID'], ascending=[False, True])
     html = build_html_page(df)
     Path("spdr_sectors.html").write_text(html, encoding="utf-8")
@@ -295,9 +341,13 @@ def archive_and_publish(sorted_sectors, trade_date):
 
 def run_comprehensive_vacuum():
     print("STARTING VACUUM...")
-    scraper = cloudscraper.create_scraper(browser='chrome')
-    resp = scraper.get(PDF_URL)
+    headers = {
+        'Referer': 'https://www.cmegroup.com/market-data/volume-open-interest/exchange-volume.html',
+    }
+    time.sleep(2)
+    resp = cureq.get(PDF_URL, impersonate="chrome120", headers=headers, timeout=45)
     pdf_bytes = io.BytesIO(resp.content)
+
     futures_results = []
     trade_date = "Unknown"
     with pdfplumber.open(pdf_bytes) as pdf:
@@ -314,7 +364,7 @@ def run_comprehensive_vacuum():
                 if active_f and re.search(r'\b(?:JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|OCT|NOV|DEC)\d{2}\b', clean):
                     res = process_futures_block(active_f, clean)
                     if res: futures_results.append(res)
-    
+
     front_months = {}
     for r in futures_results:
         prod = r["Product"]
@@ -327,7 +377,7 @@ def run_comprehensive_vacuum():
     for s in sorted(front_months.values(), key=lambda x: x["ID"]):
         tg_msg.append(f"<code>{s['ID']:4} |{s['Sett']:6.0f}|{s['Pct']:+6.2f}%|{format_num(s['Vol']):>5}|{format_num(s['OI']):>5}|{format_num(s['Delta']):>5}</code>")
     if link: tg_msg.append(f"\n<a href='{link}'>🔍 Interactive History</a>")
-    
+
     requests.post(f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage", json={"chat_id": CHAT_ID, "text": "\n".join(tg_msg), "parse_mode": "HTML", "disable_web_page_preview": True})
     print("DONE.")
 
