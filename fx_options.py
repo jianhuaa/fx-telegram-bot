@@ -1,6 +1,3 @@
-# 1. Install dependencies
-!pip install curl_cffi pdfplumber pandas requests
-
 from curl_cffi import requests as cureq
 import pdfplumber
 import io
