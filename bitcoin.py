@@ -1,10 +1,11 @@
-import cloudscraper
+from curl_cffi import requests as cureq
 import pdfplumber
 import io
 import re
 import requests
 import os
 import csv
+import time
 import pandas as pd
 from datetime import datetime
 from pathlib import Path
@@ -389,8 +390,25 @@ def process_options_total(current_name, month, line, side):
 
 def run_comprehensive_vacuum():
     print("--- STARTING BITCOIN CME PARSER ---")
-    scraper   = cloudscraper.create_scraper(browser='chrome')
-    pdf_bytes = io.BytesIO(scraper.get(PDF_URL).content)
+    
+    headers = {
+        'Referer': 'https://www.cmegroup.com/market-data/volume-open-interest/exchange-volume.html',
+    }
+    
+    try:
+        # Using curl_cffi to perfectly impersonate a real Chrome browser's TLS fingerprint
+        time.sleep(2) # Brief pause
+        resp = cureq.get(PDF_URL, impersonate="chrome120", headers=headers, timeout=45)
+        
+        if resp.status_code == 403:
+            print(f"🛑 Access Denied (403).")
+            
+        resp.raise_for_status()
+        pdf_bytes = io.BytesIO(resp.content)
+        
+    except Exception as e:
+        print(f"❌ Scraping Failure for {PDF_URL}: {e}")
+        return
 
     futures_results, options_results = [], []
     trade_date = "Unknown Date"
