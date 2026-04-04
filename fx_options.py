@@ -1,4 +1,7 @@
-import cloudscraper
+# 1. Install dependencies
+!pip install curl_cffi pdfplumber pandas requests
+
+from curl_cffi import requests as cureq
 import pdfplumber
 import io
 import re
@@ -30,8 +33,8 @@ CURRENCIES = [
 ]
 
 t = int(time.time())
-URL_REPORT = f"https://www.cmegroup.com/reports/fx-report.pdf"#?t={t}"
-URL_PUT_CALL = f"https://www.cmegroup.com/reports/fx-put-call.pdf"#?t={t}"
+URL_REPORT = f"https://www.cmegroup.com/reports/fx-report.pdf"
+URL_PUT_CALL = f"https://www.cmegroup.com/reports/fx-put-call.pdf"
 
 # --- HELPERS ---
 def clean_numeric(val):
@@ -48,18 +51,29 @@ def format_vol(val):
     return f"${int(round(val_m))}M"
 
 def get_pdf(url):
-    scraper = cloudscraper.create_scraper(browser={'browser': 'chrome', 'platform': 'windows', 'desktop': True})
+    headers = {
+        'Referer': 'https://www.cmegroup.com/market-data/volume-open-interest/exchange-volume.html',
+    }
+    
     try:
-        resp = scraper.get(url, timeout=45)
+        # Using curl_cffi to perfectly impersonate a real Chrome browser's TLS fingerprint
+        time.sleep(2) # Brief pause
+        resp = cureq.get(url, impersonate="chrome120", headers=headers, timeout=45)
+        
+        if resp.status_code == 403:
+            print(f"🛑 Access Denied (403).")
+            
         resp.raise_for_status()
+        
         if not resp.content.startswith(b'%PDF'):
-            raise ValueError("CME returned a non-PDF response.")
+            raise ValueError(f"CME returned a non-PDF response. Content starts with: {resp.content[:50]}")
+            
         return io.BytesIO(resp.content)
     except Exception as e:
         print(f"❌ Scraping Failure for {url}: {e}")
         raise
 
-# --- SCRAPING LOGIC (UNTOUCHED PER REQUEST) ---
+# --- SCRAPING LOGIC ---
 def parse_fx_report(pdf_stream):
     results = {c['code']: {'nv_c': 0, 'nv_p': 0, 'oi_c': 0, 'oi_p': 0, 'e1_c':0, 'e1_p':0, 'e8_c':0, 'e8_p':0} for c in CURRENCIES}
     trade_date = ""
@@ -326,6 +340,7 @@ def archive_and_publish_fx(trade_date, data):
                     cp = int(round((c_v/total)*100)) if total > 0 else 0
                     writer.writerow([trade_date, c['code'], label, f"{cp}%", f"{100-cp}%", total])
 
+    if not os.path.isfile(CSV_FILE): return None
     df = pd.read_csv(CSV_FILE).sort_values(by=['Date', 'ID'], ascending=[False, True])
     html = build_fx_html_page(df)
     Path("fx_options.html").write_text(html, encoding="utf-8")
@@ -345,6 +360,7 @@ def archive_and_publish_fx(trade_date, data):
         except: pass
     return None
 
+# --- EXECUTION ---
 if __name__ == "__main__":
     try:
         print("🚀 Fetching FX Reports...")
@@ -359,7 +375,7 @@ if __name__ == "__main__":
             print(f"📊 Archiving data for {t_date}...")
             link = archive_and_publish_fx(t_date, final_results)
             
-            output = [f"📊 <b>FX Options — {t_date}</b>", "<code>🌎|METRIC   |CALL / PUT   | VOL  </code>"]
+            output = [f"📊 <b>FX Options — {t_date}</b>", "<code>🌎|METRIC    |CALL / PUT    | VOL  </code>"]
             for c in CURRENCIES:
                 entry = final_results[c['code']]
                 for label, key in [('NOTIONAL', 'nv'), ('OPEN INT.', 'oi'), ('≤ 1W', 'e1'), ('> 1W', 'e8')]:
@@ -368,13 +384,16 @@ if __name__ == "__main__":
                     cp = int(round((c_v/total)*100)) if total > 0 else 0
                     output.append(f"<code>{c['flag']}|{label:<9}|🟢{cp:>3}% 🔴{100-cp:>3}%|{format_vol(total):>6}</code>")
             
-            if link: output.append(f"\n<a href='{link}'>🔍 Interactive History</a>")
+            print("\n".join(output))
+            if link: print(f"\n🔍 Interactive History: {link}")
             
-            requests.post(f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage", json={"chat_id": CHAT_ID, "text": "\n".join(output), "parse_mode": "HTML", "disable_web_page_preview": True})
-            print("✅ Done.")
+            try:
+                requests.post(f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage", 
+                              json={"chat_id": CHAT_ID, "text": "\n".join(output), "parse_mode": "HTML", "disable_web_page_preview": True})
+                print("✅ Telegram Notification Sent.")
+            except:
+                print("⚠️ Telegram Notification Failed.")
         else:
             print("❌ Failure: Trade Date missing.")
-            sys.exit(1)
     except Exception as e:
         print(f"💥 Fatal Error: {e}")
-        sys.exit(1)
