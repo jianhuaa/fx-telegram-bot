@@ -1,10 +1,11 @@
-import cloudscraper
+from curl_cffi import requests as cureq
 import pdfplumber
 import io
 import re
 import requests
 import os
 import csv
+import time
 import pandas as pd
 from datetime import datetime
 from pathlib import Path
@@ -47,15 +48,12 @@ def format_num(val):
     elif abs_n < 10000: return f"{sign}{abs_n/1000:.1f}k"
     else: return f"{sign}{round(abs_n/1000)}k"
 
-def clean_month(m_str):
-    if not m_str.isdigit(): return m_str.upper()
-    if len(m_str) == 8:
-        months = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"]
-        try:
-            m_idx = int(m_str[4:6]) - 1
-            return f"{months[m_idx]}{m_str[2:4]}"
-        except: pass
-    return "UNKNOWN"
+def decode_put_month(date_str):
+    months = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"]
+    try:
+        month_idx = int(date_str[4:6]) - 1
+        return f"{months[month_idx]}{date_str[2:4]}"
+    except: return "UNKNOWN"
 
 def get_month_score(m_str):
     months = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"]
@@ -72,17 +70,17 @@ def parse_es_futures_line(line, page_num):
         sett = float(tokens[5].replace(",", "").replace("A", "").replace("B", ""))
         sign = tokens[6]
         chg_val = tokens[7].replace(",", "").replace("A", "").replace("B", "")
-        
+
         change = float(f"{sign}{float(chg_val)/100}") if sign in ["+", "-"] else 0.0
-        
+
         total_vol = to_int(tokens[8]) + to_int(tokens[9])
         oi = to_int(tokens[10])
-        
+
         raw_token = tokens[11] if len(tokens) > 11 else "0"
         dirty_delta = raw_token
         if raw_token in ["+", "-"] and len(tokens) > 12:
             dirty_delta = raw_token + tokens[12]
-            
+
         delta_oi = "0"
         if "UNCH" in dirty_delta or "NEW" in dirty_delta:
             delta_oi = "0"
@@ -93,7 +91,7 @@ def parse_es_futures_line(line, page_num):
             else: delta_oi = left_side
         else:
             delta_oi = dirty_delta
-            
+
         res = {
             "Contract": f"ES {month}", "Month": month,
             "Sett": sett, "Change": change, "Volume": total_vol,
@@ -148,7 +146,7 @@ def build_html_page(df):
   table {{ border-collapse: collapse; white-space: nowrap; width: 100%; table-layout: fixed; }}
   th, td {{ border: 1px solid #2a2a2a; padding: 4px 2px; text-align: right; overflow: hidden; position: relative; }}
   th {{ text-align: left; background: #161616; color: #00aaff; cursor: pointer; user-select: none; touch-action: manipulation; }}
-  
+
   /* Futures Table Column Widths */
   #tbl-fut th:nth-child(1), #tbl-fut td:nth-child(1) {{ width: 20%; }}
   #tbl-fut th:nth-child(2), #tbl-fut td:nth-child(2) {{ width: 14%; }}
@@ -161,12 +159,12 @@ def build_html_page(df):
   /* Options Table Column Widths */
   #tbl-opt th:nth-child(1), #tbl-opt td:nth-child(1) {{ width: 22%; }}
   #tbl-opt th:nth-child(2), #tbl-opt td:nth-child(2) {{ width: 16%; }}
-  #tbl-opt th:nth-child(3), #tbl-opt td:nth-child(3) {{ width: 14%; }}
+  #tbl-opt th:nth-child(3), #tbl-opt td:nth-child(3) {{ width: 12%; }}
   #tbl-opt th:nth-child(4), #tbl-opt td:nth-child(4) {{ width: 16%; }}
   #tbl-opt th:nth-child(5), #tbl-opt td:nth-child(5) {{ width: 16%; }}
   #tbl-opt th:nth-child(6), #tbl-opt td:nth-child(6) {{ width: 16%; }}
 
-  th .arrow {{ display: none; }} /* Hidden to save space on iPhone */
+  th .arrow {{ display: none; }}
   th.sorted {{ color: #fff; background: #222; }}
   th .sort-rank {{ position: absolute; top: 1px; right: 1px; font-size: 0.5rem; color: #ff5252; font-weight: bold; }}
   td.pos {{ color: #00e676; }}
@@ -253,13 +251,13 @@ function renderSortUI(tblId) {{
         const oldRank = th.querySelector('.sort-rank');
         if (oldRank) oldRank.remove();
         if (rank !== -1) {{
-            th.classList.add('sorted'); 
-            const span = document.createElement('span'); 
-            span.className = 'sort-rank'; 
-            span.innerHTML = (rank + 1); 
+            th.classList.add('sorted');
+            const span = document.createElement('span');
+            span.className = 'sort-rank';
+            span.innerHTML = (rank + 1);
             th.appendChild(span);
-        }} else {{ 
-            th.classList.remove('sorted'); 
+        }} else {{
+            th.classList.remove('sorted');
         }}
     }});
 }}
@@ -271,7 +269,7 @@ function executeSort(tblId) {{
     rows.sort((a, b) => {{
         for (let s of stack) {{
             let av = a.cells[s.col].textContent.trim(), bv = b.cells[s.col].textContent.trim();
-            const parse = (str) => {{ 
+            const parse = (str) => {{
                 if (/^\d{{4}}-\d{{2}}-\d{{2}}$/.test(str)) return Date.parse(str);
                 if (/^[A-Z]{{3}}\d{{2}}$/i.test(str)) {{
                     const mos = ["JAN","FEB","MAR","APR","MAY","JUN","JUL","AUG","SEP","OCT","NOV","DEC"];
@@ -279,8 +277,8 @@ function executeSort(tblId) {{
                     const y = parseInt(str.substring(3, 5), 10);
                     if (m !== -1 && !isNaN(y)) return (y * 100) + m;
                 }}
-                let n = parseFloat(str.replace(/[%k,\+]/g, '')); 
-                return str.includes('k') ? n * 1000 : n; 
+                let n = parseFloat(str.replace(/[%k,\+]/g, ''));
+                return str.includes('k') ? n * 1000 : n;
             }};
             const an = parse(av), bn = parse(bv);
             let res = (!isNaN(an) && !isNaN(bn)) ? an - bn : av.localeCompare(bv);
@@ -330,40 +328,45 @@ def archive_and_publish(records, trade_date):
         with open(CSV_FILE, 'a', newline='') as f:
             writer = csv.writer(f)
             if not file_exists: writer.writerow(['Date', 'Type', 'Month', 'Sett_PC', 'Change', 'Vol', 'OI', 'Delta'])
-            for r in records: 
+            for r in records:
                 writer.writerow([clean_date, r['Type'], r['Month'], r['Sett_PC'], r['Change'], r['Vol'], r['OI'], r['Delta']])
-    
+
     df = pd.read_csv(CSV_FILE).sort_values(by=['Date', 'Type', 'Month'], ascending=[False, True, True])
     html = build_html_page(df)
     Path("sp500.html").write_text(html, encoding="utf-8")
     return push_to_gist(html)
 
 def run_sp500_master_vacuum():
-    scraper = cloudscraper.create_scraper(browser='chrome')
+    headers = {
+        'Referer': 'https://www.cmegroup.com/market-data/volume-open-interest/exchange-volume.html',
+    }
     all_futures, all_options = [], []
     trade_date = "Unknown"
 
     print("\n" + "="*95)
-    print("SCRAPING S&P 500: INSTITUTIONAL MASTER (NO DIVIDENDS)")
+    print("SCRAPING S&P 500: INSTITUTIONAL MASTER (curl_cffi / chrome120)")
     print("="*95)
 
     for label, url in PDF_URLS.items():
         try:
-            resp = scraper.get(url)
+            time.sleep(2)
+            resp = cureq.get(url, impersonate="chrome120", headers=headers, timeout=45)
             pdf_bytes = io.BytesIO(resp.content)
-        except: continue
-        
+        except Exception as e:
+            print(f"[WARN] Failed to fetch {label}: {e}")
+            continue
+
         multiplier = 5.0 if "BIG" in label else 1.0
-        is_put_side = "PUTS" in label 
-        
+        is_put_side = "PUTS" in label
+
         with pdfplumber.open(pdf_bytes) as pdf:
             current_side = "PUTS" if is_put_side else "CALLS"
             active_block, current_month = None, "UNKNOWN"
-            
+
             for p_idx, page in enumerate(pdf.pages):
                 text = page.extract_text()
                 if not text: continue
-                
+
                 if trade_date == "Unknown":
                     date_match = re.search(r'[A-Z][a-z]{2}, ([A-Z][a-z]{2} \d{2}, \d{4})', text)
                     if date_match: trade_date = date_match.group(1)
@@ -372,10 +375,10 @@ def run_sp500_master_vacuum():
                 for line in lines:
                     clean = line.strip()
 
-                    # --- 1. THE KILL SWITCHES ---
+                    # --- 1. KILL SWITCHES ---
                     if is_put_side and "OPTIONS EOO'S, BLOCKS and EXERCISES" in clean:
-                        active_block = None; break 
-                        
+                        active_block = None; break
+
                     if "SDA OPT" in clean or "FIXING PRICE" in clean:
                         active_block = None
                         continue
@@ -385,7 +388,7 @@ def run_sp500_master_vacuum():
                         active_block = "FUTURES"
                         print(f"\n>>> Locked onto Product: FUTURES")
                         continue
-                        
+
                     if "WK EW-W" in clean or "E-MINI S&P CALLS" in clean or "E-MINI S&P PUTS" in clean:
                         if active_block == "FUTURES":
                             active_block = None
@@ -442,9 +445,9 @@ def run_sp500_master_vacuum():
                                 opt_res = {
                                     "Series": active_block,
                                     "Month": current_month,
-                                    "Volume": vol * multiplier, 
-                                    "OI": oi * multiplier, 
-                                    "Delta": to_int(delta_val) * multiplier, 
+                                    "Volume": vol * multiplier,
+                                    "OI": oi * multiplier,
+                                    "Delta": to_int(delta_val) * multiplier,
                                     "Side": current_side
                                 }
                                 all_options.append(opt_res)
@@ -457,7 +460,7 @@ def run_sp500_master_vacuum():
         m = f["Month"]
         if m not in f_sum: f_sum[m] = {"Sett": f["Sett"], "Change": f["Change"], "Vol": 0, "OI": 0, "Delta": 0}
         f_sum[m]["Vol"] += f["Volume"]; f_sum[m]["OI"] += f["OI"]; f_sum[m]["Delta"] += to_int(f["Delta"])
-    
+
     for o in all_options:
         m = o["Month"]
         if m not in opt_sum: opt_sum[m] = {"V_Gross":0,"V_Calls":0,"V_Puts":0,"OI_Net":0,"D_Net":0}
