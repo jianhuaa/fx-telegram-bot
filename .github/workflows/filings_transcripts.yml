@@ -9,7 +9,7 @@ on:
       max_tickers:
         description: 'Number of tickers to process (e.g., 99 for testing, 9999 for all)'
         required: true
-        default: '99'
+        default: '9999'
 
 permissions:
   contents: write
