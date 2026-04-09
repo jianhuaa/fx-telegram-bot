@@ -1,9 +1,9 @@
 import pandas as pd
 import requests
-from datetime import datetime, timedelta
+from datetime import datetime
 import time
 import os
-import string
+import io
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from DrissionPage import ChromiumPage, ChromiumOptions
@@ -24,6 +24,14 @@ FALLBACK_MB_URLS = {
     'NFLX': 'https://www.marketbeat.com/stocks/NASDAQ/NFLX/earnings/'
 }
 
+SEC_MAP = {
+    "Communication Services": "XLC", "Consumer Cyclical": "XLY", "Consumer Defensive": "XLP",
+    "Energy": "XLE", "Financial Services": "XLF", "Healthcare": "XLV",
+    "Industrials": "XLI", "Technology": "XLK", "Basic Materials": "XLB",
+    "Real Estate": "XLRE", "Utilities": "XLU", "Financials": "XLF", "Health Care": "XLV",
+    "Information Technology": "XLK", "Consumer Discretionary": "XLY", "Consumer Staples": "XLP"
+}
+
 # --- 1. BUILD UNIVERSE FROM GOOGLE SHEETS ---
 print("Fetching Universe from Google Sheets...")
 headers = {'User-Agent': 'Mozilla/5.0'}
@@ -33,7 +41,6 @@ def fetch_sheet(url, skip_str):
     h_idx = next((i for i, l in enumerate(lines) if skip_str in l), 0)
     return pd.read_csv(io.StringIO("\n".join(lines[h_idx:])))
 
-import io
 spx_url = "https://docs.google.com/spreadsheets/d/e/2PACX-1vSpFLwMNa0AUsSC62LQZCQfIvvXRPPmX00cY7DO2sbiHu47Z72aJ_R-F_IrILBbKqIZGdSFgXFUrZyJ/pub?gid=0&single=true&output=csv"
 rmc_url = "https://docs.google.com/spreadsheets/d/e/2PACX-1vSpFLwMNa0AUsSC62LQZCQfIvvXRPPmX00cY7DO2sbiHu47Z72aJ_R-F_IrILBbKqIZGdSFgXFUrZyJ/pub?gid=679638722&single=true&output=csv"
 rut_url = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRrTpcehWaL1Aq-uTn986nie8Hwrs_uHUOYr-E_wCG0jtLKQjvpw0V8x1wVz8yJdxFhqr7mz07jjpkM/pub?gid=0&single=true&output=csv"
@@ -58,7 +65,8 @@ add_to_uni(df_rut, 'RTY')
 
 df_universe = pd.DataFrame(universe).drop_duplicates(subset=['Ticker'])
 all_tickers = df_universe['Ticker'].tolist()[:MAX_TICKERS]
-print(f"Loaded {len(all_tickers)} tickers from sheets (Limit: {MAX_TICKERS}).")
+df_universe = df_universe[df_universe['Ticker'].isin(all_tickers)]
+print(f"Loaded {len(all_tickers)} tickers from sheets.")
 
 # --- 2. SMART INCREMENTAL LOGIC ---
 print("Checking local databases for stale tickers...")
@@ -80,19 +88,15 @@ except:
     df_trans_old = pd.DataFrame(columns=['Date', 'Ticker', 'Index', 'Sector', 'Industry', 'Link'])
     last_trans_dates = {}
 
-tickers_to_update_sec = []
-tickers_to_update_trans = []
-
+tickers_to_update_sec, tickers_to_update_trans = [], []
 for t in all_tickers:
-    # Check SEC
     if t not in last_sec_dates or pd.isna(last_sec_dates[t]) or (now - last_sec_dates[t]).days > STALE_DAYS_THRESHOLD:
         tickers_to_update_sec.append(t)
-    # Check Transcripts
     if t not in last_trans_dates or pd.isna(last_trans_dates[t]) or (now - last_trans_dates[t]).days > STALE_DAYS_THRESHOLD:
         tickers_to_update_trans.append(t)
 
-print(f"Tickers needing SEC update (>75 days old or missing): {len(tickers_to_update_sec)}")
-print(f"Tickers needing Transcript update (>75 days old or missing): {len(tickers_to_update_trans)}")
+print(f"Tickers needing SEC update: {len(tickers_to_update_sec)}")
+print(f"Tickers needing Transcript update: {len(tickers_to_update_trans)}")
 
 # --- 3. FETCH SEC FILINGS ---
 new_sec_data = []
@@ -112,7 +116,6 @@ if tickers_to_update_sec:
                 else: self.tokens -= 1
     
     sec_limiter = TokenBucket(8)
-
     headers_sec = {'User-Agent': f'JianHua_Research ({EMAIL_SEC})', 'Accept-Encoding': 'gzip, deflate'}
     res_m = requests.get("https://www.sec.gov/files/company_tickers.json", headers=headers_sec)
     cik_map = {v['ticker']: str(v['cik_str']).zfill(10) for v in res_m.json().values()} if res_m.status_code == 200 else {}
@@ -139,30 +142,29 @@ if tickers_to_update_sec:
         for f in as_completed(futures):
             res = f.result()
             if res:
-                # Merge with Universe info
                 row_info = df_universe[df_universe['Ticker'] == res['Ticker']].iloc[0]
                 res['Index'] = row_info['Index']
-                res['Sector'] = row_info['Sector']
+                res['Sector'] = SEC_MAP.get(row_info['Sector'], row_info['Sector'])
                 res['Industry'] = row_info['Industry']
                 new_sec_data.append(res)
 
     if new_sec_data:
         df_new_sec = pd.DataFrame(new_sec_data)
-        # Drop 'Date_Parsed' before concat if it exists
         if 'Date_Parsed' in df_sec_old.columns: df_sec_old = df_sec_old.drop(columns=['Date_Parsed'])
         df_sec_final = pd.concat([df_sec_old, df_new_sec]).drop_duplicates(subset=['Ticker', 'Type', 'Date'], keep='last')
         df_sec_final = df_sec_final.sort_values(by=['Sector', 'Industry', 'Index'], ascending=[True, True, False])
         df_sec_final.to_parquet('col4_sec.parquet')
         print(f"Saved {len(df_new_sec)} new SEC records.")
-    else:
-        print("No new SEC records found.")
+    else: print("No new SEC records found.")
+elif not df_sec_old.empty:
+    if 'Date_Parsed' in df_sec_old.columns: df_sec_old = df_sec_old.drop(columns=['Date_Parsed'])
+    df_sec_old.to_parquet('col4_sec.parquet')
 
 # --- 4. FETCH TRANSCRIPTS ---
 new_trans_data = []
 if tickers_to_update_trans:
     os.system("pkill -f chrome")
     time.sleep(1)
-
     co = ChromiumOptions()
     co.set_browser_path('/usr/bin/google-chrome-stable')
     co.set_local_port(9333)
@@ -182,15 +184,12 @@ if tickers_to_update_trans:
                 page.get(target_url, timeout=2.0, retry=0)
                 t_ele = page.ele('text:Conference Call Transcript & Audio', timeout=0.5)
                 if t_ele and t_ele.link:
-                    # Get Date from the SEC pull if exists, else use today
                     match_date = now.strftime("%d %b").lstrip('0')
-                    # Get Universe info
                     row_info = df_universe[df_universe['Ticker'] == ticker].iloc[0]
                     clean_mb_link = f"<a href='{t_ele.link}'>[Link]</a>"
-                    
                     new_trans_data.append({
                         'Date': match_date, 'Ticker': ticker, 
-                        'Index': row_info['Index'], 'Sector': row_info['Sector'], 
+                        'Index': row_info['Index'], 'Sector': SEC_MAP.get(row_info['Sector'], row_info['Sector']), 
                         'Industry': row_info['Industry'], 'Link': clean_mb_link
                     })
                     print(f"Found transcript for {ticker}")
@@ -205,7 +204,9 @@ if tickers_to_update_trans:
         df_trans_final = df_trans_final.sort_values(by=['Sector', 'Industry', 'Index'], ascending=[True, True, False])
         df_trans_final.to_parquet('col4_transcripts.parquet')
         print(f"Saved {len(df_new_trans)} new Transcript records.")
-    else:
-        print("No new Transcript records found.")
+    else: print("No new Transcript records found.")
+elif not df_trans_old.empty:
+    if 'Date_Parsed' in df_trans_old.columns: df_trans_old = df_trans_old.drop(columns=['Date_Parsed'])
+    df_trans_old.to_parquet('col4_transcripts.parquet')
 
 print("Update complete.")
