@@ -1,0 +1,53 @@
+name: Market Data Harvester
+
+on:
+  schedule:
+    # Runs at minute 0 of every hour
+    - cron: '0 * * * *'
+  workflow_dispatch:
+    inputs:
+      max_tickers:
+        description: 'Number of tickers to process (e.g., 99 for testing, 9999 for all)'
+        required: true
+        default: '99'
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-update:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout Repository
+      uses: actions/checkout@v4
+
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.10'
+
+    - name: Install Google Chrome
+      run: |
+        wget -q -O - https://dl-ssl.google.com/linux/linux_signing_key.pub | sudo apt-key add -
+        sudo sh -c 'echo "deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable main" > /etc/apt/sources.list.d/google-chrome.list'
+        sudo apt-get update -qq
+        sudo apt-get install -y google-chrome-stable --quiet
+
+    - name: Install Dependencies
+      run: |
+        pip install requests pandas python-dateutil DrissionPage fastparquet pyarrow yfinance yahooquery pytz lxml html5lib bs4
+
+    - name: Run Harvester Script
+      env:
+        MAX_TICKERS: ${{ github.event.inputs.max_tickers || '9999' }}
+      run: python filings_transcripts.py
+
+    - name: Commit and Push Changes
+      run: |
+        git config --local user.email "action@github.com"
+        git config --local user.name "GitHub Action Harvester"
+        git add *.parquet
+        # Only commit if there are actual changes
+        git diff --quiet && git diff --staged --quiet || git commit -m "Automated data harvest update"
+        git push
