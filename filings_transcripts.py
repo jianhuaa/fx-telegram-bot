@@ -4,6 +4,7 @@ from datetime import datetime
 import time
 import os
 import io
+import re
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from DrissionPage import ChromiumPage, ChromiumOptions
@@ -184,15 +185,29 @@ if tickers_to_update_trans:
                 page.get(target_url, timeout=2.0, retry=0)
                 t_ele = page.ele('text:Conference Call Transcript & Audio', timeout=0.5)
                 if t_ele and t_ele.link:
-                    match_date = now.strftime("%d %b").lstrip('0')
+                    link_url = str(t_ele.link)
+                    
+                    # --- NEW LOGIC: Extract date from the URL string ---
+                    match = re.search(r'/(\d{4}-\d{1,2}-\d{1,2})-', link_url)
+                    if match:
+                        try:
+                            dt = pd.to_datetime(match.group(1))
+                            match_date = dt.strftime('%d %b').lstrip('0')
+                        except:
+                            match_date = "Unknown"
+                    else:
+                        match_date = "Unknown"
+                    # ---------------------------------------------------
+
                     row_info = df_universe[df_universe['Ticker'] == ticker].iloc[0]
-                    clean_mb_link = f"<a href='{t_ele.link}'>[Link]</a>"
+                    clean_mb_link = f"<a href='{link_url}'>[Link]</a>"
+                    
                     new_trans_data.append({
                         'Date': match_date, 'Ticker': ticker, 
                         'Index': row_info['Index'], 'Sector': SEC_MAP.get(row_info['Sector'], row_info['Sector']), 
                         'Industry': row_info['Industry'], 'Link': clean_mb_link
                     })
-                    print(f"Found transcript for {ticker}")
+                    print(f"Found transcript for {ticker} on {match_date}")
             except: pass
     finally:
         page.quit()
