@@ -27,7 +27,7 @@ FALLBACK_MB_URLS = {
 SEC_MAP = {
     "Communication Services": "XLC", "Consumer Cyclical": "XLY", "Consumer Defensive": "XLP",
     "Energy": "XLE", "Financial Services": "XLF", "Healthcare": "XLV",
-    "Industrials": "XLI", "Technology": "XLK", "Basic Materials": "XLB",
+    "Industrials": "XLI", "Technology": "XLK", "Materials": "XLB",
     "Real Estate": "XLRE", "Utilities": "XLU", "Financials": "XLF", "Health Care": "XLV",
     "Information Technology": "XLK", "Consumer Discretionary": "XLY", "Consumer Staples": "XLP"
 }
