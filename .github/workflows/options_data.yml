@@ -2,7 +2,7 @@ name: Options Data Harvester
 
 on:
   schedule:
-    # Runs at 23:00 UTC (Post-Market) Mon-Fri
+    # Runs at 23:00 UTC (Post-Market Close) Mon-Fri
     - cron: '0 23 * * 1-5'
   workflow_dispatch:
 
@@ -22,7 +22,8 @@ jobs:
           python-version: '3.10'
 
       - name: Install Dependencies
-        run: pip install pandas yfinance pyarrow fastparquet requests python-dateutil
+        # Make absolutely sure curl_cffi is included here
+        run: pip install pandas yfinance pyarrow fastparquet requests python-dateutil curl_cffi
 
       - name: Run Harvester
         run: python options_processor.py
