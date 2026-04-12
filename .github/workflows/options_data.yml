@@ -22,7 +22,6 @@ jobs:
           python-version: '3.10'
 
       - name: Install Dependencies
-        # Make absolutely sure curl_cffi is included here
         run: pip install pandas yfinance pyarrow fastparquet requests python-dateutil curl_cffi
 
       - name: Run Harvester
