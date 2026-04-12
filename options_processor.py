@@ -5,35 +5,19 @@ import time
 import os
 import io
 import requests
+import random
+from curl_cffi import requests as cffi_requests
 from dateutil.relativedelta import relativedelta
-from concurrent.futures import ThreadPoolExecutor, as_completed
-from functools import wraps
 
-# --- PRODUCTION CONFIG ---
+# --- TANK CONFIG ---
 FILE_NAME = 'col4_options_history.parquet'
-MAX_WORKERS = 3  # 3 workers + 1s delay is the sweet spot for GitHub IPs
+# CHANGED: Auto-save every 1 ticker instead of 50
+SAVE_INTERVAL = 1  
 
 # Stealth User Agent
 UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36'
 
-def retry(exceptions, tries=3, delay=5):
-    def decorator(f):
-        @wraps(f)
-        def wrapper(*args, **kwargs):
-            _tries, _delay = tries, delay
-            while _tries > 1:
-                try:
-                    return f(*args, **kwargs)
-                except exceptions as e:
-                    err_msg = str(e).split('.')[0] 
-                    print(f"  [RETRY] Error: {err_msg}. Waiting {_delay}s...")
-                    time.sleep(_delay)
-                    _tries -= 1
-                    _delay *= 2 
-            return f(*args, **kwargs)
-        return wrapper
-    return decorator
-
+# UNAFFECTED: fetch_universe function remains exactly the same
 def fetch_universe():
     print("[1/4] Building Universe from Google Sheets...")
     urls = {
@@ -65,36 +49,44 @@ def fetch_universe():
         return df_uni
     return pd.DataFrame()
 
-@retry(Exception, tries=3, delay=5)
-def get_options_snapshot(row):
-    ticker = row['Ticker']
-    
-    # yfinance handles its own curl_cffi session automatically here
-    tkr = yf.Ticker(ticker)
-    expirations = tkr.options
-    if not expirations:
+# UNAFFECTED: get_options_snapshot function remains exactly the same
+def get_options_snapshot(ticker, index_name):
+    try:
+        # Create a fresh, safe session for this specific request
+        safe_session = cffi_requests.Session(impersonate="chrome")
+        tkr = yf.Ticker(ticker, session=safe_session)
+        
+        expirations = tkr.options
+        if not expirations:
+            return None
+
+        now = datetime.datetime.now()
+        m1_prefix = now.strftime("%Y-%m")
+        m2_prefix = (now + relativedelta(months=1)).strftime("%Y-%m")
+
+        data = {'Date': now.strftime('%Y-%m-%d'), 'Ticker': ticker, 'Index': index_name}
+        stats = {"M1_C": 0, "M1_P": 0, "M2_C": 0, "M2_P": 0}
+        
+        for d in expirations[:8]:
+            target = "M1" if d.startswith(m1_prefix) else ("M2" if d.startswith(m2_prefix) else None)
+            if target:
+                chain = tkr.option_chain(d)
+                stats[f"{target}_C"] += chain.calls['openInterest'].fillna(0).sum()
+                stats[f"{target}_P"] += chain.puts['openInterest'].fillna(0).sum()
+
+        data['M1_NetOI'] = int(stats['M1_C'] - stats['M1_P'])
+        data['M2_NetOI'] = int(stats['M2_C'] - stats['M2_P'])
+        data['M1_PC'] = stats['M1_P'] / stats['M1_C'] if stats['M1_C'] > 0 else 0
+        data['M2_PC'] = stats['M2_P'] / stats['M2_C'] if stats['M2_C'] > 0 else 0
+        
+        return data
+    except Exception as e:
+        err_msg = str(e).split('.')[0]
+        if "Too Many Requests" in err_msg or "RateLimitError" in err_msg:
+            # Pass the rate limit exception up to trigger the play-dead logic
+            raise Exception("RateLimited")
+        print(f"    [!] Skipping {ticker} due to data error: {err_msg}")
         return None
-
-    now = datetime.datetime.now()
-    m1_prefix = now.strftime("%Y-%m")
-    m2_prefix = (now + relativedelta(months=1)).strftime("%Y-%m")
-
-    data = {'Date': now.strftime('%Y-%m-%d'), 'Ticker': ticker, 'Index': row['Index']}
-    stats = {"M1_C": 0, "M1_P": 0, "M2_C": 0, "M2_P": 0}
-    
-    for d in expirations[:8]:
-        target = "M1" if d.startswith(m1_prefix) else ("M2" if d.startswith(m2_prefix) else None)
-        if target:
-            chain = tkr.option_chain(d)
-            stats[f"{target}_C"] += chain.calls['openInterest'].fillna(0).sum()
-            stats[f"{target}_P"] += chain.puts['openInterest'].fillna(0).sum()
-
-    data['M1_NetOI'] = int(stats['M1_C'] - stats['M1_P'])
-    data['M2_NetOI'] = int(stats['M2_C'] - stats['M2_P'])
-    data['M1_PC'] = stats['M1_P'] / stats['M1_C'] if stats['M1_C'] > 0 else 0
-    data['M2_PC'] = stats['M2_P'] / stats['M2_C'] if stats['M2_C'] > 0 else 0
-    
-    return data
 
 def run_harvest():
     start_time = time.time()
@@ -112,24 +104,26 @@ def run_harvest():
         print("[2/4] No existing history found. Creating new database.")
         df_hist, df_prev = pd.DataFrame(), pd.DataFrame()
 
-    print(f"[3/4] Harvesting Options Data ({MAX_WORKERS} workers)...")
+    print("[3/4] Harvesting Options Data (Sequential Tank Mode)...")
     new_results = []
-    tickers_list = df_uni.to_dict('records')
     
-    total = len(tickers_list)
+    total = len(df_uni)
     processed = 0
 
-    with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
-        futures = {executor.submit(get_options_snapshot, row): row['Ticker'] for row in tickers_list}
-        for f in as_completed(futures):
-            processed += 1
-            if processed % 100 == 0:
-                print(f"  ... Progress: {processed}/{total} tickers checked.")
-                
+    # PURE SEQUENTIAL LOOP
+    for _, row in df_uni.iterrows():
+        t = row['Ticker']
+        idx = row['Index']
+        processed += 1
+        
+        retry_count = 3
+        success = False
+        
+        while retry_count > 0 and not success:
             try:
-                res = f.result()
+                res = get_options_snapshot(t, idx)
                 if res:
-                    t = res['Ticker']
+                    # Calculate Delta
                     if t in df_prev.index:
                         prev_m1 = int(df_prev.loc[t].get('M1_NetOI', 0)) if 'M1_NetOI' in df_prev.columns else 0
                         prev_m2 = int(df_prev.loc[t].get('M2_NetOI', 0)) if 'M2_NetOI' in df_prev.columns else 0
@@ -137,14 +131,37 @@ def run_harvest():
                         res['M2_DeltaNetOI'] = res['M2_NetOI'] - prev_m2
                     else:
                         res['M1_DeltaNetOI'], res['M2_DeltaNetOI'] = 0, 0
+                    
                     new_results.append(res)
+                
+                success = True
+                
+                # CHANGED: Static 0.08s delay per user request
+                time.sleep(0.08)
+                
             except Exception as e:
-                print(f"  [ERROR] {futures[f]} failed: {e}")
+                if "RateLimited" in str(e):
+                    penalty = 60 * (4 - retry_count) # Escalating penalty: 60s, 120s, 180s
+                    print(f"\n  [RATE LIMIT] Hit a wall on {t}. Playing dead for {penalty} seconds...")
+                    time.sleep(penalty)
+                    retry_count -= 1
+                else:
+                    break # Unrelated error, skip ticker
+        
+        # UI Progress & Auto-Save
+        if processed % 10 == 0:
+            print(f"  ... Progress: {processed}/{total} processed.")
             
-            time.sleep(1.0) # Crucial delay to avoid GitHub Actions IP ban
+        if processed % SAVE_INTERVAL == 0 and len(new_results) > 0:
+            # We mute the print statement here so it doesn't spam your console every single ticker
+            # print(f"  [AUTO-SAVE] Checkpoint reached at {processed}. Saving database...") 
+            df_temp = pd.DataFrame(new_results)
+            df_checkpoint = pd.concat([df_hist, df_temp]).drop_duplicates(subset=['Ticker', 'Date'], keep='last')
+            df_checkpoint.sort_values(by=['Date', 'Ticker'], ascending=[False, True]).to_parquet(FILE_NAME)
 
+    # Final Save
     if new_results:
-        print(f"\n[4/4] Saving {len(new_results)} valid option chains...")
+        print(f"\n[4/4] Finalizing save of {len(new_results)} valid option chains...")
         df_new = pd.DataFrame(new_results)
         df_final = pd.concat([df_hist, df_new]).drop_duplicates(subset=['Ticker', 'Date'], keep='last')
         df_final.sort_values(by=['Date', 'Ticker'], ascending=[False, True]).to_parquet(FILE_NAME)
