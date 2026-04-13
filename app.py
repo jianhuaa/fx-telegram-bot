@@ -1522,14 +1522,14 @@ with c4_top:
     with b_col2:
         if st.button("📊 Brief", use_container_width=True):
             btn_loader = show_gxs_loader()
-            time.sleep(2)
+            time.sleep(1)
             btn_loader.empty()
             show_summary_overlay(tf_sel, selected_sector, df_all_ret)
             #show_summary_overlay(tf_sel, selected_sector, df_all_ret)
     with b_col3:
         if st.button("🔭 Industry", use_container_width=True):
             btn_loader = show_gxs_loader()
-            time.sleep(2)
+            time.sleep(1)
             btn_loader.empty()
             show_industry_overview_overlay(df_all_ret, df_industries, selected_sector, df_sec_filtered, df_trans_filtered, df_history, df_sectors_price)
             #show_industry_overview_overlay(df_all_ret, df_industries, selected_sector, df_sec_filtered, df_trans_filtered, df_history, df_sectors_price)
@@ -1794,6 +1794,6 @@ if st.session_state.get('trigger_industry_dialog', False):
 
     # THE FIX: Use the new Python-controlled loader pattern here too!
     route_loader = show_gxs_loader()
-    time.sleep(2)
+    time.sleep(1)
     route_loader.empty()
     show_industry_overview_overlay(df_all_ret, df_industries, target_sector, df_sec_target, df_trans_target, df_history, df_sectors_price, target_industry)
