@@ -102,7 +102,7 @@ if all_trades:
     # Sort and clean
     final_df['Trade Date'] = pd.to_datetime(final_df['Trade Date'], errors='coerce')
     final_df = final_df.sort_values(by=['Ticker', 'Trade Date'], ascending=[True, False])
-    final_df['Trade Date'] = final_df['Trade Date'].dt.strftime('%Y-%m-%d %H:%M:%S')
+    final_df['Trade Date'] = final_df['Trade Date'].dt.strftime('%Y-%m-%d')
     
     final_df.to_parquet(OUTPUT_FILE)
     print(f"\nSaved {len(final_df)} trades to {OUTPUT_FILE}")
