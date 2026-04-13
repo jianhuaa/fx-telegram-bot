@@ -464,55 +464,46 @@ def format_k(val):
 
 @st.cache_data(ttl=3600)
 def get_insider_trades(ticker):
-    import yfinance as yf
+    import requests
+    import io
     import pandas as pd
+    
+    # Changed cnt=5000 to cnt=88 as requested!
+    url = f"http://openinsider.com/screener?s={ticker}&o=&pl=&ph=&ll=&lh=&fd=0&fdr=&td=0&tdr=&fdlyl=&fdlyh=&daysago=&xp=1&xs=1&xa=0&xd=0&xg=0&xf=0&xm=0&xx=0&xc=0&xw=0&excludeDerivRelated=1&tmult=1&sortcol=0&cnt=88&page=1"
+    
+    # Upgraded browser disguise
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.9',
+        'Connection': 'keep-alive',
+        'Upgrade-Insecure-Requests': '1'
+    }
+    
     try:
-        tkr = yf.Ticker(ticker)
-        df = tkr.insider_transactions
+        response = requests.get(url, headers=headers, timeout=10)
         
-        if df is not None and not df.empty:
-            # 1. Create the base columns OpenInsider had
-            df['Ticker'] = ticker
-            
-            # 2. Map Yahoo columns to OpenInsider's exact naming convention
-            df = df.rename(columns={
-                'Start Date': 'Trade Date',
-                'Insider': 'Insider Name',
-                'Position': 'Title',
-                'Transaction': 'Trade Type'
-            })
-            
-            # 3. Calculate Price and format the numbers
-            if 'Value' in df.columns and 'Shares' in df.columns:
-                # Calculate Price = Value / Shares (handling division by zero)
-                df['Price'] = df.apply(lambda row: abs(row['Value'] / row['Shares']) if pd.notna(row['Value']) and pd.notna(row['Shares']) and row['Shares'] != 0 else None, axis=1)
-                
-                # Format to look like money/shares
-                df['Price'] = df['Price'].apply(lambda x: f"${x:.2f}" if pd.notna(x) else "--")
-                df['ΔOwn'] = df['Shares'].apply(lambda x: f"{x:,.0f}" if pd.notna(x) else "--")
-                df['Value'] = df['Value'].apply(lambda x: f"${x:,.0f}" if pd.notna(x) else "--")
-            else:
-                df['Price'] = "--"
-                df['ΔOwn'] = "--"
-                if 'Value' not in df.columns: df['Value'] = "--"
-            
-            # 4. Clean up the Trade Date format
-            if 'Trade Date' in df.columns and pd.api.types.is_datetime64_any_dtype(df['Trade Date']):
-                df['Trade Date'] = df['Trade Date'].dt.strftime('%Y-%m-%d')
-                
-            # 5. Force the exact column order your Streamlit table expects
+        # This will trigger an error if OpenInsider throws a 403 Forbidden block
+        response.raise_for_status() 
+        
+        tables = pd.read_html(io.StringIO(response.text), attrs={'class': 'tinytable'})
+        if tables:
+            df = tables[0]
+            df.columns = df.columns.astype(str).str.replace(r'\s+', ' ', regex=True).str.strip()
+
             dashboard_cols = ['Ticker', 'Trade Date', 'Insider Name', 'Title', 'Trade Type', 'Price', 'Value', 'ΔOwn']
-            
-            # Ensure no missing columns crash the app
-            for col in dashboard_cols:
-                if col not in df.columns:
-                    df[col] = "--"
-                    
-            clean_df = df[dashboard_cols].copy()
-            return clean_df.head(50)
+            available_cols = [col for col in dashboard_cols if col in df.columns]
+            clean_df = df[available_cols].copy()
+
+            if 'Trade Type' in clean_df.columns:
+                clean_df['Trade Type'] = clean_df['Trade Type'].astype(str).apply(
+                    lambda x: x.split('- ')[-1] if '- ' in x else x
+                )
+            return clean_df
             
     except Exception as e:
-        print(f"🚨 yfinance Insider Error for {ticker}: {e}")
+        # If it fails, print the exact error to the Streamlit Cloud logs
+        print(f"🚨 OPENINSIDER FAILED for {ticker}. Reason: {e}")
         
     return pd.DataFrame()
 
