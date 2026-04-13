@@ -1,3 +1,182 @@
+# ============================================================
+# >>> INJECTED CODE B START (Backend Harvester & Ngrok Setup) <<<
+# ============================================================
+# 1. INSTALL LIBRARIES & NGROK MANUALLY
+!rm -f /etc/apt/sources.list.d/google-chrome.list
+!wget -q -O - https://dl-ssl.google.com/linux/linux_signing_key.pub | apt-key add -
+!sh -c 'echo "deb [arch=amd64] http://dl.google.com/linux/chrome/deb/ stable main" > /etc/apt/sources.list.d/google-chrome.list'
+
+!apt-get update -qq
+!apt-get install -y google-chrome-stable --quiet
+!pip install requests pandas python-dateutil DrissionPage fastparquet pyarrow streamlit yfinance plotly yahooquery pytz lxml html5lib bs4 tradingview-screener --quiet
+
+!wget -q -O ngrok.tgz https://bin.ngrok.com/c/bNyj1mQVY4c/ngrok-v3-stable-linux-amd64.tgz --user-agent="Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+!tar -xvzf ngrok.tgz
+!chmod +x ngrok
+
+# 2. IMPORTS & SETUP
+import pandas as pd
+import requests
+from datetime import datetime, timedelta
+import time
+import io
+import os
+import yfinance as yf
+import subprocess
+import sys
+import pytz
+from yahooquery import Ticker as YQTicker
+import warnings
+
+warnings.filterwarnings('ignore')
+pd.options.mode.chained_assignment = None
+
+NGROK_AUTH_TOKEN = "3BrXfaU4W1bXEOVG10V0oEz9eCA_6z9xyBggrFBrZLh176RLY"
+
+# UNIVERSAL GLOBAL ETF MAPPER
+def map_sec_to_etf(x):
+    x_str = str(x).strip().upper()
+    sec_map_inv = {
+        "COMMUNICATION": "XLC", "DISCRETIONARY": "XLY", "STAPLES": "XLP",
+        "ENERGY": "XLE", "FINANCIAL": "XLF", "HEALTH": "XLV", "INDUSTRIAL": "XLI",
+        "TECHNOLOGY": "XLK", "MATERIALS": "XLB", "REAL ESTATE": "XLRE", "UTILITIES": "XLU"
+    }
+    if x_str in sec_map_inv.values(): return x_str
+    for k, v in sec_map_inv.items():
+        if k in x_str: return v
+    return 'UNK'
+
+# 3. BACKEND DATA HARVESTER & CUSTOM INDUSTRY MAPPING BRIDGE
+start_all = time.time()
+print("\n[INFO] --- STEP 0: FETCHING MASTER SHEETS (RUT, RMC, SPX) ---")
+
+headers = {'User-Agent': 'Mozilla/5.0'}
+
+# 3.1 Load Russell 2000 Google Sheet
+rut_sheet_url = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRrTpcehWaL1Aq-uTn986nie8Hwrs_uHUOYr-E_wCG0jtLKQjvpw0V8x1wVz8yJdxFhqr7mz07jjpkM/pub?gid=0&single=true&output=csv"
+res_rut = requests.get(rut_sheet_url, headers=headers)
+lines_rut = res_rut.text.splitlines()
+h_idx_rut = next((i for i, l in enumerate(lines_rut) if 'Symbol' in l), 3)
+rut_sheet_df = pd.read_csv(io.StringIO("\n".join(lines_rut[h_idx_rut:])))
+rut_sheet_df.columns = rut_sheet_df.columns.astype(str).str.strip()
+rut_sheet_df = rut_sheet_df.iloc[max(0, (4 - 1) - h_idx_rut - 1):].reset_index(drop=True) # FIX: Skip rows
+rty_tickers = set(rut_sheet_df['Symbol'].dropna().astype(str).str.strip().str.replace('.', '-'))
+
+# 3.2 Load RMC Google Sheet
+rmc_url = "https://docs.google.com/spreadsheets/d/e/2PACX-1vSpFLwMNa0AUsSC62LQZCQfIvvXRPPmX00cY7DO2sbiHu47Z72aJ_R-F_IrILBbKqIZGdSFgXFUrZyJ/pub?gid=679638722&single=true&output=csv"
+res_rmc = requests.get(rmc_url, headers=headers)
+lines_rmc = res_rmc.text.splitlines()
+h_idx_rmc = next((i for i, l in enumerate(lines_rmc) if 'Symbol' in l), 3)
+rmc_sheet_df = pd.read_csv(io.StringIO("\n".join(lines_rmc[h_idx_rmc:])))
+rmc_sheet_df.columns = rmc_sheet_df.columns.astype(str).str.strip()
+rmc_sheet_df = rmc_sheet_df.iloc[max(0, (4 - 1) - h_idx_rmc - 1):].reset_index(drop=True) # FIX: Skip rows
+rmc_tickers = set(rmc_sheet_df['Symbol'].dropna().astype(str).str.strip().str.replace('.', '-'))
+
+# 3.3 Load S&P 500 Google Sheet
+spx_url = "https://docs.google.com/spreadsheets/d/e/2PACX-1vSpFLwMNa0AUsSC62LQZCQfIvvXRPPmX00cY7DO2sbiHu47Z72aJ_R-F_IrILBbKqIZGdSFgXFUrZyJ/pub?gid=0&single=true&output=csv"
+res_spx = requests.get(spx_url, headers=headers)
+lines_spx = res_spx.text.splitlines()
+h_idx_spx = next((i for i, l in enumerate(lines_spx) if 'Symbol' in l), 38)
+sp500_df = pd.read_csv(io.StringIO("\n".join(lines_spx[h_idx_spx:])))
+sp500_df.columns = sp500_df.columns.astype(str).str.strip()
+sp500_df = sp500_df.iloc[max(0, (39 - 1) - h_idx_spx - 1):].reset_index(drop=True) # FIX: Skip rows
+spx_tickers = set(sp500_df['Symbol'].dropna().astype(str).str.strip().str.replace('.', '-'))
+
+# --- BUILD EXACT CUSTOM MAPPINGS FROM SHEETS WITH SPX PRECEDENCE ---
+custom_exact_map = {}
+for _, row in rut_sheet_df.iterrows():
+    try:
+        t = str(row['Symbol']).strip().replace('.', '-')
+        etf, ind = str(row.iloc[2]).strip(), str(row.iloc[3]).strip()
+        if etf and ind and etf != 'nan' and ind != 'nan': custom_exact_map[t] = (etf, ind)
+    except: pass
+for _, row in rmc_sheet_df.iterrows():
+    try:
+        t = str(row['Symbol']).strip().replace('.', '-')
+        etf, ind = str(row.iloc[2]).strip(), str(row.iloc[3]).strip()
+        if etf and ind and etf != 'nan' and ind != 'nan': custom_exact_map[t] = (etf, ind)
+    except: pass
+for _, row in sp500_df.iterrows():
+    try:
+        t = str(row['Symbol']).strip().replace('.', '-')
+        etf, ind = str(row.iloc[2]).strip(), str(row.iloc[3]).strip()
+        if etf and ind and etf != 'nan' and ind != 'nan': custom_exact_map[t] = (etf, ind)
+    except: pass
+
+print("\n[INFO] --- PHASE 1: GENERATING ALL RETURNS SCREENER (Sheets Bypass) ---")
+def get_sheet_returns(df, idx_name):
+    if df.empty or 'Symbol' not in df.columns: return pd.DataFrame()
+    df_c = df.copy()
+    df_c['Symbol'] = df_c['Symbol'].astype(str).str.strip().str.replace('.', '-')
+    df_c = df_c[df_c['Symbol'] != 'nan']
+
+    def parse_date(d):
+        formats = ['%d %b %y', '%d %b %Y', '%Y-%m-%d', '%m/%d/%Y', '%d/%m/%Y', '%d-%b-%y', '%d-%b-%Y', '%b %d, %Y']
+        for fmt in formats:
+            try: return datetime.strptime(str(d).strip(), fmt)
+            except: pass
+        return None
+
+    dated_cols = sorted([(c, parse_date(c)) for c in df_c.columns if parse_date(c)], key=lambda x: x[1], reverse=True)
+    if not dated_cols: return pd.DataFrame()
+
+    def clean_col(col_name):
+        if col_name not in df_c.columns: return pd.Series([float('nan')]*len(df_c))
+        s = df_c[col_name].astype(str).str.replace(r'[^0-9\.\-]', '', regex=True).replace('', float('nan'))
+        return pd.to_numeric(s, errors='coerce')
+
+    c_curr = 'Live' if 'Live' in df_c.columns else dated_cols[0][0]
+    curr_vals = clean_col(c_curr)
+
+    if curr_vals.isna().sum() > (len(curr_vals) * 0.5):
+        for d_col, _ in dated_cols:
+            c_curr = d_col
+            curr_vals = clean_col(c_curr)
+            if curr_vals.isna().sum() <= (len(curr_vals) * 0.5): break
+
+    anchor = parse_date(c_curr) if c_curr != 'Live' else dated_cols[0][1]
+    if not anchor: anchor = dated_cols[0][1]
+
+    def get_closest(days):
+        t = anchor - timedelta(days=days)
+        diffs = [(c[0], abs((c[1] - t).days)) for c in dated_cols]
+        valid = [d for d in diffs if d[1] <= 7]
+        if not valid: return None
+        valid.sort(key=lambda x: x[1])
+        return valid[0][0]
+
+    c_1d = get_closest(1)
+    c_1w = get_closest(7)
+    c_1m = get_closest(30)
+    c_3m = get_closest(91)
+    c_1y = get_closest(365)
+
+    res = pd.DataFrame()
+    res['Ticker'] = df_c['Symbol']
+    res['Index'] = idx_name
+    res['Sector'] = res['Ticker'].apply(lambda x: map_sec_to_etf(custom_exact_map.get(x, ('UNK', 'Unknown'))[0]))
+    res['Industry'] = res['Ticker'].apply(lambda x: custom_exact_map.get(x, ('UNK', 'Unknown'))[1])
+    res['1D_raw'] = (curr_vals / clean_col(c_1d) - 1) * 100 if c_1d else float('nan')
+    res['1W_raw'] = (curr_vals / clean_col(c_1w) - 1) * 100 if c_1w else float('nan')
+    res['1M_raw'] = (curr_vals / clean_col(c_1m) - 1) * 100 if c_1m else float('nan')
+    res['3M_raw'] = (curr_vals / clean_col(c_3m) - 1) * 100 if c_3m else float('nan')
+    res['1Y_raw'] = (curr_vals / clean_col(c_1y) - 1) * 100 if c_1y else float('nan')
+    return res
+
+df_spx_ret = get_sheet_returns(sp500_df, 'SPX')
+df_rmc_ret = get_sheet_returns(rmc_sheet_df, 'RMC')
+df_rut_ret = get_sheet_returns(rut_sheet_df, 'RTY')
+
+df_all_returns = pd.concat([df_spx_ret, df_rmc_ret, df_rut_ret]).dropna(subset=['Ticker']).drop_duplicates(subset=['Ticker'])
+df_all_returns.to_parquet('col4_all_returns.parquet')
+
+print("\n" + "="*50 + f"\nDATA GENERATION SUCCESS! Total Time: {time.time()-start_all:.2f}s\n" + "="*50)
+
+
+# ============================================================
+# >>> UNAFFECTED CODE A START (Streamlit Initializer & Base UI) <<<
+# ============================================================
+code = r"""
 import streamlit as st
 import yfinance as yf
 import datetime
@@ -197,6 +376,7 @@ def get_vix_expiration(year, month):
     fridays = [week[4] for week in c if week[4] != 0]
     return datetime.date(next_year, next_month, fridays[2]) - datetime.timedelta(days=30)
 
+# PASTE THIS NEAR THE TOP OF YOUR FILE
 @st.cache_data(ttl=3600)
 def get_historical_options_data(ticker):
     try:
@@ -211,7 +391,7 @@ def get_historical_options_data(ticker):
         latest = df_tick.iloc[-1]
         dates = pd.to_datetime(df_tick['Date']).dt.strftime('%d %b').tolist()
 
-        from dateutil.relativedelta import relativedelta
+        from dateutil.relativedelta import relativedelta # Ensure this is imported
         return {
             "m1_name": pd.to_datetime(latest['Date']).strftime("%b%y").upper(),
             "m2_name": (pd.to_datetime(latest['Date']) + relativedelta(months=1)).strftime("%b%y").upper(),
@@ -230,7 +410,7 @@ def get_historical_options_data(ticker):
 @st.cache_data(ttl=60)
 def get_historical_charts_data(tf):
     try:
-        tf_period_map = {"1D": "2d", "1W": "5d", "1M": "1mo", "3M": "3mo", "1Y": "1y"}
+        tf_period_map = {"1D": "1d", "1W": "5d", "1M": "1mo", "3M": "3mo", "1Y": "1y"}
         tf_int_map = {"1D": "1m", "1W": "5m", "1M": "15m", "3M": "1d", "1Y": "1d"}
         tickers = {"SPX": "^GSPC", "RUT": "^RUT", "VIX": "^VIX", "VIX3M": "^VIX3M", "VVIX": "^VVIX", "SVIX": "SVIX"}
 
@@ -238,19 +418,9 @@ def get_historical_charts_data(tf):
         if isinstance(df.columns, pd.MultiIndex): df = df.xs('Close', level=0, axis=1)
         elif 'Close' in df.columns: df = df['Close']
         df.rename(columns={v: k for k, v in tickers.items()}, inplace=True)
-        # FIX 2: Forward fill missing 1-minute prints before dropping NaNs
-        df.ffill(inplace=True)
         df.dropna(inplace=True)
-        #FIX 3: Isolate only the current trading session so the 1D % returns calculate correctly
-        if tf == "1D" and not df.empty:
-            latest_date = df.index.normalize().max()
-            df = df[df.index.normalize() == latest_date]
-
-        if df.empty: return pd.DataFrame(), pd.DataFrame()
         return df, ((df / df.iloc[0]) - 1) * 100
-    except Exception as e: 
-        print(f"Chart Data Error: {e}")
-        return pd.DataFrame(), pd.DataFrame()
+    except: return pd.DataFrame(), pd.DataFrame()
 
 @st.cache_data(ttl=60)
 def get_sector_data(tf):
@@ -473,68 +643,23 @@ def format_k(val):
     except: return str(val)
 
 @st.cache_data(ttl=3600)
-def get_insider_trades(ticker):
-    """
-    Robust insider trade scraper optimized for Streamlit Cloud.
-    Uses standard requests with browser headers to avoid 403 Forbidden errors.
-    """
-    import requests
-    import io
-    import pandas as pd
-
-    # OpenInsider URL with specific ticker filter
-    url = f"http://openinsider.com/screener?s={ticker}&o=&pl=&ph=&ll=&lh=&fd=0&fdr=&td=0&tdr=&fdlyl=&fdlyh=&daysago=&xp=1&xs=1&xa=0&xd=0&xg=0&xf=0&xm=0&xx=0&xc=0&xw=0&excludeDerivRelated=1&tmult=1&sortcol=0&cnt=88&page=1"
-    
-    # Critical: Browser headers to prevent 403 Forbidden on Streamlit Cloud
-    headers = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
-        'Accept-Language': 'en-US,en;q=0.9',
-        'Referer': 'http://openinsider.com/'
-    }
-    
+def get_all_insider_trades():
     try:
-        # Fetching data with a timeout to prevent app hanging
-        response = requests.get(url, headers=headers, timeout=15)
-        
-        # Check if we got blocked
-        if response.status_code == 403:
-            return pd.DataFrame({'DEBUG_ERROR': ["OpenInsider Blocked (403). Streamlit Cloud IP might be rate-limited."]})
-        
-        # Parse HTML tables
-        tables = pd.read_html(io.StringIO(response.text), attrs={'class': 'tinytable'})
-        
-        if tables:
-            df = tables[0]
-            
-            # Clean column names (remove whitespace/newlines)
-            df.columns = df.columns.astype(str).str.replace(r'\s+', ' ', regex=True).str.strip()
-
-            # Filter for your dashboard columns
-            dashboard_cols = ['Ticker', 'Trade Date', 'Insider Name', 'Title', 'Trade Type', 'Price', 'Value', 'ΔOwn']
-            available_cols = [c for c in dashboard_cols if c in df.columns]
-            clean_df = df[available_cols].copy()
-
-            # Clean 'Trade Type' string (removes 'S - ' or 'P - ' prefixes)
-            if 'Trade Type' in clean_df.columns:
-                clean_df['Trade Type'] = clean_df['Trade Type'].astype(str).apply(
-                    lambda x: x.split('- ')[-1] if '- ' in x else x
-                )
-            
-            # Return only the top 15 most recent trades to keep the UI clean
-            return clean_df.head(15)
-            
+        GITHUB_RAW_URL = "https://raw.githubusercontent.com/jianhuaa/fx-telegram-bot/main/col4_insider_trades.parquet"
+        return pd.read_parquet(GITHUB_RAW_URL)
     except Exception as e:
-        # Captures networking errors or parsing failures
-        return pd.DataFrame({'DEBUG_ERROR': [f"Scraper Error: {type(e).__name__} | {str(e)}"]})
-        
-    return pd.DataFrame({'DEBUG_ERROR': ["No tables found. Site layout may have changed or CAPTCHA triggered."]})
+        print(f"Error loading insider trades from GitHub: {e}")
+        return pd.DataFrame()
+
+def get_insider_trades(ticker):
+    df_all = get_all_insider_trades()
+    if not df_all.empty and 'Ticker' in df_all.columns:
+        # Filter the master dataframe for the specific ticker and return ALL records
+        return df_all[df_all['Ticker'] == ticker]
+    return pd.DataFrame()
 
 @st.cache_data(ttl=3600)
 def get_verified_fsli_data(ticker):
-    # 1. Properly map tickers for TradingView (e.g. BRK-B to BRK.B)
-    search_ticker = ticker.replace('-', '.')
-    
     field_mapping = {
         'Earnings Date': 'earnings_release_trading_date_fq',
         'Last Price': 'close',
@@ -544,7 +669,7 @@ def get_verified_fsli_data(ticker):
         'P/E Ratio': 'price_earnings_ttm',
         'Revenue (M)': 'total_revenue_ttm',
         'Op CF (M)': 'cash_f_operating_activities_ttm',
-        'FCF (M)': 'free_cash_flow_ttm', # Safest option for TV (changed from _fy)
+        'FCF (M)': 'free_cash_flow_fy',
         'Inv CF (M)': 'cash_f_investing_activities_ttm',
         'Fin CF (M)': 'cash_f_financing_activities_ttm',
         'Cash & STI (M)': 'cash_n_short_term_invest_fq',
@@ -557,73 +682,33 @@ def get_verified_fsli_data(ticker):
     }
 
     tv_fields = ['name', 'close'] + [v for v in field_mapping.values() if v is not None and v != 'close']
-    
-    # Pre-fill with defaults so partial failures still return partial data
-    res_dict = {m: "--" for m in field_mapping.keys()} 
-
     try:
-        # Use search_ticker instead of ticker
-        query = Query().select(*tv_fields).where(col('name') == search_ticker)
+        query = Query().select(*tv_fields).where(col('name') == ticker)
         num_rows, df = query.get_scanner_data()
-
         if num_rows > 0:
-            last_price = float(df['close'].values[0]) if 'close' in df.columns else 0.0
-
-            # --- ISOLATE YFINANCE LOGIC ---
+            last_price = float(df['close'].values[0])
+            hist_raw = yf.download(ticker, period='1y', interval='1d', progress=False, auto_adjust=True)
             one_y_val = None
-            try:
-                hist_raw = yf.download(ticker, period='1y', interval='1d', progress=False, auto_adjust=True)
-                if not hist_raw.empty:
-                    cl = (hist_raw['Close'][ticker] if isinstance(hist_raw.columns, pd.MultiIndex) else hist_raw['Close']).dropna()
-                    if not cl.empty and last_price > 0: 
-                        one_y_val = (cl.values <= last_price).mean() * 100
-            except: pass
+            if not hist_raw.empty:
+                cl = (hist_raw['Close'][ticker] if isinstance(hist_raw.columns, pd.MultiIndex) else hist_raw['Close']).dropna()
+                if not cl.empty: one_y_val = (cl.values <= last_price).mean() * 100
 
-            # --- ISOLATE YAHOOQUERY LOGIC ---
-            short_interest_val = None
-            try:
-                yq = YQTicker(ticker)
-                stats_dict = yq.get_modules('defaultKeyStatistics')
-                # Strict dictionary checks to prevent rate-limit strings from causing AttributeErrors
-                if isinstance(stats_dict, dict):
-                    stats = stats_dict.get(ticker, {})
-                    if isinstance(stats, dict):
-                        shares_short = stats.get('sharesShort', 0)
-                        shares_out = stats.get('sharesOutstanding', 1)
-                        if shares_out and shares_out > 0:
-                            short_interest_val = (shares_short / shares_out) * 100
-            except: pass
+            yq = YQTicker(ticker)
+            stats = yq.get_modules('defaultKeyStatistics').get(ticker, {})
+            short_interest_val = (stats.get('sharesShort', 0) / stats.get('sharesOutstanding', 1) * 100) if stats else None
 
-            # --- COMPILE FINAL DICTIONARY ---
+            res = {}
             for display_name, raw_key in field_mapping.items():
-                val = None
-                
-                if display_name == '1Y%': val = one_y_val
-                elif display_name == 'Short Interest %': val = short_interest_val
-                elif display_name == 'Last Price': val = last_price
-                elif raw_key in df.columns: val = df[raw_key].values[0]
-
-                if pd.isna(val) or val is None: 
-                    res_dict[display_name] = "--"
-                elif 'Earnings Date' in display_name:
-                    try: # Handle malformed TV timestamps
-                        res_dict[display_name] = datetime.datetime.fromtimestamp(float(val)).strftime('%y-%m-%d')
-                    except:
-                        res_dict[display_name] = "--"
-                elif '%' in display_name: 
-                    res_dict[display_name] = f"{float(val):.2f}%"
-                elif 'Price' in display_name: 
-                    res_dict[display_name] = f"${float(val):,.2f}"
-                elif display_name in ['P/E Ratio']: 
-                    res_dict[display_name] = f"{float(val):,.2f}"
-                else: 
-                    res_dict[display_name] = f"${float(val) / 1_000_000:,.0f}"
-
-    except Exception as e:
-        # If the entire TradingView query crashes, flag it visibly so you know what failed
-        res_dict['Last Price'] = "TV_ERR"
-
-    return res_dict
+                val = one_y_val if display_name == '1Y%' else (short_interest_val if display_name == 'Short Interest %' else (last_price if display_name == 'Last Price' else df[raw_key].values[0]))
+                if pd.isna(val) or val is None: res[display_name] = "--"
+                elif 'Earnings Date' in display_name: res[display_name] = datetime.datetime.fromtimestamp(val).strftime('%y-%m-%d')
+                elif '%' in display_name: res[display_name] = f"{val:.2f}%"
+                elif 'Price' in display_name: res[display_name] = f"${val:,.2f}"
+                elif display_name in ['P/E Ratio']: res[display_name] = f"{val:,.2f}"
+                else: res[display_name] = f"${val / 1_000_000:,.0f}"
+            return res
+    except: pass
+    return {m: "--" for m in field_mapping}
 
 @st.cache_data(ttl=3600)
 def get_dynamic_options_data(ticker):
@@ -673,136 +758,11 @@ def get_dynamic_options_data(ticker):
     except Exception:
         return None
 
-def map_sec_to_etf(x):
-    x_str = str(x).strip().upper()
-    sec_map_inv = {
-        "COMMUNICATION": "XLC", "DISCRETIONARY": "XLY", "STAPLES": "XLP",
-        "ENERGY": "XLE", "FINANCIAL": "XLF", "HEALTH": "XLV", "INDUSTRIAL": "XLI",
-        "TECHNOLOGY": "XLK", "MATERIALS": "XLB", "REAL ESTATE": "XLRE", "UTILITIES": "XLU"
-    }
-    if x_str in sec_map_inv.values(): return x_str
-    for k, v in sec_map_inv.items():
-        if k in x_str: return v
-    return 'UNK'
-
-@st.cache_data(ttl=60)
-def generate_live_all_returns():
-    import io
-    import requests
-    import pandas as pd
-    from datetime import datetime, timedelta
-
-    headers = {'User-Agent': 'Mozilla/5.0'}
-
-    # 1. Load Sheets
-    rut_sheet_url = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRrTpcehWaL1Aq-uTn986nie8Hwrs_uHUOYr-E_wCG0jtLKQjvpw0V8x1wVz8yJdxFhqr7mz07jjpkM/pub?gid=0&single=true&output=csv"
-    res_rut = requests.get(rut_sheet_url, headers=headers)
-    lines_rut = res_rut.text.splitlines()
-    h_idx_rut = next((i for i, l in enumerate(lines_rut) if 'Symbol' in l), 3)
-    rut_sheet_df = pd.read_csv(io.StringIO("\n".join(lines_rut[h_idx_rut:])))
-    rut_sheet_df.columns = rut_sheet_df.columns.astype(str).str.strip()
-    rut_sheet_df = rut_sheet_df.iloc[max(0, (4 - 1) - h_idx_rut - 1):].reset_index(drop=True)
-
-    rmc_url = "https://docs.google.com/spreadsheets/d/e/2PACX-1vSpFLwMNa0AUsSC62LQZCQfIvvXRPPmX00cY7DO2sbiHu47Z72aJ_R-F_IrILBbKqIZGdSFgXFUrZyJ/pub?gid=679638722&single=true&output=csv"
-    res_rmc = requests.get(rmc_url, headers=headers)
-    lines_rmc = res_rmc.text.splitlines()
-    h_idx_rmc = next((i for i, l in enumerate(lines_rmc) if 'Symbol' in l), 3)
-    rmc_sheet_df = pd.read_csv(io.StringIO("\n".join(lines_rmc[h_idx_rmc:])))
-    rmc_sheet_df.columns = rmc_sheet_df.columns.astype(str).str.strip()
-    rmc_sheet_df = rmc_sheet_df.iloc[max(0, (4 - 1) - h_idx_rmc - 1):].reset_index(drop=True)
-
-    spx_url = "https://docs.google.com/spreadsheets/d/e/2PACX-1vSpFLwMNa0AUsSC62LQZCQfIvvXRPPmX00cY7DO2sbiHu47Z72aJ_R-F_IrILBbKqIZGdSFgXFUrZyJ/pub?gid=0&single=true&output=csv"
-    res_spx = requests.get(spx_url, headers=headers)
-    lines_spx = res_spx.text.splitlines()
-    h_idx_spx = next((i for i, l in enumerate(lines_spx) if 'Symbol' in l), 38)
-    sp500_df = pd.read_csv(io.StringIO("\n".join(lines_spx[h_idx_spx:])))
-    sp500_df.columns = sp500_df.columns.astype(str).str.strip()
-    sp500_df = sp500_df.iloc[max(0, (39 - 1) - h_idx_spx - 1):].reset_index(drop=True)
-
-    # 2. Build Mappings
-    custom_exact_map = {}
-    for df in [rut_sheet_df, rmc_sheet_df, sp500_df]:
-        for _, row in df.iterrows():
-            try:
-                t = str(row['Symbol']).strip().replace('.', '-')
-                etf, ind = str(row.iloc[2]).strip(), str(row.iloc[3]).strip()
-                if etf and ind and etf != 'nan' and ind != 'nan': custom_exact_map[t] = (etf, ind)
-            except: pass
-
-    # 3. Calculate Returns
-    def get_sheet_returns(df, idx_name):
-        if df.empty or 'Symbol' not in df.columns: return pd.DataFrame()
-        df_c = df.copy()
-        df_c['Symbol'] = df_c['Symbol'].astype(str).str.strip().str.replace('.', '-')
-        df_c = df_c[df_c['Symbol'] != 'nan']
-
-        def parse_date(d):
-            formats = ['%d %b %y', '%d %b %Y', '%Y-%m-%d', '%m/%d/%Y', '%d/%m/%Y', '%d-%b-%y', '%d-%b-%Y', '%b %d, %Y']
-            for fmt in formats:
-                try: return datetime.strptime(str(d).strip(), fmt)
-                except: pass
-            return None
-
-        dated_cols = sorted([(c, parse_date(c)) for c in df_c.columns if parse_date(c)], key=lambda x: x[1], reverse=True)
-        if not dated_cols: return pd.DataFrame()
-
-        def clean_col(col_name):
-            if col_name not in df_c.columns: return pd.Series([float('nan')]*len(df_c))
-            s = df_c[col_name].astype(str).str.replace(r'[^0-9\.\-]', '', regex=True).replace('', float('nan'))
-            return pd.to_numeric(s, errors='coerce')
-
-        c_curr = 'Live' if 'Live' in df_c.columns else dated_cols[0][0]
-        curr_vals = clean_col(c_curr)
-
-        if curr_vals.isna().sum() > (len(curr_vals) * 0.5):
-            for d_col, _ in dated_cols:
-                c_curr = d_col
-                curr_vals = clean_col(c_curr)
-                if curr_vals.isna().sum() <= (len(curr_vals) * 0.5): break
-
-        anchor = parse_date(c_curr) if c_curr != 'Live' else dated_cols[0][1]
-        if not anchor: anchor = dated_cols[0][1]
-
-        def get_closest(days):
-            t = anchor - timedelta(days=days)
-            diffs = [(c[0], abs((c[1] - t).days)) for c in dated_cols]
-            valid = [d for d in diffs if d[1] <= 7]
-            if not valid: return None
-            valid.sort(key=lambda x: x[1])
-            return valid[0][0]
-
-        c_1d = get_closest(1)
-        c_1w = get_closest(7)
-        c_1m = get_closest(30)
-        c_3m = get_closest(91)
-        c_1y = get_closest(365)
-
-        res = pd.DataFrame()
-        res['Ticker'] = df_c['Symbol']
-        res['Index'] = idx_name
-        res['Sector'] = res['Ticker'].apply(lambda x: map_sec_to_etf(custom_exact_map.get(x, ('UNK', 'Unknown'))[0]))
-        res['Industry'] = res['Ticker'].apply(lambda x: custom_exact_map.get(x, ('UNK', 'Unknown'))[1])
-        res['1D_raw'] = (curr_vals / clean_col(c_1d) - 1) * 100 if c_1d else float('nan')
-        res['1W_raw'] = (curr_vals / clean_col(c_1w) - 1) * 100 if c_1w else float('nan')
-        res['1M_raw'] = (curr_vals / clean_col(c_1m) - 1) * 100 if c_1m else float('nan')
-        res['3M_raw'] = (curr_vals / clean_col(c_3m) - 1) * 100 if c_3m else float('nan')
-        res['1Y_raw'] = (curr_vals / clean_col(c_1y) - 1) * 100 if c_1y else float('nan')
-        return res
-
-    df_spx_ret = get_sheet_returns(sp500_df, 'SPX')
-    df_rmc_ret = get_sheet_returns(rmc_sheet_df, 'RMC')
-    df_rut_ret = get_sheet_returns(rut_sheet_df, 'RTY')
-
-    df_all_returns = pd.concat([df_spx_ret, df_rmc_ret, df_rut_ret]).dropna(subset=['Ticker']).drop_duplicates(subset=['Ticker'])
-    return df_all_returns
-
 @st.cache_data(ttl=60)
 def get_live_col4_data():
     try:
-        try: df_all_ret = generate_live_all_returns()
-        except Exception as e: 
-            print(f"Error fetching live returns: {e}")
-            df_all_ret = pd.DataFrame()
+        try: df_all_ret = pd.read_parquet('col4_all_returns.parquet')
+        except: df_all_ret = pd.DataFrame()
 
         base_url = "https://raw.githubusercontent.com/jianhuaa/fx-telegram-bot/main/"
         def safe_read_remote(fname):
@@ -1214,7 +1174,7 @@ def show_industry_overview_overlay(df_all_returns, df_industries, selected_secto
     with c1:
         selected_display = st.selectbox("Sector", display_options, index=default_idx, label_visibility="collapsed", key=dyn_sec_key)
         # Extract the ticker back for data filtering (e.g., 'XLE' from 'XLE (Energy)')
-        sel_sec = selected_display.split(' ')[0] if selected_display else "UNK"
+        sel_sec = selected_display.split(' ')[0]
 
     inds = sorted(df_all_returns[df_all_returns['Sector'] == sel_sec]['Industry'].dropna().unique()) if not df_all_returns.empty else []
     idx_ind = inds.index(passed_industry_default) if passed_industry_default in inds else 0
@@ -1252,31 +1212,22 @@ def show_industry_overview_overlay(df_all_returns, df_industries, selected_secto
     left_col, right_col = st.columns([0.5, 0.5], gap="small")
     selected_tickers = [lbl.split(' ')[0] for lbl in selected_labels] if selected_labels else []
 
-# LEFT COLUMN: FSLI TABLE
+    # LEFT COLUMN: FSLI TABLE
     with left_col:
         st.markdown("<div style='text-align: left; margin-top: 15px; margin-bottom: -17px; position: relative; z-index: 50; padding-left: 5px; pointer-events: none;'><span style='color:#00aaff; font-weight:bold; font-size:12px;'>📊 FSLI Fundamentals</span></div>", unsafe_allow_html=True)
-    
-        # Clean the tickers from the labels (e.g., "AAPL (SPX)" -> "AAPL")
-        # This ensures the function gets exactly what it needs to query TV/Yahoo
-        active_tickers = [lbl.split(' ')[0].strip() for lbl in selected_labels] if selected_labels else []
-    
-        if active_tickers:
+
+        if selected_tickers:
             metric_rows = None; cell_vals = []
-            for ticker in active_tickers:
-                # We call your Colab-verified function here
+            for ticker in selected_tickers:
                 res = get_verified_fsli_data(ticker)
                 if metric_rows is None: metric_rows = list(res.keys())
                 cell_vals.append([res.get(m, "--") for m in metric_rows])
-    
+
             final_cell_vals = [metric_rows] + cell_vals
-            hdr_vals = ['<b>METRIC</b>'] + [f'<b>{t}</b>' for t in active_tickers]
-            col_widths = [100] + [75] * len(active_tickers)
-    
-            fig_fsli = go.Figure(data=[go.Table(
-                columnwidth=col_widths, 
-                header=dict(values=hdr_vals, fill_color='#161616', font=dict(color='#00aaff', size=11), align='left', height=24), 
-                cells=dict(values=final_cell_vals, fill_color='#0d0d0d', font=dict(color='white', size=11), align='left', height=26)
-            )])
+            hdr_vals = ['<b>METRIC</b>'] + [f'<b>{t}</b>' for t in selected_tickers]
+            col_widths = [100] + [75] * len(selected_tickers)
+
+            fig_fsli = go.Figure(data=[go.Table(columnwidth=col_widths, header=dict(values=hdr_vals, fill_color='#161616', font=dict(color='#00aaff', size=11), align='left', height=24), cells=dict(values=final_cell_vals, fill_color='#0d0d0d', font=dict(color='white', size=11), align='left', height=26))])
             fig_fsli.update_layout(margin=dict(l=0, r=4, t=45, b=0), height=FSLI_H)
             st.plotly_chart(fig_fsli, use_container_width=True)
         else:
@@ -1376,34 +1327,28 @@ def show_industry_overview_overlay(df_all_returns, df_industries, selected_secto
         t_ins, t_options, t_sec, t_transcript = st.tabs(["🕵️ Insider Trades", "📉 Options", "📄 SEC Filings", "🎙️ Transcript"])
 
         with t_ins:
-                st.markdown("<div style='text-align: right; margin-bottom: -32px; position: relative; z-index: 50; padding-right: 5px; pointer-events: none;'><span style='color:#ff5252; font-weight:bold; font-size:12px;'>🕵️ Insider Trades</span></div>", unsafe_allow_html=True)
-                if selected_tickers:
-                    ins_tabs2 = st.tabs(selected_tickers)
-                    for i, tick in enumerate(selected_tickers):
-                        with ins_tabs2[i]:
-                            ins_df = get_insider_trades(tick)
-                            
-                            # ---> THE NEW DEBUG TRAP <---
-                            if not ins_df.empty and 'DEBUG_ERROR' in ins_df.columns:
-                                st.error("🚨 OPENINSIDER FAILED! Please copy the text below and paste it back to Gemini:")
-                                st.code(ins_df['DEBUG_ERROR'].iloc[0])
-                            # ----------------------------
-                            
-                            elif not ins_df.empty:
-                                hdr_vals = [f'<b>{c}</b>' for c in ins_df.columns]
-                                cell_vals = [ins_df[c].tolist() for c in ins_df.columns]
-                                col_widths = []
-                                for col in ins_df.columns:
-                                    if col in ['Insider Name', 'Title']: col_widths.append(120)
-                                    elif col in ['Trade Date', 'Trade Type', 'Price', 'Value']: col_widths.append(70)
-                                    else: col_widths.append(50)
-                                fig_ins = go.Figure(data=[go.Table(columnwidth=col_widths, header=dict(values=hdr_vals, fill_color='#161616', font=dict(color='#ff5252', size=11), align='left', height=24), cells=dict(values=cell_vals, fill_color='#0d0d0d', font=dict(color='white', size=11), align='left', height=26))])
-                                fig_ins.update_layout(margin=dict(l=0, r=4, t=0, b=0), height=INS_H)
-                                st.plotly_chart(fig_ins, use_container_width=True)
-                            else:
-                                st.markdown(f"<div style='height:{INS_H}px; display:flex; align-items:center; justify-content:center; color:#ff5252; font-size:12px; border:1px dashed #444; border-radius:4px;'>🕵️ No recent insider trades found for {tick}</div>", unsafe_allow_html=True)
-                else:
-                    st.markdown(f"<div style='height:{INS_H}px; display:flex; align-items:center; justify-content:center; color:#ff5252; font-size:12px; border:1px dashed #444; border-radius:4px;'>Select tickers from the FSLI dropdown to load Insiders.</div>", unsafe_allow_html=True)
+            st.markdown("<div style='text-align: right; margin-bottom: -32px; position: relative; z-index: 50; padding-right: 5px; pointer-events: none;'><span style='color:#ff5252; font-weight:bold; font-size:12px;'>🕵️ Insider Trades</span></div>", unsafe_allow_html=True)
+            if selected_tickers:
+                ins_tabs2 = st.tabs(selected_tickers)
+                for i, tick in enumerate(selected_tickers):
+                    with ins_tabs2[i]:
+                        ins_df = get_insider_trades(tick)
+                        if not ins_df.empty:
+                            hdr_vals = [f'<b>{c}</b>' for c in ins_df.columns]
+                            cell_vals = [ins_df[c].tolist() for c in ins_df.columns]
+                            col_widths = []
+                            for col in ins_df.columns:
+                                if col in ['Insider Name', 'Title']: col_widths.append(120)
+                                elif col in ['Trade Date', 'Trade Type', 'Price', 'Value']: col_widths.append(70)
+                                else: col_widths.append(50)
+                            fig_ins = go.Figure(data=[go.Table(columnwidth=col_widths, header=dict(values=hdr_vals, fill_color='#161616', font=dict(color='#ff5252', size=11), align='left', height=24), cells=dict(values=cell_vals, fill_color='#0d0d0d', font=dict(color='white', size=11), align='left', height=26))])
+                            fig_ins.update_layout(margin=dict(l=0, r=4, t=0, b=0), height=INS_H)
+                            st.plotly_chart(fig_ins, use_container_width=True)
+                        else:
+                            st.markdown(f"<div style='height:{INS_H}px; display:flex; align-items:center; justify-content:center; color:#ff5252; font-size:12px; border:1px dashed #444; border-radius:4px;'>🕵️ No recent insider trades found for {tick}</div>", unsafe_allow_html=True)
+            else:
+                st.markdown(f"<div style='height:{INS_H}px; display:flex; align-items:center; justify-content:center; color:#ff5252; font-size:12px; border:1px dashed #444; border-radius:4px;'>Select tickers from the FSLI dropdown to load Insiders.</div>", unsafe_allow_html=True)
+
         with t_options:
             st.markdown("<div style='text-align: right; margin-bottom: -32px; position: relative; z-index: 50; padding-right: 5px; pointer-events: none;'><span style='color:#ab63fa; font-weight:bold; font-size:12px;'>📉 Options Flow (10D Trend)</span></div>", unsafe_allow_html=True)
 
@@ -1557,7 +1502,7 @@ st.markdown('''
         position: fixed;
         top: 0;
         left: 0;
-        background: rgba(0, 0, 0, 1);
+        background: rgba(0, 0, 0, 1);#background: rgba(22, 22, 22, 0.95);
         z-index: 999999;
     }
     .gxs-loader-logo {
@@ -1571,15 +1516,16 @@ def show_gxs_loader():
     placeholder = st.empty()
     placeholder.markdown('''
         <div class="gxs-loader-container">
-            <img src="https://raw.githubusercontent.com/jianhuaa/fx-telegram-bot/refs/heads/main/me.png" class="gxs-loader-logo">
+            <img src="https://help.gxs.com.sg/@api/deki/site/logo.png?default=https://a.mtstatic.com/skins/styles/elm/logo.svg%3F_%3D332bad4b9843cb2363df2f3702c706dc22d85dbe:site_14150" class="gxs-loader-logo">
+            #https://raw.githubusercontent.com/jianhuaa/fx-telegram-bot/refs/heads/main/me.png
             <p style="color: #ffd700; font-family: sans-serif; margin-top: 20px; font-weight: bold; letter-spacing: 1px;">
-                DESIGNED & DEVELOPED BY CHAN JIAN HUA...
+                DESIGNED AND DEVELOPED BY CHAN JIAN HUA...
             </p>
         </div>
     ''', unsafe_allow_html=True)
     return placeholder
 
-# ---------------------------------------------------------
+# ---------------------------------------------------------color was #ab63fa
 # FETCH DATA USING DYNAMIC TIMEFRAME
 # ---------------------------------------------------------
 
@@ -1607,14 +1553,14 @@ with c4_top:
     with b_col2:
         if st.button("📊 Brief", use_container_width=True):
             btn_loader = show_gxs_loader()
-            time.sleep(1)
+            time.sleep(2)
             btn_loader.empty()
             show_summary_overlay(tf_sel, selected_sector, df_all_ret)
             #show_summary_overlay(tf_sel, selected_sector, df_all_ret)
     with b_col3:
         if st.button("🔭 Industry", use_container_width=True):
             btn_loader = show_gxs_loader()
-            time.sleep(1)
+            time.sleep(2)
             btn_loader.empty()
             show_industry_overview_overlay(df_all_ret, df_industries, selected_sector, df_sec_filtered, df_trans_filtered, df_history, df_sectors_price)
             #show_industry_overview_overlay(df_all_ret, df_industries, selected_sector, df_sec_filtered, df_trans_filtered, df_history, df_sectors_price)
@@ -1879,6 +1825,41 @@ if st.session_state.get('trigger_industry_dialog', False):
 
     # THE FIX: Use the new Python-controlled loader pattern here too!
     route_loader = show_gxs_loader()
-    time.sleep(1)
+    time.sleep(2)
     route_loader.empty()
     show_industry_overview_overlay(df_all_ret, df_industries, target_sector, df_sec_target, df_trans_target, df_history, df_sectors_price, target_industry)
+
+"""
+
+with open("app.py", "w") as f:
+    f.write(code)
+
+# 3. Start Streamlit with CORS disabled
+print("\n🌐 Starting Streamlit App...")
+subprocess.Popen([
+    sys.executable, "-m", "streamlit", "run", "app.py",
+    "--server.port", "8501",
+    "--server.address", "127.0.0.1",
+    "--server.headless", "true",
+    "--server.enableCORS=false",
+    "--server.enableXsrfProtection=false"
+])
+time.sleep(3)
+
+print("🔗 Opening secure Ngrok tunnel...")
+os.system(f"./ngrok config add-authtoken {NGROK_AUTH_TOKEN}")
+os.system("pkill -f ngrok")
+time.sleep(1)
+#ngrok_process = subprocess.Popen(['./ngrok', 'http', '8501'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+# The --request-header-add flag bypasses the ngrok interstitial warning page
+ngrok_process = subprocess.Popen(['./ngrok', 'http', '8501', '--request-header-add', 'ngrok-skip-browser-warning:true'], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+time.sleep(3)
+
+try:
+    response   = requests.get("http://127.0.0.1:4040/api/tunnels")
+    public_url = response.json()['tunnels'][0]['public_url']
+    print("\n" + "="*70)
+    print(f"👉 SUCCESS! Click here to open your live dashboard: {public_url}")
+    print("="*70 + "\n")
+except Exception as e:
+    print(f"\nFailed to retrieve Ngrok tunnel URL. Error: {e}")
