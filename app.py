@@ -1889,7 +1889,7 @@ if st.session_state.get('trigger_industry_dialog', False):
     route_loader = show_gxs_loader()
     time.sleep(2)
     route_loader.empty()
-    show_industry_overview_overlay(df_all_ret, df_industries, target_sector, df_sec_live, df_trans_live, df_history, df_sectors_price, target_industry)
+    show_industry_overview_overlay(df_all_ret, df_industries, target_sector, df_sec_live, df_transcripts_live, df_history, df_sectors_price, target_industry)
 
 """
 
