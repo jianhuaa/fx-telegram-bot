@@ -464,26 +464,18 @@ def format_k(val):
 
 @st.cache_data(ttl=3600)
 def get_insider_trades(ticker):
-    import requests
+    from curl_cffi import requests as crequests
     import io
     import pandas as pd
     
-    # Changed cnt=5000 to cnt=88 as requested!
+    # Using your requested cnt=5000
     url = f"http://openinsider.com/screener?s={ticker}&o=&pl=&ph=&ll=&lh=&fd=0&fdr=&td=0&tdr=&fdlyl=&fdlyh=&daysago=&xp=1&xs=1&xa=0&xd=0&xg=0&xf=0&xm=0&xx=0&xc=0&xw=0&excludeDerivRelated=1&tmult=1&sortcol=0&cnt=88&page=1"
     
-    # Upgraded browser disguise
-    headers = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
-        'Accept-Language': 'en-US,en;q=0.9',
-        'Connection': 'keep-alive',
-        'Upgrade-Insecure-Requests': '1'
-    }
-    
     try:
-        response = requests.get(url, headers=headers, timeout=10)
+        # impersonate="chrome120" makes the TLS handshake look identical to a real browser
+        response = crequests.get(url, impersonate="chrome120", timeout=15)
         
-        # This will trigger an error if OpenInsider throws a 403 Forbidden block
+        # If we get a 403 here, it means the IP itself (Data Center) is blocked
         response.raise_for_status() 
         
         tables = pd.read_html(io.StringIO(response.text), attrs={'class': 'tinytable'})
@@ -502,8 +494,8 @@ def get_insider_trades(ticker):
             return clean_df
             
     except Exception as e:
-        # If it fails, print the exact error to the Streamlit Cloud logs
-        print(f"🚨 OPENINSIDER FAILED for {ticker}. Reason: {e}")
+        # Check logs if this prints 403; that confirms an IP-level ban
+        print(f"🚨 curl_cffi attempt failed for {ticker}: {e}")
         
     return pd.DataFrame()
 
