@@ -1569,6 +1569,7 @@ st.markdown('''
     }
     .gxs-loader-logo {
         width: 320px;
+        align-items: center;
         animation: logo-pulse 1s infinite ease-in-out;
     }
     </style>
@@ -1578,7 +1579,7 @@ def show_gxs_loader():
     placeholder = st.empty()
     placeholder.markdown('''
         <div class="gxs-loader-container">
-            <p style="color: #FFFFFF; font-family: sans-serif; margin-top: 20px; font-weight: bold; letter-spacing: 1px;"class="gxs-loader-logo">
+            <p style="color: #FFFFFF; font-size:24px; font-family: sans-serif; margin-top: 20px; font-weight: bold; letter-spacing: 1px;"class="gxs-loader-logo">
                 Loading Market Data
             </p>
             <p style="color: #444444; font-family: sans-serif; margin-top: 20px; font-weight: bold; letter-spacing: 1px;">
