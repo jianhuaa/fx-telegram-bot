@@ -646,6 +646,7 @@ def get_insider_trades(ticker):
 @st.cache_data(ttl=3600)
 @st.cache_data(ttl=3600)
 @st.cache_data(ttl=3600)
+@st.cache_data(ttl=3600)
 def get_verified_fsli_data(ticker):
     # 1. Ticker Formatting
     tv_ticker = ticker.replace('-', '.')
@@ -654,8 +655,8 @@ def get_verified_fsli_data(ticker):
     field_mapping = {
         'Earnings Date': 'earnings_release_trading_date_fq',
         'Last Price': 'close',
-        'Short Interest %': None,  # Will pull from Finviz
-        '1Y%': None,               # YFinance chart API (usually doesn't get blocked)
+        'Short Interest %': None,  
+        '1Y%': None,               
         'Mkt Cap (M)': 'market_cap_basic',
         'P/E Ratio': 'price_earnings_ttm',
         'Revenue (M)': 'total_revenue_ttm',
@@ -675,91 +676,101 @@ def get_verified_fsli_data(ticker):
     tv_fields = ['name', 'close', 'cash_n_equivalents_fq', 'gross_margin_fy'] + [v for v in field_mapping.values() if v is not None and v != 'close']
     tv_fields = list(set(tv_fields))
 
+    # Initialize our variables so they exist even if an API crashes
+    last_price = None
+    one_y_val = None
+    short_interest_val = None
+    num_rows = 0
+    df = pd.DataFrame()
+
+    # --- ISOLATION BLOCK 1: TradingView Data ---
     try:
-        # --- 1. TradingView Fetch ---
         query = Query().select(*tv_fields).where(col('name') == tv_ticker)
         num_rows, df = query.get_scanner_data()
-
-        last_price = None
         if num_rows > 0:
             last_price = float(df['close'].values[0])
+    except Exception as e:
+        print(f"[TV Error] {ticker}: {e}")
 
-        # --- 2. YFinance Fetch (1Y% - Uses chart API which is rarely blocked) ---
-        one_y_val = None
-        try:
+    # --- ISOLATION BLOCK 2: 1Y% (Your Exact Working Colab Logic) ---
+    try:
+        if last_price is not None:
             hist_raw = yf.download(yf_ticker, period='1y', interval='1d', progress=False, auto_adjust=True)
-            if not hist_raw.empty and last_price is not None:
+            if not hist_raw.empty:
                 cl = (hist_raw['Close'][yf_ticker] if isinstance(hist_raw.columns, pd.MultiIndex) else hist_raw['Close']).dropna()
                 if not cl.empty:
                     one_y_val = (cl.values <= last_price).mean() * 100
-        except:
-            pass
+    except Exception as e:
+        print(f"[1Y% Error] {ticker}: {e}")
 
-        # --- 3. FINVIZ FETCH (The Short Interest Bypass) ---
-        short_interest_val = None
-        try:
+    # --- ISOLATION BLOCK 3: Short Interest (Colab Logic + Finviz Fallback) ---
+    try:
+        # First attempt: Your exact working YahooQuery Colab logic
+        yq = YQTicker(yf_ticker)
+        stats = yq.get_modules('defaultKeyStatistics').get(yf_ticker, {})
+        if isinstance(stats, dict):
+            si_raw = stats.get('sharesShort')
+            so_raw = stats.get('sharesOutstanding')
+            if si_raw and so_raw:
+                short_interest_val = (si_raw / so_raw) * 100
+                
+        # Second attempt: Finviz Web Scraper (if YahooQuery returns nothing/gets blocked)
+        if short_interest_val is None:
             import requests
-            import pandas as pd
             url = f"https://finviz.com/quote.ashx?t={yf_ticker}"
-            headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'}
+            headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'}
             res = requests.get(url, headers=headers, timeout=5)
-            
-            # Read all HTML tables on the Finviz page
             dfs = pd.read_html(res.text)
             for temp_df in dfs:
-                # Finviz stats table always has exactly 12 columns
                 if temp_df.shape[1] == 12:
-                    for idx, row in temp_df.iterrows():
-                        # Iterate through columns in pairs (Label -> Value)
+                    for _, row in temp_df.iterrows():
                         for col_idx in range(0, 11, 2):
                             if str(row[col_idx]) == 'Short Float':
                                 val_str = str(row[col_idx+1]).replace('%', '').strip()
                                 if val_str != '-':
                                     short_interest_val = float(val_str)
-        except Exception as e:
-            print(f"[Finviz Error] {e}")
-            pass
-
-        # --- 4. Compile Results ---
-        res = {}
-        for display_name, raw_key in field_mapping.items():
-            if display_name == '1Y%':
-                val = one_y_val
-            elif display_name == 'Short Interest %':
-                val = short_interest_val
-            elif display_name == 'Last Price':
-                val = last_price
-            else:
-                if num_rows > 0 and raw_key in df.columns:
-                    val = df[raw_key].values[0]
-                    # TradingView specific fallbacks
-                    if pd.isna(val):
-                        if display_name == 'Cash & STI (M)' and 'cash_n_equivalents_fq' in df.columns:
-                            val = df['cash_n_equivalents_fq'].values[0]
-                        elif display_name == 'Gross Marg %' and 'gross_margin_fy' in df.columns:
-                            val = df['gross_margin_fy'].values[0]
-                else:
-                    val = None
-
-            # Formatting
-            if pd.isna(val) or val is None:
-                res[display_name] = "--"
-            elif 'Earnings Date' in display_name:
-                res[display_name] = datetime.datetime.fromtimestamp(val).strftime('%y-%m-%d')
-            elif '%' in display_name:
-                res[display_name] = f"{val:.2f}%"
-            elif 'Price' in display_name:
-                res[display_name] = f"${val:,.2f}"
-            elif display_name in ['P/E Ratio']:
-                res[display_name] = f"{val:,.2f}"
-            else:
-                res[display_name] = f"${val / 1_000_000:,.0f}"
-
-        return res
-
     except Exception as e:
-        print(f"[CRITICAL FSLI ERROR] {ticker}: {str(e)}")
-        return {m: "--" for m in field_mapping}
+        print(f"[Short Interest Error] {ticker}: {e}")
+
+    # --- ISOLATION BLOCK 4: Compilation and Formatting ---
+    res = {}
+    for display_name, raw_key in field_mapping.items():
+        val = None
+        
+        if display_name == '1Y%':
+            val = one_y_val
+        elif display_name == 'Short Interest %':
+            val = short_interest_val
+        elif display_name == 'Last Price':
+            val = last_price
+        else:
+            if num_rows > 0 and raw_key in df.columns:
+                val = df[raw_key].values[0]
+                # TradingView specific fallbacks for Cash and Gross Margin
+                if pd.isna(val):
+                    if display_name == 'Cash & STI (M)' and 'cash_n_equivalents_fq' in df.columns:
+                        val = df['cash_n_equivalents_fq'].values[0]
+                    elif display_name == 'Gross Marg %' and 'gross_margin_fy' in df.columns:
+                        val = df['gross_margin_fy'].values[0]
+
+        # Final String Formatting
+        if pd.isna(val) or val is None:
+            res[display_name] = "--"
+        elif 'Earnings Date' in display_name:
+            try:
+                res[display_name] = datetime.datetime.fromtimestamp(val).strftime('%y-%m-%d')
+            except:
+                res[display_name] = "--"
+        elif '%' in display_name:
+            res[display_name] = f"{val:.2f}%"
+        elif 'Price' in display_name:
+            res[display_name] = f"${val:,.2f}"
+        elif display_name in ['P/E Ratio']:
+            res[display_name] = f"{val:,.2f}"
+        else:
+            res[display_name] = f"${val / 1_000_000:,.0f}"
+
+    return res
         
 @st.cache_data(ttl=3600)
 def get_dynamic_options_data(ticker):
