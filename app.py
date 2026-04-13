@@ -1487,8 +1487,8 @@ def show_gxs_loader():
     placeholder.markdown('''
         <div class="gxs-loader-container">
             <img src="https://raw.githubusercontent.com/jianhuaa/fx-telegram-bot/refs/heads/main/me.png" class="gxs-loader-logo">
-            <p style="color: #ab63fa; font-family: sans-serif; margin-top: 20px; font-weight: bold; letter-spacing: 1px;">
-                SECURELY ACCESSING MARKETS DATA...
+            <p style="color: #ffd700; font-family: sans-serif; margin-top: 20px; font-weight: bold; letter-spacing: 1px;">
+                DESIGNED & DEVELOPED BY CHAN JIAN HUA...
             </p>
         </div>
     ''', unsafe_allow_html=True)
