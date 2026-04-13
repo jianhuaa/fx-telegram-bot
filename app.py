@@ -1005,7 +1005,7 @@ def show_industry_overview_overlay(df_all_returns, df_industries, selected_secto
     with c1:
         selected_display = st.selectbox("Sector", display_options, index=default_idx, label_visibility="collapsed", key=dyn_sec_key)
         # Extract the ticker back for data filtering (e.g., 'XLE' from 'XLE (Energy)')
-        sel_sec = selected_display.split(' ')[0]
+        sel_sec = selected_display.split(' ')[0] if selected_display else "UNK"
 
     inds = sorted(df_all_returns[df_all_returns['Sector'] == sel_sec]['Industry'].dropna().unique()) if not df_all_returns.empty else []
     idx_ind = inds.index(passed_industry_default) if passed_industry_default in inds else 0
