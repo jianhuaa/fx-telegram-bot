@@ -522,6 +522,7 @@ def get_insider_trades(ticker):
 
 @st.cache_data(ttl=3600)
 def get_verified_fsli_data(ticker):
+    search_ticker = ticker.replace('-', '.')
     field_mapping = {
         'Earnings Date': 'earnings_release_trading_date_fq',
         'Last Price': 'close',
