@@ -1626,7 +1626,7 @@ with c4_top:
             btn_loader = show_gxs_loader()
             time.sleep(2)
             btn_loader.empty()
-            show_industry_overview_overlay(df_all_ret, df_industries, selected_sector, df_sec_live, df_trans_live, df_history, df_sectors_price)
+            show_industry_overview_overlay(df_all_ret, df_industries, selected_sector, df_sec_live, df_transcripts_live, df_history, df_sectors_price)
             #show_industry_overview_overlay(df_all_ret, df_industries, selected_sector, df_sec_filtered, df_trans_filtered, df_history, df_sectors_price)
 
 # ==========================================
