@@ -241,7 +241,7 @@ def get_historical_charts_data(tf):
         # FIX 2: Forward fill missing 1-minute prints before dropping NaNs
         df.ffill(inplace=True)
         df.dropna(inplace=True)
-        FIX 3: Isolate only the current trading session so the 1D % returns calculate correctly
+        #FIX 3: Isolate only the current trading session so the 1D % returns calculate correctly
         if tf == "1D" and not df.empty:
             latest_date = df.index.normalize().max()
             df = df[df.index.normalize() == latest_date]
