@@ -645,15 +645,15 @@ def get_insider_trades(ticker):
 @st.cache_data(ttl=3600)
 @st.cache_data(ttl=3600)
 def get_verified_fsli_data(ticker):
-    # --- 1. Dynamic Ticker Translation ---
-    tv_ticker = ticker.replace('-', '.') # TradingView expects BRK.B
-    yf_ticker = ticker.replace('.', '-') # YFinance expects BRK-B
+    # Dynamic Ticker Translation
+    tv_ticker = ticker.replace('-', '.')
+    yf_ticker = ticker.replace('.', '-')
 
     field_mapping = {
         'Earnings Date': 'earnings_release_trading_date_fq',
         'Last Price': 'close',
-        'Short Interest %': None,
-        '1Y%': None,
+        'Short Interest %': None,  # Custom fetch
+        '1Y%': None,               # Custom fetch
         'Mkt Cap (M)': 'market_cap_basic',
         'P/E Ratio': 'price_earnings_ttm',
         'Revenue (M)': 'total_revenue_ttm',
@@ -671,49 +671,56 @@ def get_verified_fsli_data(ticker):
     }
 
     tv_fields = ['name', 'close', 'cash_n_equivalents_fq', 'gross_margin_fy'] + [v for v in field_mapping.values() if v is not None and v != 'close']
-    tv_fields = list(set(tv_fields)) 
-    
+    tv_fields = list(set(tv_fields))
+
     try:
-        # 2. TradingView Fetch (Using tv_ticker)
+        # 1. TradingView Fetch
         query = Query().select(*tv_fields).where(col('name') == tv_ticker)
         num_rows, df = query.get_scanner_data()
-        
+
         last_price = None
         if num_rows > 0:
             last_price = float(df['close'].values[0])
-            
-        # 3. YFinance Fetch: 1Y% (Isolated Try/Except using yf_ticker)
+
+        # 2. 1Y% Fetch (Left untouched since you confirmed it works perfectly!)
         one_y_val = None
         try:
             hist_raw = yf.download(yf_ticker, period='1y', interval='1d', progress=False, auto_adjust=True)
             if not hist_raw.empty and last_price is not None:
                 cl = (hist_raw['Close'][yf_ticker] if isinstance(hist_raw.columns, pd.MultiIndex) else hist_raw['Close']).dropna()
-                if not cl.empty: 
+                if not cl.empty:
                     one_y_val = (cl.values <= last_price).mean() * 100
-        except Exception as e:
-            print(f"[1Y% YFinance Error] {yf_ticker}: {e}")
-
-        # 4. YFinance Fetch: Short Interest (Isolated Try/Except using yf_ticker)
-        short_interest_val = None
-        try:
-            tkr = yf.Ticker(yf_ticker)
-            si_raw = tkr.info.get('shortPercentOfFloat')
-            if si_raw is not None:
-                short_interest_val = si_raw * 100
-        except:
+        except Exception:
             pass
 
-        # 5. YahooQuery Fallback for Short Interest
+        # 3. Short Interest Fetch (THE FIX)
+        short_interest_val = None
+        
+        # Method A: YahooQuery with Spoofed Browser Agent
+        try:
+            yq = YQTicker(yf_ticker, user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36', formatted=False)
+            k_stats = yq.key_stats
+            if isinstance(k_stats, dict) and yf_ticker in k_stats:
+                si_raw = k_stats[yf_ticker].get('shortPercentOfFloat')
+                if si_raw is not None:
+                    short_interest_val = si_raw * 100
+        except Exception:
+            pass
+            
+        # Method B: YFinance Stealth Session Fallback (if Method A is blocked)
         if short_interest_val is None:
             try:
-                yq = YQTicker(yf_ticker)
-                stats = yq.get_modules('defaultKeyStatistics').get(yf_ticker, {})
-                if isinstance(stats, dict):
-                    short_interest_val = (stats.get('sharesShort', 0) / stats.get('sharesOutstanding', 1) * 100) if stats.get('sharesOutstanding') else None
+                import requests
+                session = requests.Session()
+                session.headers.update({"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"})
+                tkr = yf.Ticker(yf_ticker, session=session)
+                si_raw = tkr.info.get('shortPercentOfFloat')
+                if si_raw is not None:
+                    short_interest_val = si_raw * 100
             except:
                 pass
 
-        # 6. Compile Results
+        # 4. Compile & Format Results
         res = {}
         for display_name, raw_key in field_mapping.items():
             if display_name == '1Y%':
@@ -725,6 +732,7 @@ def get_verified_fsli_data(ticker):
             else:
                 if num_rows > 0 and raw_key in df.columns:
                     val = df[raw_key].values[0]
+                    # Fallbacks for specific accounting quirks
                     if pd.isna(val):
                         if display_name == 'Cash & STI (M)' and 'cash_n_equivalents_fq' in df.columns:
                             val = df['cash_n_equivalents_fq'].values[0]
@@ -733,23 +741,24 @@ def get_verified_fsli_data(ticker):
                 else:
                     val = None
 
-            if pd.isna(val) or val is None: 
+            # Formatting
+            if pd.isna(val) or val is None:
                 res[display_name] = "--"
-            elif 'Earnings Date' in display_name: 
+            elif 'Earnings Date' in display_name:
                 res[display_name] = datetime.datetime.fromtimestamp(val).strftime('%y-%m-%d')
-            elif '%' in display_name: 
+            elif '%' in display_name:
                 res[display_name] = f"{val:.2f}%"
-            elif 'Price' in display_name: 
+            elif 'Price' in display_name:
                 res[display_name] = f"${val:,.2f}"
-            elif display_name in ['P/E Ratio']: 
+            elif display_name in ['P/E Ratio']:
                 res[display_name] = f"{val:,.2f}"
-            else: 
+            else:
                 res[display_name] = f"${val / 1_000_000:,.0f}"
-                
+
         return res
 
     except Exception as e:
-        print(f"[CRITICAL FSLI ERROR] Failed to build FSLI for {ticker}. Reason: {str(e)}")
+        print(f"[CRITICAL FSLI ERROR] {ticker}: {str(e)}")
         return {m: "--" for m in field_mapping}
         
 @st.cache_data(ttl=3600)
