@@ -1203,6 +1203,9 @@ def show_industry_overview_overlay(df_all_returns, df_industries, selected_secto
     with left_col:
         st.markdown("<div style='text-align: left; margin-top: 15px; margin-bottom: -17px; position: relative; z-index: 50; padding-left: 5px; pointer-events: none;'><span style='color:#00aaff; font-weight:bold; font-size:12px;'>📊 FSLI Fundamentals</span></div>", unsafe_allow_html=True)
 
+        if selected_labels:
+        # Clean ticker for Yahoo/TV: Convert "BRK-B (SPX)" -> "BRK-B"
+        selected_tickers = [lbl.split(' ')[0].strip() for lbl in selected_labels]
         if selected_tickers:
             metric_rows = None; cell_vals = []
             for ticker in selected_tickers:
