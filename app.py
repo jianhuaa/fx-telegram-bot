@@ -1200,26 +1200,35 @@ def show_industry_overview_overlay(df_all_returns, df_industries, selected_secto
     left_col, right_col = st.columns([0.5, 0.5], gap="small")
     selected_tickers = [lbl.split(' ')[0] for lbl in selected_labels] if selected_labels else []
 
-    # LEFT COLUMN: FSLI TABLE
-    with left_col:
-        st.markdown("<div style='text-align: left; margin-top: 15px; margin-bottom: -17px; position: relative; z-index: 50; padding-left: 5px; pointer-events: none;'><span style='color:#00aaff; font-weight:bold; font-size:12px;'>📊 FSLI Fundamentals</span></div>", unsafe_allow_html=True)
+# LEFT COLUMN: FSLI TABLE
+with left_col:
+    st.markdown("<div style='text-align: left; margin-top: 15px; margin-bottom: -17px; position: relative; z-index: 50; padding-left: 5px; pointer-events: none;'><span style='color:#00aaff; font-weight:bold; font-size:12px;'>📊 FSLI Fundamentals</span></div>", unsafe_allow_html=True)
 
-        if selected_tickers:
-            metric_rows = None; cell_vals = []
-            for ticker in selected_tickers:
-                res = get_verified_fsli_data(ticker)
-                if metric_rows is None: metric_rows = list(res.keys())
-                cell_vals.append([res.get(m, "--") for m in metric_rows])
+    # Clean the tickers from the labels (e.g., "AAPL (SPX)" -> "AAPL")
+    # This ensures the function gets exactly what it needs to query TV/Yahoo
+    active_tickers = [lbl.split(' ')[0].strip() for lbl in selected_labels] if selected_labels else []
 
-            final_cell_vals = [metric_rows] + cell_vals
-            hdr_vals = ['<b>METRIC</b>'] + [f'<b>{t}</b>' for t in selected_tickers]
-            col_widths = [100] + [75] * len(selected_tickers)
+    if active_tickers:
+        metric_rows = None; cell_vals = []
+        for ticker in active_tickers:
+            # We call your Colab-verified function here
+            res = get_verified_fsli_data(ticker)
+            if metric_rows is None: metric_rows = list(res.keys())
+            cell_vals.append([res.get(m, "--") for m in metric_rows])
 
-            fig_fsli = go.Figure(data=[go.Table(columnwidth=col_widths, header=dict(values=hdr_vals, fill_color='#161616', font=dict(color='#00aaff', size=11), align='left', height=24), cells=dict(values=final_cell_vals, fill_color='#0d0d0d', font=dict(color='white', size=11), align='left', height=26))])
-            fig_fsli.update_layout(margin=dict(l=0, r=4, t=45, b=0), height=FSLI_H)
-            st.plotly_chart(fig_fsli, use_container_width=True)
-        else:
-            st.markdown(f"<div style='height:{FSLI_H}px; display:flex; align-items:center; justify-content:center; color:#00aaff; font-size:12px; border:1px dashed #444; border-radius:4px;'>Select tickers from the dropdown to load FSLI</div>", unsafe_allow_html=True)
+        final_cell_vals = [metric_rows] + cell_vals
+        hdr_vals = ['<b>METRIC</b>'] + [f'<b>{t}</b>' for t in active_tickers]
+        col_widths = [100] + [75] * len(active_tickers)
+
+        fig_fsli = go.Figure(data=[go.Table(
+            columnwidth=col_widths, 
+            header=dict(values=hdr_vals, fill_color='#161616', font=dict(color='#00aaff', size=11), align='left', height=24), 
+            cells=dict(values=final_cell_vals, fill_color='#0d0d0d', font=dict(color='white', size=11), align='left', height=26)
+        )])
+        fig_fsli.update_layout(margin=dict(l=0, r=4, t=45, b=0), height=FSLI_H)
+        st.plotly_chart(fig_fsli, use_container_width=True)
+    else:
+        st.markdown(f"<div style='height:{FSLI_H}px; display:flex; align-items:center; justify-content:center; color:#00aaff; font-size:12px; border:1px dashed #444; border-radius:4px;'>Select tickers from the dropdown to load FSLI</div>", unsafe_allow_html=True)
 
     # RIGHT COLUMN: MACRO/MICRO TABS & INSIDER/OPTIONS/SEC TABS
     with right_col:
