@@ -1290,7 +1290,7 @@ def show_industry_overview_overlay(df_all_returns, df_industries, selected_secto
         # UPDATED TABS: MASTER TICKER HUB
         t_ins, t_options, t_sec, t_transcript = st.tabs(["🕵️ Insider Trades", "📉 Options", "📄 SEC Filings", "🎙️ Transcript"])
 
-    with t_ins:
+        with t_ins:
                 st.markdown("<div style='text-align: right; margin-bottom: -32px; position: relative; z-index: 50; padding-right: 5px; pointer-events: none;'><span style='color:#ff5252; font-weight:bold; font-size:12px;'>🕵️ Insider Trades</span></div>", unsafe_allow_html=True)
                 if selected_tickers:
                     ins_tabs2 = st.tabs(selected_tickers)
