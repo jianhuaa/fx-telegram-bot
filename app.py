@@ -463,19 +463,16 @@ def format_k(val):
     except: return str(val)
 
 @st.cache_data(ttl=3600)
+@st.cache_data(ttl=3600)
 def get_insider_trades(ticker):
     from curl_cffi import requests as crequests
     import io
     import pandas as pd
     
-    # Using your requested cnt=5000
     url = f"http://openinsider.com/screener?s={ticker}&o=&pl=&ph=&ll=&lh=&fd=0&fdr=&td=0&tdr=&fdlyl=&fdlyh=&daysago=&xp=1&xs=1&xa=0&xd=0&xg=0&xf=0&xm=0&xx=0&xc=0&xw=0&excludeDerivRelated=1&tmult=1&sortcol=0&cnt=88&page=1"
     
     try:
-        # impersonate="chrome120" makes the TLS handshake look identical to a real browser
         response = crequests.get(url, impersonate="chrome120", timeout=15)
-        
-        # If we get a 403 here, it means the IP itself (Data Center) is blocked
         response.raise_for_status() 
         
         tables = pd.read_html(io.StringIO(response.text), attrs={'class': 'tinytable'})
@@ -494,10 +491,11 @@ def get_insider_trades(ticker):
             return clean_df
             
     except Exception as e:
-        # Check logs if this prints 403; that confirms an IP-level ban
-        print(f"🚨 curl_cffi attempt failed for {ticker}: {e}")
+        # Instead of failing silently, return the exact error message!
+        error_message = f"CURL_CFFI EXCEPTION: {type(e).__name__} | DETAILS: {str(e)}"
+        return pd.DataFrame({'DEBUG_ERROR': [error_message]})
         
-    return pd.DataFrame()
+    return pd.DataFrame({'DEBUG_ERROR': ["No exception thrown, but no tables were found in the HTML. (Possible CAPTCHA or block page)"]})
 
 @st.cache_data(ttl=3600)
 def get_verified_fsli_data(ticker):
@@ -1292,29 +1290,35 @@ def show_industry_overview_overlay(df_all_returns, df_industries, selected_secto
         # UPDATED TABS: MASTER TICKER HUB
         t_ins, t_options, t_sec, t_transcript = st.tabs(["🕵️ Insider Trades", "📉 Options", "📄 SEC Filings", "🎙️ Transcript"])
 
-        with t_ins:
-            st.markdown("<div style='text-align: right; margin-bottom: -32px; position: relative; z-index: 50; padding-right: 5px; pointer-events: none;'><span style='color:#ff5252; font-weight:bold; font-size:12px;'>🕵️ Insider Trades</span></div>", unsafe_allow_html=True)
-            if selected_tickers:
-                ins_tabs2 = st.tabs(selected_tickers)
-                for i, tick in enumerate(selected_tickers):
-                    with ins_tabs2[i]:
-                        ins_df = get_insider_trades(tick)
-                        if not ins_df.empty:
-                            hdr_vals = [f'<b>{c}</b>' for c in ins_df.columns]
-                            cell_vals = [ins_df[c].tolist() for c in ins_df.columns]
-                            col_widths = []
-                            for col in ins_df.columns:
-                                if col in ['Insider Name', 'Title']: col_widths.append(120)
-                                elif col in ['Trade Date', 'Trade Type', 'Price', 'Value']: col_widths.append(70)
-                                else: col_widths.append(50)
-                            fig_ins = go.Figure(data=[go.Table(columnwidth=col_widths, header=dict(values=hdr_vals, fill_color='#161616', font=dict(color='#ff5252', size=11), align='left', height=24), cells=dict(values=cell_vals, fill_color='#0d0d0d', font=dict(color='white', size=11), align='left', height=26))])
-                            fig_ins.update_layout(margin=dict(l=0, r=4, t=0, b=0), height=INS_H)
-                            st.plotly_chart(fig_ins, use_container_width=True)
-                        else:
-                            st.markdown(f"<div style='height:{INS_H}px; display:flex; align-items:center; justify-content:center; color:#ff5252; font-size:12px; border:1px dashed #444; border-radius:4px;'>🕵️ No recent insider trades found for {tick}</div>", unsafe_allow_html=True)
-            else:
-                st.markdown(f"<div style='height:{INS_H}px; display:flex; align-items:center; justify-content:center; color:#ff5252; font-size:12px; border:1px dashed #444; border-radius:4px;'>Select tickers from the FSLI dropdown to load Insiders.</div>", unsafe_allow_html=True)
-
+    with t_ins:
+                st.markdown("<div style='text-align: right; margin-bottom: -32px; position: relative; z-index: 50; padding-right: 5px; pointer-events: none;'><span style='color:#ff5252; font-weight:bold; font-size:12px;'>🕵️ Insider Trades</span></div>", unsafe_allow_html=True)
+                if selected_tickers:
+                    ins_tabs2 = st.tabs(selected_tickers)
+                    for i, tick in enumerate(selected_tickers):
+                        with ins_tabs2[i]:
+                            ins_df = get_insider_trades(tick)
+                            
+                            # ---> THE NEW DEBUG TRAP <---
+                            if not ins_df.empty and 'DEBUG_ERROR' in ins_df.columns:
+                                st.error("🚨 OPENINSIDER FAILED! Please copy the text below and paste it back to Gemini:")
+                                st.code(ins_df['DEBUG_ERROR'].iloc[0])
+                            # ----------------------------
+                            
+                            elif not ins_df.empty:
+                                hdr_vals = [f'<b>{c}</b>' for c in ins_df.columns]
+                                cell_vals = [ins_df[c].tolist() for c in ins_df.columns]
+                                col_widths = []
+                                for col in ins_df.columns:
+                                    if col in ['Insider Name', 'Title']: col_widths.append(120)
+                                    elif col in ['Trade Date', 'Trade Type', 'Price', 'Value']: col_widths.append(70)
+                                    else: col_widths.append(50)
+                                fig_ins = go.Figure(data=[go.Table(columnwidth=col_widths, header=dict(values=hdr_vals, fill_color='#161616', font=dict(color='#ff5252', size=11), align='left', height=24), cells=dict(values=cell_vals, fill_color='#0d0d0d', font=dict(color='white', size=11), align='left', height=26))])
+                                fig_ins.update_layout(margin=dict(l=0, r=4, t=0, b=0), height=INS_H)
+                                st.plotly_chart(fig_ins, use_container_width=True)
+                            else:
+                                st.markdown(f"<div style='height:{INS_H}px; display:flex; align-items:center; justify-content:center; color:#ff5252; font-size:12px; border:1px dashed #444; border-radius:4px;'>🕵️ No recent insider trades found for {tick}</div>", unsafe_allow_html=True)
+                else:
+                    st.markdown(f"<div style='height:{INS_H}px; display:flex; align-items:center; justify-content:center; color:#ff5252; font-size:12px; border:1px dashed #444; border-radius:4px;'>Select tickers from the FSLI dropdown to load Insiders.</div>", unsafe_allow_html=True)
         with t_options:
             st.markdown("<div style='text-align: right; margin-bottom: -32px; position: relative; z-index: 50; padding-right: 5px; pointer-events: none;'><span style='color:#ab63fa; font-weight:bold; font-size:12px;'>📉 Options Flow (10D Trend)</span></div>", unsafe_allow_html=True)
 
