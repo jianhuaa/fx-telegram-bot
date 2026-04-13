@@ -645,16 +645,17 @@ def get_insider_trades(ticker):
 @st.cache_data(ttl=3600)
 @st.cache_data(ttl=3600)
 @st.cache_data(ttl=3600)
+@st.cache_data(ttl=3600)
 def get_verified_fsli_data(ticker):
-    # 1. Ticker Formatting (TradingView uses dots, Yahoo uses hyphens)
+    # 1. Ticker Formatting
     tv_ticker = ticker.replace('-', '.')
     yf_ticker = ticker.replace('.', '-')
 
     field_mapping = {
         'Earnings Date': 'earnings_release_trading_date_fq',
         'Last Price': 'close',
-        'Short Interest %': None,  # Custom fetch
-        '1Y%': None,               # Custom fetch
+        'Short Interest %': None,  # Will pull from Finviz
+        '1Y%': None,               # YFinance chart API (usually doesn't get blocked)
         'Mkt Cap (M)': 'market_cap_basic',
         'P/E Ratio': 'price_earnings_ttm',
         'Revenue (M)': 'total_revenue_ttm',
@@ -675,7 +676,7 @@ def get_verified_fsli_data(ticker):
     tv_fields = list(set(tv_fields))
 
     try:
-        # --- TradingView Fetch ---
+        # --- 1. TradingView Fetch ---
         query = Query().select(*tv_fields).where(col('name') == tv_ticker)
         num_rows, df = query.get_scanner_data()
 
@@ -683,7 +684,7 @@ def get_verified_fsli_data(ticker):
         if num_rows > 0:
             last_price = float(df['close'].values[0])
 
-        # --- YFinance Fetch (1Y%) ---
+        # --- 2. YFinance Fetch (1Y% - Uses chart API which is rarely blocked) ---
         one_y_val = None
         try:
             hist_raw = yf.download(yf_ticker, period='1y', interval='1d', progress=False, auto_adjust=True)
@@ -694,19 +695,32 @@ def get_verified_fsli_data(ticker):
         except:
             pass
 
-        # --- YahooQuery Fetch (Short Interest - EXACT COLAB LOGIC) ---
+        # --- 3. FINVIZ FETCH (The Short Interest Bypass) ---
         short_interest_val = None
         try:
-            yq = YQTicker(yf_ticker)
-            # Using the exact module call from your Colab script
-            stats = yq.get_modules('defaultKeyStatistics').get(yf_ticker, {})
-            # We add a dict check because Yahoo sometimes returns an error string on Cloud IPs
-            if isinstance(stats, dict):
-                short_interest_val = (stats.get('sharesShort', 0) / stats.get('sharesOutstanding', 1) * 100) if stats.get('sharesOutstanding') else None
-        except:
+            import requests
+            import pandas as pd
+            url = f"https://finviz.com/quote.ashx?t={yf_ticker}"
+            headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'}
+            res = requests.get(url, headers=headers, timeout=5)
+            
+            # Read all HTML tables on the Finviz page
+            dfs = pd.read_html(res.text)
+            for temp_df in dfs:
+                # Finviz stats table always has exactly 12 columns
+                if temp_df.shape[1] == 12:
+                    for idx, row in temp_df.iterrows():
+                        # Iterate through columns in pairs (Label -> Value)
+                        for col_idx in range(0, 11, 2):
+                            if str(row[col_idx]) == 'Short Float':
+                                val_str = str(row[col_idx+1]).replace('%', '').strip()
+                                if val_str != '-':
+                                    short_interest_val = float(val_str)
+        except Exception as e:
+            print(f"[Finviz Error] {e}")
             pass
 
-        # --- Compile Results ---
+        # --- 4. Compile Results ---
         res = {}
         for display_name, raw_key in field_mapping.items():
             if display_name == '1Y%':
@@ -718,7 +732,7 @@ def get_verified_fsli_data(ticker):
             else:
                 if num_rows > 0 and raw_key in df.columns:
                     val = df[raw_key].values[0]
-                    # TradingView specific fallbacks for Cash and Gross Margin
+                    # TradingView specific fallbacks
                     if pd.isna(val):
                         if display_name == 'Cash & STI (M)' and 'cash_n_equivalents_fq' in df.columns:
                             val = df['cash_n_equivalents_fq'].values[0]
