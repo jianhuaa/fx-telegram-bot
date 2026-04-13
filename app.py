@@ -230,7 +230,7 @@ def get_historical_options_data(ticker):
 @st.cache_data(ttl=60)
 def get_historical_charts_data(tf):
     try:
-        tf_period_map = {"1D": "1d", "1W": "5d", "1M": "1mo", "3M": "3mo", "1Y": "1y"}
+        tf_period_map = {"1D": "2d", "1W": "5d", "1M": "1mo", "3M": "3mo", "1Y": "1y"}
         tf_int_map = {"1D": "1m", "1W": "5m", "1M": "15m", "3M": "1d", "1Y": "1d"}
         tickers = {"SPX": "^GSPC", "RUT": "^RUT", "VIX": "^VIX", "VIX3M": "^VIX3M", "VVIX": "^VVIX", "SVIX": "SVIX"}
 
@@ -238,9 +238,19 @@ def get_historical_charts_data(tf):
         if isinstance(df.columns, pd.MultiIndex): df = df.xs('Close', level=0, axis=1)
         elif 'Close' in df.columns: df = df['Close']
         df.rename(columns={v: k for k, v in tickers.items()}, inplace=True)
+        # FIX 2: Forward fill missing 1-minute prints before dropping NaNs
+        df.ffill(inplace=True)
         df.dropna(inplace=True)
+        FIX 3: Isolate only the current trading session so the 1D % returns calculate correctly
+        if tf == "1D" and not df.empty:
+            latest_date = df.index.normalize().max()
+            df = df[df.index.normalize() == latest_date]
+
+        if df.empty: return pd.DataFrame(), pd.DataFrame()
         return df, ((df / df.iloc[0]) - 1) * 100
-    except: return pd.DataFrame(), pd.DataFrame()
+    except Exception as e: 
+        print(f"Chart Data Error: {e}")
+        return pd.DataFrame(), pd.DataFrame()
 
 @st.cache_data(ttl=60)
 def get_sector_data(tf):
