@@ -1569,6 +1569,7 @@ st.markdown('''
     }
     .gxs-loader-logo {
         align-items: center;
+        width: 320px;
         animation: logo-pulse 1s infinite ease-in-out;
     }
     </style>
