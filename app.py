@@ -589,11 +589,136 @@ def get_dynamic_options_data(ticker):
     except Exception:
         return None
 
+def map_sec_to_etf(x):
+    x_str = str(x).strip().upper()
+    sec_map_inv = {
+        "COMMUNICATION": "XLC", "DISCRETIONARY": "XLY", "STAPLES": "XLP",
+        "ENERGY": "XLE", "FINANCIAL": "XLF", "HEALTH": "XLV", "INDUSTRIAL": "XLI",
+        "TECHNOLOGY": "XLK", "MATERIALS": "XLB", "REAL ESTATE": "XLRE", "UTILITIES": "XLU"
+    }
+    if x_str in sec_map_inv.values(): return x_str
+    for k, v in sec_map_inv.items():
+        if k in x_str: return v
+    return 'UNK'
+
+@st.cache_data(ttl=60)
+def generate_live_all_returns():
+    import io
+    import requests
+    import pandas as pd
+    from datetime import datetime, timedelta
+
+    headers = {'User-Agent': 'Mozilla/5.0'}
+
+    # 1. Load Sheets
+    rut_sheet_url = "https://docs.google.com/spreadsheets/d/e/2PACX-1vRrTpcehWaL1Aq-uTn986nie8Hwrs_uHUOYr-E_wCG0jtLKQjvpw0V8x1wVz8yJdxFhqr7mz07jjpkM/pub?gid=0&single=true&output=csv"
+    res_rut = requests.get(rut_sheet_url, headers=headers)
+    lines_rut = res_rut.text.splitlines()
+    h_idx_rut = next((i for i, l in enumerate(lines_rut) if 'Symbol' in l), 3)
+    rut_sheet_df = pd.read_csv(io.StringIO("\n".join(lines_rut[h_idx_rut:])))
+    rut_sheet_df.columns = rut_sheet_df.columns.astype(str).str.strip()
+    rut_sheet_df = rut_sheet_df.iloc[max(0, (4 - 1) - h_idx_rut - 1):].reset_index(drop=True)
+
+    rmc_url = "https://docs.google.com/spreadsheets/d/e/2PACX-1vSpFLwMNa0AUsSC62LQZCQfIvvXRPPmX00cY7DO2sbiHu47Z72aJ_R-F_IrILBbKqIZGdSFgXFUrZyJ/pub?gid=679638722&single=true&output=csv"
+    res_rmc = requests.get(rmc_url, headers=headers)
+    lines_rmc = res_rmc.text.splitlines()
+    h_idx_rmc = next((i for i, l in enumerate(lines_rmc) if 'Symbol' in l), 3)
+    rmc_sheet_df = pd.read_csv(io.StringIO("\n".join(lines_rmc[h_idx_rmc:])))
+    rmc_sheet_df.columns = rmc_sheet_df.columns.astype(str).str.strip()
+    rmc_sheet_df = rmc_sheet_df.iloc[max(0, (4 - 1) - h_idx_rmc - 1):].reset_index(drop=True)
+
+    spx_url = "https://docs.google.com/spreadsheets/d/e/2PACX-1vSpFLwMNa0AUsSC62LQZCQfIvvXRPPmX00cY7DO2sbiHu47Z72aJ_R-F_IrILBbKqIZGdSFgXFUrZyJ/pub?gid=0&single=true&output=csv"
+    res_spx = requests.get(spx_url, headers=headers)
+    lines_spx = res_spx.text.splitlines()
+    h_idx_spx = next((i for i, l in enumerate(lines_spx) if 'Symbol' in l), 38)
+    sp500_df = pd.read_csv(io.StringIO("\n".join(lines_spx[h_idx_spx:])))
+    sp500_df.columns = sp500_df.columns.astype(str).str.strip()
+    sp500_df = sp500_df.iloc[max(0, (39 - 1) - h_idx_spx - 1):].reset_index(drop=True)
+
+    # 2. Build Mappings
+    custom_exact_map = {}
+    for df in [rut_sheet_df, rmc_sheet_df, sp500_df]:
+        for _, row in df.iterrows():
+            try:
+                t = str(row['Symbol']).strip().replace('.', '-')
+                etf, ind = str(row.iloc[2]).strip(), str(row.iloc[3]).strip()
+                if etf and ind and etf != 'nan' and ind != 'nan': custom_exact_map[t] = (etf, ind)
+            except: pass
+
+    # 3. Calculate Returns
+    def get_sheet_returns(df, idx_name):
+        if df.empty or 'Symbol' not in df.columns: return pd.DataFrame()
+        df_c = df.copy()
+        df_c['Symbol'] = df_c['Symbol'].astype(str).str.strip().str.replace('.', '-')
+        df_c = df_c[df_c['Symbol'] != 'nan']
+
+        def parse_date(d):
+            formats = ['%d %b %y', '%d %b %Y', '%Y-%m-%d', '%m/%d/%Y', '%d/%m/%Y', '%d-%b-%y', '%d-%b-%Y', '%b %d, %Y']
+            for fmt in formats:
+                try: return datetime.strptime(str(d).strip(), fmt)
+                except: pass
+            return None
+
+        dated_cols = sorted([(c, parse_date(c)) for c in df_c.columns if parse_date(c)], key=lambda x: x[1], reverse=True)
+        if not dated_cols: return pd.DataFrame()
+
+        def clean_col(col_name):
+            if col_name not in df_c.columns: return pd.Series([float('nan')]*len(df_c))
+            s = df_c[col_name].astype(str).str.replace(r'[^0-9\.\-]', '', regex=True).replace('', float('nan'))
+            return pd.to_numeric(s, errors='coerce')
+
+        c_curr = 'Live' if 'Live' in df_c.columns else dated_cols[0][0]
+        curr_vals = clean_col(c_curr)
+
+        if curr_vals.isna().sum() > (len(curr_vals) * 0.5):
+            for d_col, _ in dated_cols:
+                c_curr = d_col
+                curr_vals = clean_col(c_curr)
+                if curr_vals.isna().sum() <= (len(curr_vals) * 0.5): break
+
+        anchor = parse_date(c_curr) if c_curr != 'Live' else dated_cols[0][1]
+        if not anchor: anchor = dated_cols[0][1]
+
+        def get_closest(days):
+            t = anchor - timedelta(days=days)
+            diffs = [(c[0], abs((c[1] - t).days)) for c in dated_cols]
+            valid = [d for d in diffs if d[1] <= 7]
+            if not valid: return None
+            valid.sort(key=lambda x: x[1])
+            return valid[0][0]
+
+        c_1d = get_closest(1)
+        c_1w = get_closest(7)
+        c_1m = get_closest(30)
+        c_3m = get_closest(91)
+        c_1y = get_closest(365)
+
+        res = pd.DataFrame()
+        res['Ticker'] = df_c['Symbol']
+        res['Index'] = idx_name
+        res['Sector'] = res['Ticker'].apply(lambda x: map_sec_to_etf(custom_exact_map.get(x, ('UNK', 'Unknown'))[0]))
+        res['Industry'] = res['Ticker'].apply(lambda x: custom_exact_map.get(x, ('UNK', 'Unknown'))[1])
+        res['1D_raw'] = (curr_vals / clean_col(c_1d) - 1) * 100 if c_1d else float('nan')
+        res['1W_raw'] = (curr_vals / clean_col(c_1w) - 1) * 100 if c_1w else float('nan')
+        res['1M_raw'] = (curr_vals / clean_col(c_1m) - 1) * 100 if c_1m else float('nan')
+        res['3M_raw'] = (curr_vals / clean_col(c_3m) - 1) * 100 if c_3m else float('nan')
+        res['1Y_raw'] = (curr_vals / clean_col(c_1y) - 1) * 100 if c_1y else float('nan')
+        return res
+
+    df_spx_ret = get_sheet_returns(sp500_df, 'SPX')
+    df_rmc_ret = get_sheet_returns(rmc_sheet_df, 'RMC')
+    df_rut_ret = get_sheet_returns(rut_sheet_df, 'RTY')
+
+    df_all_returns = pd.concat([df_spx_ret, df_rmc_ret, df_rut_ret]).dropna(subset=['Ticker']).drop_duplicates(subset=['Ticker'])
+    return df_all_returns
+
 @st.cache_data(ttl=60)
 def get_live_col4_data():
     try:
-        try: df_all_ret = pd.read_parquet('col4_all_returns.parquet')
-        except: df_all_ret = pd.DataFrame()
+        try: df_all_ret = generate_live_all_returns()
+        except Exception as e: 
+            print(f"Error fetching live returns: {e}")
+            df_all_ret = pd.DataFrame()
 
         base_url = "https://raw.githubusercontent.com/jianhuaa/fx-telegram-bot/main/"
         def safe_read_remote(fname):
