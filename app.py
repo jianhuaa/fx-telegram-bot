@@ -463,39 +463,62 @@ def format_k(val):
     except: return str(val)
 
 @st.cache_data(ttl=3600)
-@st.cache_data(ttl=3600)
 def get_insider_trades(ticker):
-    from curl_cffi import requests as crequests
+    """
+    Robust insider trade scraper optimized for Streamlit Cloud.
+    Uses standard requests with browser headers to avoid 403 Forbidden errors.
+    """
+    import requests
     import io
     import pandas as pd
-    
+
+    # OpenInsider URL with specific ticker filter
     url = f"http://openinsider.com/screener?s={ticker}&o=&pl=&ph=&ll=&lh=&fd=0&fdr=&td=0&tdr=&fdlyl=&fdlyh=&daysago=&xp=1&xs=1&xa=0&xd=0&xg=0&xf=0&xm=0&xx=0&xc=0&xw=0&excludeDerivRelated=1&tmult=1&sortcol=0&cnt=88&page=1"
     
+    # Critical: Browser headers to prevent 403 Forbidden on Streamlit Cloud
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.9',
+        'Referer': 'http://openinsider.com/'
+    }
+    
     try:
-        response = crequests.get(url, impersonate="chrome120", timeout=15)
-        response.raise_for_status() 
+        # Fetching data with a timeout to prevent app hanging
+        response = requests.get(url, headers=headers, timeout=15)
         
+        # Check if we got blocked
+        if response.status_code == 403:
+            return pd.DataFrame({'DEBUG_ERROR': ["OpenInsider Blocked (403). Streamlit Cloud IP might be rate-limited."]})
+        
+        # Parse HTML tables
         tables = pd.read_html(io.StringIO(response.text), attrs={'class': 'tinytable'})
+        
         if tables:
             df = tables[0]
+            
+            # Clean column names (remove whitespace/newlines)
             df.columns = df.columns.astype(str).str.replace(r'\s+', ' ', regex=True).str.strip()
 
+            # Filter for your dashboard columns
             dashboard_cols = ['Ticker', 'Trade Date', 'Insider Name', 'Title', 'Trade Type', 'Price', 'Value', 'ΔOwn']
-            available_cols = [col for col in dashboard_cols if col in df.columns]
+            available_cols = [c for c in dashboard_cols if c in df.columns]
             clean_df = df[available_cols].copy()
 
+            # Clean 'Trade Type' string (removes 'S - ' or 'P - ' prefixes)
             if 'Trade Type' in clean_df.columns:
                 clean_df['Trade Type'] = clean_df['Trade Type'].astype(str).apply(
                     lambda x: x.split('- ')[-1] if '- ' in x else x
                 )
-            return clean_df
+            
+            # Return only the top 15 most recent trades to keep the UI clean
+            return clean_df.head(15)
             
     except Exception as e:
-        # Instead of failing silently, return the exact error message!
-        error_message = f"CURL_CFFI EXCEPTION: {type(e).__name__} | DETAILS: {str(e)}"
-        return pd.DataFrame({'DEBUG_ERROR': [error_message]})
+        # Captures networking errors or parsing failures
+        return pd.DataFrame({'DEBUG_ERROR': [f"Scraper Error: {type(e).__name__} | {str(e)}"]})
         
-    return pd.DataFrame({'DEBUG_ERROR': ["No exception thrown, but no tables were found in the HTML. (Possible CAPTCHA or block page)"]})
+    return pd.DataFrame({'DEBUG_ERROR': ["No tables found. Site layout may have changed or CAPTCHA triggered."]})
 
 @st.cache_data(ttl=3600)
 def get_verified_fsli_data(ticker):
