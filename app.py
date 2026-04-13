@@ -1578,7 +1578,7 @@ def show_gxs_loader():
     placeholder = st.empty()
     placeholder.markdown('''
         <div class="gxs-loader-container">
-            <p style="color: #FFFFFF; font-size:36px; font-family: sans-serif; margin-top: 20px; font-weight: bold; letter-spacing: 1px;"class="gxs-loader-logo">
+            <p style="color: #FFFFFF; font-size:28px; font-family: sans-serif; margin-top: 20px; font-weight: bold; letter-spacing: 1px;"class="gxs-loader-logo">
                 Loading Market Data
             </p>
             <p style="color: #444444; font-family: sans-serif; margin-top: 20px; font-weight: bold; letter-spacing: 1px;">
