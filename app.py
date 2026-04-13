@@ -644,8 +644,9 @@ def get_insider_trades(ticker):
 
 @st.cache_data(ttl=3600)
 @st.cache_data(ttl=3600)
+@st.cache_data(ttl=3600)
 def get_verified_fsli_data(ticker):
-    # Dynamic Ticker Translation
+    # 1. Ticker Formatting (TradingView uses dots, Yahoo uses hyphens)
     tv_ticker = ticker.replace('-', '.')
     yf_ticker = ticker.replace('.', '-')
 
@@ -674,7 +675,7 @@ def get_verified_fsli_data(ticker):
     tv_fields = list(set(tv_fields))
 
     try:
-        # 1. TradingView Fetch
+        # --- TradingView Fetch ---
         query = Query().select(*tv_fields).where(col('name') == tv_ticker)
         num_rows, df = query.get_scanner_data()
 
@@ -682,7 +683,7 @@ def get_verified_fsli_data(ticker):
         if num_rows > 0:
             last_price = float(df['close'].values[0])
 
-        # 2. 1Y% Fetch (Left untouched since you confirmed it works perfectly!)
+        # --- YFinance Fetch (1Y%) ---
         one_y_val = None
         try:
             hist_raw = yf.download(yf_ticker, period='1y', interval='1d', progress=False, auto_adjust=True)
@@ -690,37 +691,22 @@ def get_verified_fsli_data(ticker):
                 cl = (hist_raw['Close'][yf_ticker] if isinstance(hist_raw.columns, pd.MultiIndex) else hist_raw['Close']).dropna()
                 if not cl.empty:
                     one_y_val = (cl.values <= last_price).mean() * 100
-        except Exception:
+        except:
             pass
 
-        # 3. Short Interest Fetch (THE FIX)
+        # --- YahooQuery Fetch (Short Interest - EXACT COLAB LOGIC) ---
         short_interest_val = None
-        
-        # Method A: YahooQuery with Spoofed Browser Agent
         try:
-            yq = YQTicker(yf_ticker, user_agent='Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36', formatted=False)
-            k_stats = yq.key_stats
-            if isinstance(k_stats, dict) and yf_ticker in k_stats:
-                si_raw = k_stats[yf_ticker].get('shortPercentOfFloat')
-                if si_raw is not None:
-                    short_interest_val = si_raw * 100
-        except Exception:
+            yq = YQTicker(yf_ticker)
+            # Using the exact module call from your Colab script
+            stats = yq.get_modules('defaultKeyStatistics').get(yf_ticker, {})
+            # We add a dict check because Yahoo sometimes returns an error string on Cloud IPs
+            if isinstance(stats, dict):
+                short_interest_val = (stats.get('sharesShort', 0) / stats.get('sharesOutstanding', 1) * 100) if stats.get('sharesOutstanding') else None
+        except:
             pass
-            
-        # Method B: YFinance Stealth Session Fallback (if Method A is blocked)
-        if short_interest_val is None:
-            try:
-                import requests
-                session = requests.Session()
-                session.headers.update({"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)"})
-                tkr = yf.Ticker(yf_ticker, session=session)
-                si_raw = tkr.info.get('shortPercentOfFloat')
-                if si_raw is not None:
-                    short_interest_val = si_raw * 100
-            except:
-                pass
 
-        # 4. Compile & Format Results
+        # --- Compile Results ---
         res = {}
         for display_name, raw_key in field_mapping.items():
             if display_name == '1Y%':
@@ -732,7 +718,7 @@ def get_verified_fsli_data(ticker):
             else:
                 if num_rows > 0 and raw_key in df.columns:
                     val = df[raw_key].values[0]
-                    # Fallbacks for specific accounting quirks
+                    # TradingView specific fallbacks for Cash and Gross Margin
                     if pd.isna(val):
                         if display_name == 'Cash & STI (M)' and 'cash_n_equivalents_fq' in df.columns:
                             val = df['cash_n_equivalents_fq'].values[0]
