@@ -1577,11 +1577,41 @@ st.markdown('''
 def show_gxs_loader():
     placeholder = st.empty()
     placeholder.markdown('''
-        <div class="gxs-loader-container">
-            <img src="https://raw.githubusercontent.com/jianhuaa/fx-telegram-bot/refs/heads/main/me.png" class="gxs-loader-logo">
-            <p style="color: #ffd700; font-family: sans-serif; margin-top: 20px; font-weight: bold; letter-spacing: 1px;">
-                DESIGNED AND DEVELOPED BY CHAN JIAN HUA...
-            </p>
+        <style>
+            @keyframes pulseGlow {
+                0% { opacity: 0.3; text-shadow: 0 0 0px #fff; }
+                50% { opacity: 1; text-shadow: 0 0 8px rgba(255,255,255,0.4); }
+                100% { opacity: 0.3; text-shadow: 0 0 0px #fff; }
+            }
+            .loader-container {
+                display: flex;
+                flex-direction: column;
+                align-items: center;
+                justify-content: center;
+                height: 70vh;
+                background-color: #000000;
+                font-family: "Inter", "Segoe UI", sans-serif;
+            }
+            .status-text {
+                color: #FFFFFF;
+                font-size: 13px;
+                font-weight: 500;
+                letter-spacing: 4px;
+                text-transform: uppercase;
+                margin-bottom: 15px;
+                animation: pulseGlow 2.5s infinite ease-in-out;
+            }
+            .credit-text {
+                color: #444444; /* Dim gray to remain subtle on black */
+                font-size: 10px;
+                letter-spacing: 1.5px;
+                font-weight: 300;
+                text-transform: none;
+            }
+        </style>
+        <div class="loader-container">
+            <div class="status-text">Loading Market Data</div>
+            <div class="credit-text">Developed by Chan Jian Hua</div>
         </div>
     ''', unsafe_allow_html=True)
     return placeholder
