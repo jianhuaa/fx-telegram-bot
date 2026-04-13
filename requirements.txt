@@ -1,0 +1,14 @@
+streamlit
+pandas
+requests
+yfinance
+plotly
+yahooquery
+pytz
+lxml
+html5lib
+beautifulsoup4
+tradingview-screener
+fastparquet
+pyarrow
+python-dateutil
