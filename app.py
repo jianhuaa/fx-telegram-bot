@@ -643,7 +643,12 @@ def get_insider_trades(ticker):
     return pd.DataFrame()
 
 @st.cache_data(ttl=3600)
+@st.cache_data(ttl=3600)
 def get_verified_fsli_data(ticker):
+    # --- 1. Dynamic Ticker Translation ---
+    tv_ticker = ticker.replace('-', '.') # TradingView expects BRK.B
+    yf_ticker = ticker.replace('.', '-') # YFinance expects BRK-B
+
     field_mapping = {
         'Earnings Date': 'earnings_release_trading_date_fq',
         'Last Price': 'close',
@@ -665,38 +670,50 @@ def get_verified_fsli_data(ticker):
         'Net Marg %': 'net_margin_ttm'
     }
 
-    tv_fields = ['name', 'close'] + [v for v in field_mapping.values() if v is not None and v != 'close']
+    tv_fields = ['name', 'close', 'cash_n_equivalents_fq', 'gross_margin_fy'] + [v for v in field_mapping.values() if v is not None and v != 'close']
+    tv_fields = list(set(tv_fields)) 
     
     try:
-        # 1. TradingView Fetch
-        query = Query().select(*tv_fields).where(col('name') == ticker)
+        # 2. TradingView Fetch (Using tv_ticker)
+        query = Query().select(*tv_fields).where(col('name') == tv_ticker)
         num_rows, df = query.get_scanner_data()
         
         last_price = None
         if num_rows > 0:
             last_price = float(df['close'].values[0])
             
-        # 2. YFinance Fetch (High risk of failure on Streamlit Cloud)
+        # 3. YFinance Fetch: 1Y% (Isolated Try/Except using yf_ticker)
         one_y_val = None
         try:
-            hist_raw = yf.download(ticker, period='1y', interval='1d', progress=False, auto_adjust=True)
+            hist_raw = yf.download(yf_ticker, period='1y', interval='1d', progress=False, auto_adjust=True)
             if not hist_raw.empty and last_price is not None:
-                cl = (hist_raw['Close'][ticker] if isinstance(hist_raw.columns, pd.MultiIndex) else hist_raw['Close']).dropna()
+                cl = (hist_raw['Close'][yf_ticker] if isinstance(hist_raw.columns, pd.MultiIndex) else hist_raw['Close']).dropna()
                 if not cl.empty: 
                     one_y_val = (cl.values <= last_price).mean() * 100
         except Exception as e:
-            print(f"[FSLI YFinance Error] {ticker}: {e}")
+            print(f"[1Y% YFinance Error] {yf_ticker}: {e}")
 
-        # 3. YahooQuery Fetch (High risk of failure on Streamlit Cloud)
+        # 4. YFinance Fetch: Short Interest (Isolated Try/Except using yf_ticker)
         short_interest_val = None
         try:
-            yq = YQTicker(ticker)
-            stats = yq.get_modules('defaultKeyStatistics').get(ticker, {})
-            if isinstance(stats, dict):
-                short_interest_val = (stats.get('sharesShort', 0) / stats.get('sharesOutstanding', 1) * 100) if stats.get('sharesOutstanding') else None
-        except Exception as e:
-            print(f"[FSLI YahooQuery Error] {ticker}: {e}")
+            tkr = yf.Ticker(yf_ticker)
+            si_raw = tkr.info.get('shortPercentOfFloat')
+            if si_raw is not None:
+                short_interest_val = si_raw * 100
+        except:
+            pass
 
+        # 5. YahooQuery Fallback for Short Interest
+        if short_interest_val is None:
+            try:
+                yq = YQTicker(yf_ticker)
+                stats = yq.get_modules('defaultKeyStatistics').get(yf_ticker, {})
+                if isinstance(stats, dict):
+                    short_interest_val = (stats.get('sharesShort', 0) / stats.get('sharesOutstanding', 1) * 100) if stats.get('sharesOutstanding') else None
+            except:
+                pass
+
+        # 6. Compile Results
         res = {}
         for display_name, raw_key in field_mapping.items():
             if display_name == '1Y%':
@@ -706,7 +723,15 @@ def get_verified_fsli_data(ticker):
             elif display_name == 'Last Price':
                 val = last_price
             else:
-                val = df[raw_key].values[0] if num_rows > 0 and raw_key in df.columns else None
+                if num_rows > 0 and raw_key in df.columns:
+                    val = df[raw_key].values[0]
+                    if pd.isna(val):
+                        if display_name == 'Cash & STI (M)' and 'cash_n_equivalents_fq' in df.columns:
+                            val = df['cash_n_equivalents_fq'].values[0]
+                        elif display_name == 'Gross Marg %' and 'gross_margin_fy' in df.columns:
+                            val = df['gross_margin_fy'].values[0]
+                else:
+                    val = None
 
             if pd.isna(val) or val is None: 
                 res[display_name] = "--"
@@ -720,13 +745,13 @@ def get_verified_fsli_data(ticker):
                 res[display_name] = f"{val:,.2f}"
             else: 
                 res[display_name] = f"${val / 1_000_000:,.0f}"
+                
         return res
 
     except Exception as e:
-        # THIS will now print to your Streamlit Community Cloud Logs ("Manage App" -> Logs)
         print(f"[CRITICAL FSLI ERROR] Failed to build FSLI for {ticker}. Reason: {str(e)}")
         return {m: "--" for m in field_mapping}
-
+        
 @st.cache_data(ttl=3600)
 def get_dynamic_options_data(ticker):
     from dateutil.relativedelta import relativedelta
