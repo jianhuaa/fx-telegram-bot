@@ -1578,8 +1578,7 @@ def show_gxs_loader():
     placeholder = st.empty()
     placeholder.markdown('''
         <div class="gxs-loader-container">
-            <img src="https://help.gxs.com.sg/@api/deki/site/logo.png?default=https://a.mtstatic.com/skins/styles/elm/logo.svg%3F_%3D332bad4b9843cb2363df2f3702c706dc22d85dbe:site_14150" class="gxs-loader-logo">
-            #https://raw.githubusercontent.com/jianhuaa/fx-telegram-bot/refs/heads/main/me.png
+            <img src="https://raw.githubusercontent.com/jianhuaa/fx-telegram-bot/refs/heads/main/me.png" class="gxs-loader-logo">
             <p style="color: #ffd700; font-family: sans-serif; margin-top: 20px; font-weight: bold; letter-spacing: 1px;">
                 DESIGNED AND DEVELOPED BY CHAN JIAN HUA...
             </p>
