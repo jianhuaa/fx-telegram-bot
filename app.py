@@ -1474,7 +1474,7 @@ def show_industry_overview_overlay(df_all_returns, df_industries, selected_secto
             sec_ind_df = df_sec_live[df_sec_live['Ticker'].isin(ind_tickers)] if not df_sec_live.empty else pd.DataFrame()
 
             if sec_ind_df.empty and not df_sec_live.empty:
-                sec_ind_df = df_sec_live[df_sec_live['Sector'] == sel_sec].head(10)
+                sec_ind_df = df_sec_live[df_sec_live['Sector'] == sel_sec]
                 sec_fallback_msg = f" (Showing {sel_sec} Sector)"
             else:
                 sec_fallback_msg = ""
@@ -1496,7 +1496,7 @@ def show_industry_overview_overlay(df_all_returns, df_industries, selected_secto
             trans_ind_df = df_transcripts_live[df_transcripts_live['Ticker'].isin(ind_tickers)] if not df_transcripts_live.empty else pd.DataFrame()
 
             if trans_ind_df.empty and not df_transcripts_live.empty:
-                trans_ind_df = df_transcripts_live[df_transcripts_live['Sector'] == sel_sec].head(10)
+                trans_ind_df = df_transcripts_live[df_transcripts_live['Sector'] == sel_sec]
                 trans_fallback_msg = f" (Showing {sel_sec} Sector)"
             else:
                 trans_fallback_msg = ""
