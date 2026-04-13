@@ -666,33 +666,66 @@ def get_verified_fsli_data(ticker):
     }
 
     tv_fields = ['name', 'close'] + [v for v in field_mapping.values() if v is not None and v != 'close']
+    
     try:
+        # 1. TradingView Fetch
         query = Query().select(*tv_fields).where(col('name') == ticker)
         num_rows, df = query.get_scanner_data()
+        
+        last_price = None
         if num_rows > 0:
             last_price = float(df['close'].values[0])
+            
+        # 2. YFinance Fetch (High risk of failure on Streamlit Cloud)
+        one_y_val = None
+        try:
             hist_raw = yf.download(ticker, period='1y', interval='1d', progress=False, auto_adjust=True)
-            one_y_val = None
-            if not hist_raw.empty:
+            if not hist_raw.empty and last_price is not None:
                 cl = (hist_raw['Close'][ticker] if isinstance(hist_raw.columns, pd.MultiIndex) else hist_raw['Close']).dropna()
-                if not cl.empty: one_y_val = (cl.values <= last_price).mean() * 100
+                if not cl.empty: 
+                    one_y_val = (cl.values <= last_price).mean() * 100
+        except Exception as e:
+            print(f"[FSLI YFinance Error] {ticker}: {e}")
 
+        # 3. YahooQuery Fetch (High risk of failure on Streamlit Cloud)
+        short_interest_val = None
+        try:
             yq = YQTicker(ticker)
             stats = yq.get_modules('defaultKeyStatistics').get(ticker, {})
-            short_interest_val = (stats.get('sharesShort', 0) / stats.get('sharesOutstanding', 1) * 100) if stats else None
+            if isinstance(stats, dict):
+                short_interest_val = (stats.get('sharesShort', 0) / stats.get('sharesOutstanding', 1) * 100) if stats.get('sharesOutstanding') else None
+        except Exception as e:
+            print(f"[FSLI YahooQuery Error] {ticker}: {e}")
 
-            res = {}
-            for display_name, raw_key in field_mapping.items():
-                val = one_y_val if display_name == '1Y%' else (short_interest_val if display_name == 'Short Interest %' else (last_price if display_name == 'Last Price' else df[raw_key].values[0]))
-                if pd.isna(val) or val is None: res[display_name] = "--"
-                elif 'Earnings Date' in display_name: res[display_name] = datetime.datetime.fromtimestamp(val).strftime('%y-%m-%d')
-                elif '%' in display_name: res[display_name] = f"{val:.2f}%"
-                elif 'Price' in display_name: res[display_name] = f"${val:,.2f}"
-                elif display_name in ['P/E Ratio']: res[display_name] = f"{val:,.2f}"
-                else: res[display_name] = f"${val / 1_000_000:,.0f}"
-            return res
-    except: pass
-    return {m: "--" for m in field_mapping}
+        res = {}
+        for display_name, raw_key in field_mapping.items():
+            if display_name == '1Y%':
+                val = one_y_val
+            elif display_name == 'Short Interest %':
+                val = short_interest_val
+            elif display_name == 'Last Price':
+                val = last_price
+            else:
+                val = df[raw_key].values[0] if num_rows > 0 and raw_key in df.columns else None
+
+            if pd.isna(val) or val is None: 
+                res[display_name] = "--"
+            elif 'Earnings Date' in display_name: 
+                res[display_name] = datetime.datetime.fromtimestamp(val).strftime('%y-%m-%d')
+            elif '%' in display_name: 
+                res[display_name] = f"{val:.2f}%"
+            elif 'Price' in display_name: 
+                res[display_name] = f"${val:,.2f}"
+            elif display_name in ['P/E Ratio']: 
+                res[display_name] = f"{val:,.2f}"
+            else: 
+                res[display_name] = f"${val / 1_000_000:,.0f}"
+        return res
+
+    except Exception as e:
+        # THIS will now print to your Streamlit Community Cloud Logs ("Manage App" -> Logs)
+        print(f"[CRITICAL FSLI ERROR] Failed to build FSLI for {ticker}. Reason: {str(e)}")
+        return {m: "--" for m in field_mapping}
 
 @st.cache_data(ttl=3600)
 def get_dynamic_options_data(ticker):
