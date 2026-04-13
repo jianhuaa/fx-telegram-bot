@@ -12,3 +12,4 @@ tradingview-screener
 fastparquet
 pyarrow
 python-dateutil
+curl_cffi
