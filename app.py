@@ -522,7 +522,9 @@ def get_insider_trades(ticker):
 
 @st.cache_data(ttl=3600)
 def get_verified_fsli_data(ticker):
+    # 1. Properly map tickers for TradingView (e.g. BRK-B to BRK.B)
     search_ticker = ticker.replace('-', '.')
+    
     field_mapping = {
         'Earnings Date': 'earnings_release_trading_date_fq',
         'Last Price': 'close',
@@ -532,7 +534,7 @@ def get_verified_fsli_data(ticker):
         'P/E Ratio': 'price_earnings_ttm',
         'Revenue (M)': 'total_revenue_ttm',
         'Op CF (M)': 'cash_f_operating_activities_ttm',
-        'FCF (M)': 'free_cash_flow_fy',
+        'FCF (M)': 'free_cash_flow_ttm', # Safest option for TV (changed from _fy)
         'Inv CF (M)': 'cash_f_investing_activities_ttm',
         'Fin CF (M)': 'cash_f_financing_activities_ttm',
         'Cash & STI (M)': 'cash_n_short_term_invest_fq',
@@ -545,33 +547,73 @@ def get_verified_fsli_data(ticker):
     }
 
     tv_fields = ['name', 'close'] + [v for v in field_mapping.values() if v is not None and v != 'close']
+    
+    # Pre-fill with defaults so partial failures still return partial data
+    res_dict = {m: "--" for m in field_mapping.keys()} 
+
     try:
-        query = Query().select(*tv_fields).where(col('name') == ticker)
+        # Use search_ticker instead of ticker
+        query = Query().select(*tv_fields).where(col('name') == search_ticker)
         num_rows, df = query.get_scanner_data()
+
         if num_rows > 0:
-            last_price = float(df['close'].values[0])
-            hist_raw = yf.download(ticker, period='1y', interval='1d', progress=False, auto_adjust=True)
+            last_price = float(df['close'].values[0]) if 'close' in df.columns else 0.0
+
+            # --- ISOLATE YFINANCE LOGIC ---
             one_y_val = None
-            if not hist_raw.empty:
-                cl = (hist_raw['Close'][ticker] if isinstance(hist_raw.columns, pd.MultiIndex) else hist_raw['Close']).dropna()
-                if not cl.empty: one_y_val = (cl.values <= last_price).mean() * 100
+            try:
+                hist_raw = yf.download(ticker, period='1y', interval='1d', progress=False, auto_adjust=True)
+                if not hist_raw.empty:
+                    cl = (hist_raw['Close'][ticker] if isinstance(hist_raw.columns, pd.MultiIndex) else hist_raw['Close']).dropna()
+                    if not cl.empty and last_price > 0: 
+                        one_y_val = (cl.values <= last_price).mean() * 100
+            except: pass
 
-            yq = YQTicker(ticker)
-            stats = yq.get_modules('defaultKeyStatistics').get(ticker, {})
-            short_interest_val = (stats.get('sharesShort', 0) / stats.get('sharesOutstanding', 1) * 100) if stats else None
+            # --- ISOLATE YAHOOQUERY LOGIC ---
+            short_interest_val = None
+            try:
+                yq = YQTicker(ticker)
+                stats_dict = yq.get_modules('defaultKeyStatistics')
+                # Strict dictionary checks to prevent rate-limit strings from causing AttributeErrors
+                if isinstance(stats_dict, dict):
+                    stats = stats_dict.get(ticker, {})
+                    if isinstance(stats, dict):
+                        shares_short = stats.get('sharesShort', 0)
+                        shares_out = stats.get('sharesOutstanding', 1)
+                        if shares_out and shares_out > 0:
+                            short_interest_val = (shares_short / shares_out) * 100
+            except: pass
 
-            res = {}
+            # --- COMPILE FINAL DICTIONARY ---
             for display_name, raw_key in field_mapping.items():
-                val = one_y_val if display_name == '1Y%' else (short_interest_val if display_name == 'Short Interest %' else (last_price if display_name == 'Last Price' else df[raw_key].values[0]))
-                if pd.isna(val) or val is None: res[display_name] = "--"
-                elif 'Earnings Date' in display_name: res[display_name] = datetime.datetime.fromtimestamp(val).strftime('%y-%m-%d')
-                elif '%' in display_name: res[display_name] = f"{val:.2f}%"
-                elif 'Price' in display_name: res[display_name] = f"${val:,.2f}"
-                elif display_name in ['P/E Ratio']: res[display_name] = f"{val:,.2f}"
-                else: res[display_name] = f"${val / 1_000_000:,.0f}"
-            return res
-    except: pass
-    return {m: "--" for m in field_mapping}
+                val = None
+                
+                if display_name == '1Y%': val = one_y_val
+                elif display_name == 'Short Interest %': val = short_interest_val
+                elif display_name == 'Last Price': val = last_price
+                elif raw_key in df.columns: val = df[raw_key].values[0]
+
+                if pd.isna(val) or val is None: 
+                    res_dict[display_name] = "--"
+                elif 'Earnings Date' in display_name:
+                    try: # Handle malformed TV timestamps
+                        res_dict[display_name] = datetime.datetime.fromtimestamp(float(val)).strftime('%y-%m-%d')
+                    except:
+                        res_dict[display_name] = "--"
+                elif '%' in display_name: 
+                    res_dict[display_name] = f"{float(val):.2f}%"
+                elif 'Price' in display_name: 
+                    res_dict[display_name] = f"${float(val):,.2f}"
+                elif display_name in ['P/E Ratio']: 
+                    res_dict[display_name] = f"{float(val):,.2f}"
+                else: 
+                    res_dict[display_name] = f"${float(val) / 1_000_000:,.0f}"
+
+    except Exception as e:
+        # If the entire TradingView query crashes, flag it visibly so you know what failed
+        res_dict['Last Price'] = "TV_ERR"
+
+    return res_dict
 
 @st.cache_data(ttl=3600)
 def get_dynamic_options_data(ticker):
