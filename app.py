@@ -465,12 +465,21 @@ def format_k(val):
 @st.cache_data(ttl=3600)
 def get_insider_trades(ticker):
     url = f"http://openinsider.com/screener?s={ticker}&o=&pl=&ph=&ll=&lh=&fd=0&fdr=&td=0&tdr=&fdlyl=&fdlyh=&daysago=&xp=1&xs=1&xa=0&xd=0&xg=0&xf=0&xm=0&xx=0&xc=0&xw=0&excludeDerivRelated=1&tmult=1&sortcol=0&cnt=5000&page=1"
+    
+    # 1. The Better Disguise (Full Browser Headers)
     headers = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.9',
+        'Accept-Encoding': 'gzip, deflate',
+        'Connection': 'keep-alive',
+        'Upgrade-Insecure-Requests': '1'
     }
+    
     try:
         response = requests.get(url, headers=headers, timeout=10)
-        response.raise_for_status()
+        response.raise_for_status() # This will trigger an error if OpenInsider blocks us
+        
         tables = pd.read_html(io.StringIO(response.text), attrs={'class': 'tinytable'})
         if tables:
             df = tables[0]
@@ -485,8 +494,11 @@ def get_insider_trades(ticker):
                     lambda x: x.split('- ')[-1] if '- ' in x else x
                 )
             return clean_df
+            
     except Exception as e:
-        pass
+        # 2. End the Silent Failure! Print the error to the Streamlit Logs
+        print(f"🚨 OpenInsider Error for {ticker}: {e}")
+        
     return pd.DataFrame()
 
 @st.cache_data(ttl=3600)
