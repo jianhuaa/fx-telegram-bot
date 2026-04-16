@@ -1356,8 +1356,24 @@ def show_industry_overview_overlay(df_all_returns, df_industries, selected_secto
             st.markdown("<div style='text-align: right; margin-top: -17px; margin-bottom: 5px; position: relative; z-index: 50; padding-right: 5px; pointer-events: none;'><span style='color:#ab63fa; font-weight:bold; font-size:12px;'>🔬 Momentum (1M vs 1W)</span></div>", unsafe_allow_html=True)
             if not ind_df.empty:
                 plot_df = ind_df.copy()
-                plot_df['1W_raw'] = plot_df['1W_raw'].fillna(0.0).round(2)
-                plot_df['1M_raw'] = plot_df['1M_raw'].fillna(0.0).round(2)
+
+                # --- APPLIED FIXES START ---
+                # 1. Normalize ticker formats to match your returns parquet file
+                plot_df['Ticker'] = plot_df['Ticker'].astype(str).str.replace('.', '-')
+
+                # 2. Force conversion to numeric to prevent Plotly from misinterpreting strings
+                plot_df['1W_raw'] = pd.to_numeric(plot_df['1W_raw'], errors='coerce')
+                plot_df['1M_raw'] = pd.to_numeric(plot_df['1M_raw'], errors='coerce')
+
+                # 3. Drop rows missing return data entirely instead of forcing them to 0.0
+                plot_df = plot_df.dropna(subset=['1W_raw', '1M_raw'])
+
+                # 4. Round the remaining valid numbers
+                plot_df['1W_raw'] = plot_df['1W_raw'].round(2)
+                plot_df['1M_raw'] = plot_df['1M_raw'].round(2)
+                # --- APPLIED FIXES END ---
+                #plot_df['1W_raw'] = plot_df['1W_raw'].fillna(0.0).round(2)
+                #plot_df['1M_raw'] = plot_df['1M_raw'].fillna(0.0).round(2)
 
                 fig_scat = go.Figure()
                 if spx_vals[2] or spx_vals[1]: fig_scat.add_trace(go.Scatter(x=[round(spx_vals[2], 2)], y=[round(spx_vals[1], 2)], mode='markers', marker=dict(symbol='star', size=12, color='#ffffff', line=dict(width=1, color='black')), name='SPX', hovertemplate="<b>SPX Index</b><br>1W: %{y:+.2f}%<br>1M: %{x:+.2f}%<extra></extra>"))
