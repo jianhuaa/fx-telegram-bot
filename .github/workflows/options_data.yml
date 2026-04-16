@@ -33,4 +33,5 @@ jobs:
           git config --local user.name "GitHub Action Harvester"
           git add col4_options_history.parquet
           git diff --quiet && git diff --staged --quiet || git commit -m "Update options history: NetOI & DeltaNetOI"
+          git pull --rebase origin main
           git push
