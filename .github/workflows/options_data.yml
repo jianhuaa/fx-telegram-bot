@@ -3,7 +3,7 @@ name: Options Data Harvester
 on:
   schedule:
     # Runs at 23:00 UTC (Post-Market Close) Mon-Fri
-    - cron: '0 * * * 1-5'
+    - cron: '0 * * * *'
   workflow_dispatch:
 
 permissions:
