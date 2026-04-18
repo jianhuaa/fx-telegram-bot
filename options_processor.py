@@ -98,8 +98,19 @@ def run_harvest():
     if os.path.exists(FILE_NAME):
         print(f"[2/4] Loading existing history from {FILE_NAME}...")
         df_hist = pd.read_parquet(FILE_NAME)
-        latest_date = df_hist['Date'].max()
-        df_prev = df_hist[df_hist['Date'] == latest_date].drop_duplicates(subset=['Ticker']).set_index('Ticker')
+
+        # THE FIX: Ignore data from *today* so we only compare against past days
+        today_str = datetime.datetime.now().strftime('%Y-%m-%d')
+        df_past = df_hist[df_hist['Date'] < today_str]
+        
+        if not df_past.empty:
+            # Grab the single most recent past row for each ticker
+            df_prev = df_past.sort_values('Date').drop_duplicates(subset=['Ticker'], keep='last').set_index('Ticker')
+        else:
+            df_prev = pd.DataFrame()
+        
+        #latest_date = df_hist['Date'].max()
+        #df_prev = df_hist[df_hist['Date'] == latest_date].drop_duplicates(subset=['Ticker']).set_index('Ticker')
     else:
         print("[2/4] No existing history found. Creating new database.")
         df_hist, df_prev = pd.DataFrame(), pd.DataFrame()
