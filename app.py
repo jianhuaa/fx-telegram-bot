@@ -152,15 +152,6 @@ df_rmc_ret = get_sheet_returns(rmc_sheet_df, 'RMC')
 df_rut_ret = get_sheet_returns(rut_sheet_df, 'RTY')
 
 df_all_returns = pd.concat([df_spx_ret, df_rmc_ret, df_rut_ret]).dropna(subset=['Ticker']).drop_duplicates(subset=['Ticker'])
-# 1. First, make sure the data is sorted chronologically so yesterday comes before today
-df = df.sort_values(by=['Ticker', 'Date'])
-
-# 2. Calculate the Delta (Today's Open Interest minus Yesterday's Open Interest)
-# Using .diff() automatically subtracts the previous row's value
-df['M1_DeltaNetOI'] = df.groupby('Ticker')['M1_NetOI'].diff().fillna(0)
-df['M2_DeltaNetOI'] = df.groupby('Ticker')['M2_NetOI'].diff().fillna(0)
-
-# 3. Now save it as you normally do!
 df_all_returns.to_parquet('col4_all_returns.parquet')
 
 print("\n" + "="*50 + f"\nDATA GENERATION SUCCESS! Total Time: {time.time()-start_all:.2f}s\n" + "="*50)
