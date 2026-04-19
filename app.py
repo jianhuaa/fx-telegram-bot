@@ -2102,7 +2102,7 @@ if not df_history.empty:
                             height=28
                         )
                     )])
-                    fig_news.update_layout(margin=dict(l=0,r=10,t=5,b=0), height=TAB_HEIGHT if 'TAB_HEIGHT' in locals() else 640)
+                    fig_news.update_layout(margin=dict(l=0,r=10,t=5,b=0), height=TAB_HEIGHT - 60 if 'TAB_HEIGHT' in locals() else 580)
                     st.plotly_chart(fig_news, use_container_width=True)
                 else:
                     st.markdown(f"<div style='height:640px; display:flex; align-items:center; justify-content:center; color:#f4ca16; font-size:12px; border:1px dashed #444; border-radius:4px;'>No valid news found on MarketBeat for {news_ticker}.</div>", unsafe_allow_html=True)
