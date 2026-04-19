@@ -361,6 +361,131 @@ def get_vix_expiration(year, month):
     return datetime.date(next_year, next_month, fridays[2]) - datetime.timedelta(days=30)
 
 # PASTE THIS NEAR THE TOP OF YOUR FILE
+import urllib.request
+import xml.etree.ElementTree as ET
+from email.utils import parsedate_to_datetime
+import pandas as pd
+import datetime
+import streamlit as st
+
+# --- HELPER FUNCTION FOR DATES ---
+def parse_mb_date(raw_str):
+    import re
+    from datetime import datetime, timedelta
+    from dateutil import parser
+
+    now = datetime.now()
+    s = raw_str.lower().strip()
+
+    try:
+        # 1. Handle relative times (e.g., "2 hours ago")
+        if "hour" in s or "min" in s:
+            nums = re.findall(r'\d+', s)
+            if nums:
+                val = int(nums[0])
+                delta = timedelta(hours=val) if "hour" in s else timedelta(minutes=val)
+                return (now - delta).strftime("%b %d, %Y")
+
+        # 2. Handle "yesterday"
+        elif "yesterday" in s:
+            return (now - timedelta(days=1)).strftime("%b %d, %Y")
+
+        # 3. Handle standard dates
+        else:
+            date_part = s.split(' at ')[0].strip()
+            parsed_date = parser.parse(date_part)
+            return parsed_date.strftime("%b %d, %Y")
+
+    except Exception:
+        return raw_str
+
+# --- MAIN LIVE SCRAPER ---
+@st.cache_data(ttl=900)
+def get_marketbeat_news_live(ticker):
+    from DrissionPage import ChromiumPage, ChromiumOptions
+    import pandas as pd
+    import time
+
+    search_ticker = "FI" if ticker == "FISV" else ticker.replace('.', '-')
+
+    co = ChromiumOptions()
+    co.set_browser_path('/usr/bin/google-chrome-stable')
+    co.set_local_port(9333)
+    co.set_argument('--headless=new')
+    co.set_argument('--no-sandbox')
+    co.set_argument('--disable-dev-shm-usage')
+    co.set_argument('--disable-blink-features=AutomationControlled')
+    co.set_user_agent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36')
+
+    try:
+        page = ChromiumPage(addr_or_opts=co)
+    except Exception as e:
+        print(f"Browser launch failed: {e}")
+        return pd.DataFrame()
+
+    news_data = []
+    try:
+        exchanges = ["NASDAQ", "NYSE", "AMEX"]
+
+        for exch in exchanges:
+            url = f"https://www.marketbeat.com/stocks/{exch}/{search_ticker}/news/"
+            page.get(url, timeout=10.0, retry=1)
+
+            time.sleep(5)
+            page.scroll.to_half()
+            time.sleep(1)
+
+            if "Just a moment" in page.title:
+                continue
+
+            news_containers = page.eles('xpath://div[contains(@class, "headline-description-div")]', timeout=2.0)
+
+            if news_containers:
+                items_found = 0
+                for container in news_containers:
+                    if items_found >= 15: break
+
+                    link_ele = container.ele('tag:a', timeout=0)
+                    byline_ele = container.ele('xpath:.//div[contains(@class, "byline")]', timeout=0)
+
+                    if link_ele:
+                        title = link_ele.text.strip()
+                        href = link_ele.link
+
+                        if not title: continue
+
+                        date_str = "Recent"
+
+                        if byline_ele:
+                            byline_text = byline_ele.text.strip()
+                            if "|" in byline_text:
+                                parts = byline_text.split("|")
+                                raw_date = parts[0].strip()
+                                date_str = parse_mb_date(raw_date)
+                            else:
+                                date_str = parse_mb_date(byline_text)
+
+                        news_data.append({
+                            'Date': date_str,
+                            'Ticker': ticker,
+                            'Title': title[:50] + "..." if len(title) > 50 else title,
+                            'Link': f"<a href='{href}'>Link</a>"
+                        })
+                        items_found += 1
+
+                if items_found > 0:
+                    break
+
+    except Exception as e:
+        print(f"Error scraping news for {ticker}: {e}")
+    finally:
+        page.quit()
+
+    df = pd.DataFrame(news_data)
+    if not df.empty:
+        df = df.drop_duplicates(subset=['Title'])
+    return df
+
 @st.cache_data(ttl=3600)
 def get_historical_options_data(ticker):
     try:
@@ -1853,7 +1978,7 @@ if not df_history.empty:
             df_losers_filtered['3M'] = df_losers_filtered['3M_raw'].apply(lambda x: f"{x:+.0f}%" if pd.notna(x) else "-")
             df_losers_filtered['1Y'] = df_losers_filtered['1Y_raw'].apply(lambda x: f"{x:+.0f}%" if pd.notna(x) else "-")
 
-        t_losers, t_sec, t_transcript = st.tabs(["🔴 Losers", "📄 SEC", "🎙️ Transcript"])
+        t_losers, t_sec, t_transcript = st.tabs(["🔴 Losers", "📄 SEC", "🎙️ Transcript", "📰 News"])
         TAB_HEIGHT = 640
 
         with t_losers:
@@ -1891,6 +2016,41 @@ if not df_history.empty:
                 st.plotly_chart(fig_transcripts, use_container_width=True)
             else:
                 st.info(f"No recent transcripts found for {selected_sector}.")
+        # 2. Add the new News tab block at the bottom of Column 4
+        with t_news:
+            available_news_tickers = df_losers_filtered['Ticker'].tolist() if not df_losers_filtered.empty else []
+
+            if available_news_tickers:
+                news_ticker = st.selectbox("Select Ticker for News", available_news_tickers, label_visibility="collapsed")
+
+                with st.spinner(f"Spinning up browser to pull live MarketBeat wire for {news_ticker}..."):
+                    df_news = get_marketbeat_news_live(news_ticker)
+
+                if not df_news.empty:
+                    fig_news = go.Figure(data=[go.Table(
+                        # Adjusted widths since SOURCE is gone: Date (50), Tick (35), Headline (160), Link (25)
+                        columnwidth=[45, 35, 165, 25],
+                        header=dict(
+                            values=['<b>DATE</b>','<b>TICK</b>','<b>HEADLINE</b>','<b>LINK</b>'],
+                            fill_color='#161616',
+                            font=dict(color='#f4ca16', size=10),
+                            align=['left','center','left','center']
+                        ),
+                        cells=dict(
+                            values=[df_news['Date'], df_news['Ticker'], df_news['Title'], df_news['Link']],
+                            fill_color='#0d0d0d',
+                            font=dict(color=['white','white','white','#00aaff'], size=10),
+                            align=['left','center','left','center'],
+                            height=28
+                        )
+                    )])
+                    fig_news.update_layout(margin=dict(l=0,r=10,t=5,b=0), height=TAB_HEIGHT if 'TAB_HEIGHT' in locals() else 640)
+                    st.plotly_chart(fig_news, use_container_width=True)
+                else:
+                    st.markdown(f"<div style='height:640px; display:flex; align-items:center; justify-content:center; color:#f4ca16; font-size:12px; border:1px dashed #444; border-radius:4px;'>No valid news found on MarketBeat for {news_ticker}.</div>", unsafe_allow_html=True)
+            else:
+                st.info("No tickers available in this sector.")
+
 # ---------------------------------------------------------
 # DIALOG ROUTER (Catches cross-dialog navigation)
 # ---------------------------------------------------------
