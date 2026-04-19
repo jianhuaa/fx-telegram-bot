@@ -1106,7 +1106,7 @@ def show_global_birdseye(df_inds, df_all_ret):
                     st.warning(f"No industry data available for {active_str}.")
 
     # Pushes Row 2 down
-    st.markdown("<div style='height:20px;'></div><hr style='margin: 0; border-color:#333;'><div style='height:5px;'></div>", unsafe_allow_html=True)
+    st.markdown("<div style='height:20px;'></div><hr style='margin: 0; border-color:#333;'><div style='height:20px;'></div>", unsafe_allow_html=True)
 
     # ==========================================
     # ROW 2: BOTTOM HALF (Worst Tickers & Comparison Engine)
@@ -1119,9 +1119,10 @@ def show_global_birdseye(df_inds, df_all_ret):
     
     with c_bot_left:
         st.markdown(f"<div style='color:#ff4b4b; font-size:12px; font-weight:bold; margin-bottom:5px;'>🔴 LOSERS{filter_label}</div>", unsafe_allow_html=True)
+        # Push the table itself down an additional 30px, leaving the header fixed
+        st.markdown("<div style='height:30px;'></div>", unsafe_allow_html=True)
         
         if not active_etfs and 'SPX' in active_list:
-            st.markdown("<div style='height:10px;'></div>", unsafe_allow_html=True)
             st.info("Select a Sector above to view its bleeding tickers.")
             df_losers = pd.DataFrame()
         elif not df_all_ret.empty:
@@ -1132,7 +1133,6 @@ def show_global_birdseye(df_inds, df_all_ret):
                 if target_ind:
                     df_losers = df_losers[df_losers['Industry'].str.replace('<br>', ' ') == target_ind]
                 
-                # Only show stocks bleeding in 1W or 1M
                 df_losers = df_losers[(df_losers['1W_raw'] < 0) | (df_losers['1M_raw'] < 0)]
                 
                 if not df_losers.empty:
@@ -1145,10 +1145,10 @@ def show_global_birdseye(df_inds, df_all_ret):
                     fig_losers = go.Figure(data=[go.Table(
                         columnwidth=[35, 30, 90, 35, 35],
                         header=dict(values=['<b>TICK</b>','<b>IDX</b>','<b>INDUSTRY</b>','<b>1W</b>','<b>1M</b>'], fill_color='#161616', font=dict(color='#ff5252',size=10), align=['left','center','left','right','right']),
-                        cells=dict(values=[df_losers['Ticker'], df_losers['Index'], df_losers['Industry'], df_losers['1W'], df_losers['1M']], fill_color='#0d0d0d', font=dict(color='white',size=10), align=['left','center','left','right','right'], height=26)
+                        cells=dict(values=[df_losers['Ticker'], df_losers['Index'], df_losers['Industry'], df_losers['1W'], df_losers['1M']], fill_color='#0d0d0d', font=dict(color='white',size=10), align=['left','center','left','right','right'], height=28)
                     )])
-                    # Plotly native top margin protects the header from clipping
-                    fig_losers.update_layout(margin=dict(l=0,r=0,t=25,b=0), height=300)
+                    # Margin set to 0 because the HTML spacer div handles the drop perfectly
+                    fig_losers.update_layout(margin=dict(l=0,r=0,t=0,b=0), height=360)
                     st.plotly_chart(fig_losers, use_container_width=True)
                 else:
                     st.success(f"No bleeding tickers found{filter_label}!")
@@ -1157,35 +1157,63 @@ def show_global_birdseye(df_inds, df_all_ret):
 
     with c_bot_right:
         st.markdown(f"<div style='color:#f4ca16; font-size:12px; font-weight:bold; margin-bottom:5px;'>⚖️ COMPARISON ENGINE</div>", unsafe_allow_html=True)
+        # Push the table/placeholder down an additional 30px
+        st.markdown("<div style='height:30px;'></div>", unsafe_allow_html=True)
         
         # Engine output when Losers exist
         if 'df_losers' in locals() and not df_losers.empty and active_etfs:
             top_5_tickers = df_losers['Ticker'].head(5).tolist()
+            num_rows = len(top_5_tickers)
             
-            # Dummy quantitative logic visualization
-            health_scores = ['🟩 High', '🟥 Low', '🟨 Avg', '🟩 High', '🟥 Low'][:len(top_5_tickers)]
-            options_flow = ['📉 Bear', '🌊 Bull Div', '🎲 Neutral', '📉 Bear', '🌊 Bull Div'][:len(top_5_tickers)]
-            percentiles = ['12th 📊', '5th 🎯', '22nd 📊', '18th 📊', '2nd 🎯'][:len(top_5_tickers)]
-            verdicts = ['<span style="color:#ff4b4b">SELL</span>', '<span style="color:#00ff00">BUY</span>', '<span style="color:#f4ca16">MONITOR</span>', '<span style="color:#ff4b4b">SELL</span>', '<span style="color:#00ff00">BUY</span>'][:len(top_5_tickers)]
+            # Cleaned up data per your PM specifications
+            health_scores = ['🟩 High', '🟥 Low', '🟨 Avg', '🟩 High', '🟥 Low'][:num_rows]
+            options_flow = ['🐻 Bear', '🐂 Bull Div', '⚖️ Neutral', '🐻 Bear', '🐂 Bull Div'][:num_rows]
+            percentiles = ['12th', '5th', '22nd', '18th', '2nd'][:num_rows]
+            verdict_text = ['SELL', 'BUY', 'MONITOR', 'SELL', 'BUY'][:num_rows]
+            
+            # THE FIX: Dynamic Array Coloring for the Verdict Cells
+            verdict_bg_colors = ['#ff4b4b' if v == 'SELL' else '#00ff00' if v == 'BUY' else '#f4ca16' for v in verdict_text]
+            verdict_font_colors = ['white' if v == 'SELL' else 'black' for v in verdict_text]
+            
+            cell_bg_matrix = [
+                ['#0d0d0d'] * num_rows,  # TICK
+                ['#0d0d0d'] * num_rows,  # FSLI
+                ['#0d0d0d'] * num_rows,  # FLOW
+                ['#0d0d0d'] * num_rows,  # %TILE
+                verdict_bg_colors        # VERDICT (Colored cells!)
+            ]
+            
+            cell_font_matrix = [
+                ['white'] * num_rows,
+                ['white'] * num_rows,
+                ['white'] * num_rows,
+                ['white'] * num_rows,
+                verdict_font_colors
+            ]
             
             fig_engine = go.Figure(data=[go.Table(
                 columnwidth=[35, 45, 55, 40, 45],
-                header=dict(values=['<b>TICK</b>','<b>🩺 FSLI</b>','<b>🌊 FLOW</b>','<b>📊 %TILE</b>','<b>VERDICT</b>'], fill_color='#161616', font=dict(color='#f4ca16',size=10), align=['left','center','center','center','center']),
-                cells=dict(values=[top_5_tickers, health_scores, options_flow, percentiles, verdicts], fill_color='#0d0d0d', font=dict(color='white',size=11), align=['left','center','center','center','center'], height=32)
+                header=dict(values=['<b>TICK</b>','<b>🏥 $+</b>','<b>🌊 FLOW</b>','<b>📊 %TILE</b>','<b>VERDICT</b>'], fill_color='#161616', font=dict(color='#f4ca16',size=10), align=['left','center','center','center','center']),
+                cells=dict(
+                    values=[top_5_tickers, health_scores, options_flow, percentiles, verdict_text], 
+                    fill_color=cell_bg_matrix, 
+                    font=dict(color=cell_font_matrix, size=11), 
+                    align=['left','center','center','center','center'], 
+                    height=32
+                )
             )])
-            # Plotly native top margin protects the header from clipping
-            fig_engine.update_layout(margin=dict(l=0,r=0,t=25,b=0), height=300)
+            fig_engine.update_layout(margin=dict(l=0,r=0,t=0,b=0), height=360)
             st.plotly_chart(fig_engine, use_container_width=True)
         else:
-            # Safe HTML string for the empty state
+            # Empty state updated to 360px height to match the tables
             placeholder_html = (
-                "<div style='border:1px dashed #444; border-radius:4px; padding:20px; height:275px; margin-top:25px; display:flex; flex-direction:column; justify-content:center; align-items:center; background-color:#111;'>"
+                "<div style='border:1px dashed #444; border-radius:4px; padding:20px; height:360px; display:flex; flex-direction:column; justify-content:center; align-items:center; background-color:#111;'>"
                 "<h5 style='color:#00aaff; text-align:center; margin-bottom:10px;'>Constructing the Alpha Engine...</h5>"
-                "<p style='color:#888; font-size:12px; text-align:center;'>This quadrant is reserved for the FSLI Composite Weighting and Options Open Interest overlay.</p>"
+                "<p style='color:#888; font-size:12px; text-align:center;'>This quadrant is reserved for the $+ Composite Weighting and Options Flow overlay.</p>"
                 "<ul style='color:#666; font-size:11px;'>"
                 "<li>Z-Score Factor Radars (Value, Quality, Risk)</li>"
-                "<li>FSLI Composite Health Weightings</li>"
-                "<li>Dynamic Put/Call OI Overlays</li>"
+                "<li>🏥 $+ Composite Health Weightings</li>"
+                "<li>🐂/🐻 Dynamic Options Overlays</li>"
                 "</ul>"
                 "</div>"
             )
