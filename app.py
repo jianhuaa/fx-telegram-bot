@@ -1155,69 +1155,49 @@ def show_global_birdseye(df_inds, df_all_ret):
             else:
                 st.warning("No ticker data found for this sector.")
 
-    with c_bot_right:
-        st.markdown(f"<div style='color:#f4ca16; font-size:12px; font-weight:bold; margin-bottom:5px;'>⚖️ COMPARISON ENGINE</div>", unsafe_allow_html=True)
-        # Push the table/placeholder down an additional 30px
+with c_bot_right:
+        st.markdown(f"<div style='color:#f4ca16; font-size:12px; font-weight:bold; margin-bottom:5px;'>⚖️ ALPHA COMPARISON ENGINE</div>", unsafe_allow_html=True)
         st.markdown("<div style='height:30px;'></div>", unsafe_allow_html=True)
         
-        # Engine output when Losers exist
         if 'df_losers' in locals() and not df_losers.empty and active_etfs:
-            top_5_tickers = df_losers['Ticker'].head(5).tolist()
-            num_rows = len(top_5_tickers)
+            top_5 = df_losers.head(5).copy()
+            num_rows = len(top_5)
             
-            # Cleaned up data per your PM specifications
-            health_scores = ['🟩 High', '🟥 Low', '🟨 Avg', '🟩 High', '🟥 Low'][:num_rows]
-            options_flow = ['🐻 Bear', '🐂 Bull Div', '⚖️ Neutral', '🐻 Bear', '🐂 Bull Div'][:num_rows]
-            percentiles = ['12th', '5th', '22nd', '18th', '2nd'][:num_rows]
+            # SIMONS LOGIC MAPPING
+            # Health: Square only
+            health_icons = ['🟩', '🟥', '🟨', '🟩', '🟥'][:num_rows]
+            
+            # Flow: Sliding Scale
+            flow_scale = ['🐻🐻', '🐂', '⚖️', '🐻', '🐂🐂'][:num_rows]
+            
+            # Percentile: Raw %
+            pct_labels = ['12%', '5%', '22%', '18%', '2%'][:num_rows]
+            
+            # Verdicts (Simons Logic Applied)
             verdict_text = ['SELL', 'BUY', 'MONITOR', 'SELL', 'BUY'][:num_rows]
-            
-            # THE FIX: Dynamic Array Coloring for the Verdict Cells
-            verdict_bg_colors = ['#ff4b4b' if v == 'SELL' else '#00ff00' if v == 'BUY' else '#f4ca16' for v in verdict_text]
-            verdict_font_colors = ['white' if v == 'SELL' else 'black' for v in verdict_text]
-            
-            cell_bg_matrix = [
-                ['#0d0d0d'] * num_rows,  # TICK
-                ['#0d0d0d'] * num_rows,  # FSLI
-                ['#0d0d0d'] * num_rows,  # FLOW
-                ['#0d0d0d'] * num_rows,  # %TILE
-                verdict_bg_colors        # VERDICT (Colored cells!)
-            ]
-            
-            cell_font_matrix = [
-                ['white'] * num_rows,
-                ['white'] * num_rows,
-                ['white'] * num_rows,
-                ['white'] * num_rows,
-                verdict_font_colors
-            ]
+            v_bg = ['#ff4b4b' if v == 'SELL' else '#00ff00' if v == 'BUY' else '#f4ca16' for v in verdict_text]
+            v_font = ['white' if v == 'SELL' else 'black' for v in verdict_text]
             
             fig_engine = go.Figure(data=[go.Table(
-                columnwidth=[35, 45, 55, 40, 45],
-                header=dict(values=['<b>TICK</b>','<b>🏥 $+</b>','<b>🌊 FLOW</b>','<b>📊 %TILE</b>','<b>VERDICT</b>'], fill_color='#161616', font=dict(color='#f4ca16',size=10), align=['left','center','center','center','center']),
+                columnwidth=[35, 30, 45, 30, 45],
+                header=dict(
+                    values=['<b>TICK</b>','<b>🏥</b>','<b>⌛</b>','<b>💪 %</b>','<b>VERDICT</b>'], 
+                    fill_color='#161616', 
+                    font=dict(color='#f4ca16',size=10), 
+                    align='center'
+                ),
                 cells=dict(
-                    values=[top_5_tickers, health_scores, options_flow, percentiles, verdict_text], 
-                    fill_color=cell_bg_matrix, 
-                    font=dict(color=cell_font_matrix, size=11), 
-                    align=['left','center','center','center','center'], 
-                    height=32
+                    values=[top_5['Ticker'], health_icons, flow_scale, pct_labels, verdict_text], 
+                    fill_color=[['#0d0d0d']*num_rows, ['#0d0d0d']*num_rows, ['#0d0d0d']*num_rows, ['#0d0d0d']*num_rows, v_bg], 
+                    font=dict(color=[['white']*num_rows, ['white']*num_rows, ['white']*num_rows, ['white']*num_rows, v_font], size=12), 
+                    align='center', 
+                    height=35
                 )
             )])
             fig_engine.update_layout(margin=dict(l=0,r=0,t=0,b=0), height=360)
             st.plotly_chart(fig_engine, use_container_width=True)
         else:
-            # Empty state updated to 360px height to match the tables
-            placeholder_html = (
-                "<div style='border:1px dashed #444; border-radius:4px; padding:20px; height:360px; display:flex; flex-direction:column; justify-content:center; align-items:center; background-color:#111;'>"
-                "<h5 style='color:#00aaff; text-align:center; margin-bottom:10px;'>Constructing the Alpha Engine...</h5>"
-                "<p style='color:#888; font-size:12px; text-align:center;'>This quadrant is reserved for the $+ Composite Weighting and Options Flow overlay.</p>"
-                "<ul style='color:#666; font-size:11px;'>"
-                "<li>Z-Score Factor Radars (Value, Quality, Risk)</li>"
-                "<li>🏥 $+ Composite Health Weightings</li>"
-                "<li>🐂/🐻 Dynamic Options Overlays</li>"
-                "</ul>"
-                "</div>"
-            )
-            st.markdown(placeholder_html, unsafe_allow_html=True)
+            st.info("Select a Sector and Industry to activate the Mean Reversion Engine.")
 # ---------------------------------------------------------
 # DIALOG 1: SUMMARY / TICKERS PLACEHOLDER
 # ---------------------------------------------------------
