@@ -771,10 +771,6 @@ def get_insider_trades(ticker):
     return pd.DataFrame()
 
 @st.cache_data(ttl=3600)
-@st.cache_data(ttl=3600)
-@st.cache_data(ttl=3600)
-@st.cache_data(ttl=3600)
-@st.cache_data(ttl=3600)
 def get_verified_fsli_data(ticker):
     # 1. Ticker Formatting
     tv_ticker = "P" if ticker == "PSTG" else ticker.replace('-', '.')
@@ -1026,7 +1022,7 @@ def show_global_birdseye(df_inds, df_all_ret):
             bg_color = "#1a2a3a" if is_active else "#161616"
             
             card_html = (
-                f"<div style='border: 1px solid {b_color}; border-top: none; border-bottom-left-radius: 4px; border-bottom-right-radius: 4px; padding: 12px 5px 8px 5px; text-align: center; margin-bottom: 12px; background-color: {bg_color}; margin-top:-5px;'>"
+                f"<div style='border: 1px solid {b_color}; border-top: none; border-bottom-left-radius: 4px; border-bottom-right-radius: 4px; padding: 15px 5px 10px 5px; text-align: center; margin-bottom: 12px; background-color: {bg_color}; margin-top:-5px;'>"
                 f"<div style='display: flex; justify-content: space-between; gap: 5px;'>"
                 f"<div style='flex: 1; border-top: 2px solid {c_w1}; padding-top:2px;'>"
                 f"<div style='font-size:9px; color:#888;'>1W</div>"
@@ -1131,7 +1127,7 @@ def show_global_birdseye(df_inds, df_all_ret):
                         cells=dict(values=[df_losers['Ticker'], df_losers['Index'], df_losers['Industry'], df_losers['1W'], df_losers['1M']], fill_color='#0d0d0d', font=dict(color='white',size=10), align=['left','center','left','right','right'], height=26)
                     )])
                     # Plotly margin kept at 0 since the spacer div handles the drop
-                    fig_losers.update_layout(margin=dict(l=0,r=0,t=20,b=0), height=360)
+                    fig_losers.update_layout(margin=dict(l=0,r=0,t=30,b=0), height=360)
                     st.plotly_chart(fig_losers, use_container_width=True)
                 else:
                     st.success("No bleeding tickers found! Everything is green.")
