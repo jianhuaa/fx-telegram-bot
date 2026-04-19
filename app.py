@@ -1155,7 +1155,7 @@ def show_global_birdseye(df_inds, df_all_ret):
             else:
                 st.warning("No ticker data found for this sector.")
 
-with c_bot_right:
+    with c_bot_right:
         st.markdown(f"<div style='color:#f4ca16; font-size:12px; font-weight:bold; margin-bottom:5px;'>⚖️ ALPHA COMPARISON ENGINE</div>", unsafe_allow_html=True)
         st.markdown("<div style='height:30px;'></div>", unsafe_allow_html=True)
         
