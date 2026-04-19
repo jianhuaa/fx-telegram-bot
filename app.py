@@ -1118,18 +1118,19 @@ def show_global_birdseye(df_inds, df_all_ret):
     with c_bot_right:
         st.markdown(f"<div style='color:#f4ca16; font-size:12px; font-weight:bold; margin-bottom:5px;'>⚖️ COMPARISON ENGINE</div>", unsafe_allow_html=True)
         
-        # FSLI / Composite Options Placeholder
-        st.markdown("""
-        <div style='border:1px dashed #444; border-radius:4px; padding:20px; height:300px; display:flex; flex-direction:column; justify-content:center; align-items:center; background-color:#111;'>
-            <h5 style='color:#00aaff; text-align:center; margin-bottom:10px;'>Constructing the Alpha Engine...</h5>
-            <p style='color:#888; font-size:12px; text-align:center;'>This quadrant is reserved for the FSLI Composite Weighting and Options Open Interest overlay.</p>
-            <ul style='color:#666; font-size:11px;'>
-                <li>Z-Score Factor Radars (Value, Quality, Risk)</li>
-                <li>FSLI Composite Health Weightings</li>
-                <li>Dynamic Put/Call OI Overlays</li>
-            </ul>
-        </div>
-        """, unsafe_allow_html=True)
+        # FSLI / Composite Options Placeholder (Indentation Safe)
+        placeholder_html = (
+            "<div style='border:1px dashed #444; border-radius:4px; padding:20px; height:300px; display:flex; flex-direction:column; justify-content:center; align-items:center; background-color:#111;'>"
+            "<h5 style='color:#00aaff; text-align:center; margin-bottom:10px;'>Constructing the Alpha Engine...</h5>"
+            "<p style='color:#888; font-size:12px; text-align:center;'>This quadrant is reserved for the FSLI Composite Weighting and Options Open Interest overlay.</p>"
+            "<ul style='color:#666; font-size:11px;'>"
+            "<li>Z-Score Factor Radars (Value, Quality, Risk)</li>"
+            "<li>FSLI Composite Health Weightings</li>"
+            "<li>Dynamic Put/Call OI Overlays</li>"
+            "</ul>"
+            "</div>"
+        )
+        st.markdown(placeholder_html, unsafe_allow_html=True)
 
 # ---------------------------------------------------------
 # DIALOG 1: SUMMARY / TICKERS PLACEHOLDER
