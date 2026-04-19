@@ -977,8 +977,6 @@ def get_live_col4_data():
 def show_global_birdseye(df_inds, df_all_ret):
     st.markdown("<h4 style='color:#00aaff; margin-top:-15px;'>🌍 The Sector Detangler</h4>", unsafe_allow_html=True)
     
-    # Safely grab 3M data behind the scenes to guarantee we can calculate 1W and 1M
-    # regardless of what timeframe the user selected on the main screen.
     with st.spinner("Compiling Global View..."):
         df_hist, _ = get_historical_charts_data("3M")
         df_sec_px, _ = get_sector_data("3M")
@@ -1008,22 +1006,24 @@ def show_global_birdseye(df_inds, df_all_ret):
             c_w1 = "#00aaff" if ticker == 'SPX' else ("#00ff00" if w1 >= 0 else "#ff4b4b")
             c_m1 = "#00aaff" if ticker == 'SPX' else ("#00ff00" if m1 >= 0 else "#ff4b4b")
             
-            # The dual-badge design (much cleaner than diagonals)
-            card_html = f"""
-            <div style="border: 1px solid {'#00aaff' if st.session_state.global_sec == ticker else '#444'}; border-radius: 4px; padding: 5px; text-align: center; margin-bottom: 5px; background-color: {'#1a2a3a' if st.session_state.global_sec == ticker else '#161616'};">
-                <div style="font-weight: bold; font-size: 15px; color: white;">{ticker}</div>
-                <div style="display: flex; justify-content: space-between; gap: 5px; margin-top: 5px;">
-                    <div style="flex: 1; border-top: 2px solid {c_w1}; padding-top:2px;">
-                        <div style="font-size:9px; color:#888;">1W</div>
-                        <div style="font-size:12px; color:white;">{w1:+.1f}%</div>
-                    </div>
-                    <div style="flex: 1; border-top: 2px solid {c_m1}; padding-top:2px;">
-                        <div style="font-size:9px; color:#888;">1M</div>
-                        <div style="font-size:12px; color:white;">{m1:+.1f}%</div>
-                    </div>
-                </div>
-            </div>
-            """
+            b_color = "#00aaff" if st.session_state.global_sec == ticker else "#444"
+            bg_color = "#1a2a3a" if st.session_state.global_sec == ticker else "#161616"
+            
+            # Using parentheses for safe string concatenation (no multi-line indentation issues)
+            card_html = (
+                f"<div style='border: 1px solid {b_color}; border-radius: 4px; padding: 5px; text-align: center; margin-bottom: 5px; background-color: {bg_color};'>"
+                f"<div style='font-weight: bold; font-size: 15px; color: white;'>{ticker}</div>"
+                f"<div style='display: flex; justify-content: space-between; gap: 5px; margin-top: 5px;'>"
+                f"<div style='flex: 1; border-top: 2px solid {c_w1}; padding-top:2px;'>"
+                f"<div style='font-size:9px; color:#888;'>1W</div>"
+                f"<div style='font-size:12px; color:white;'>{w1:+.1f}%</div>"
+                f"</div>"
+                f"<div style='flex: 1; border-top: 2px solid {c_m1}; padding-top:2px;'>"
+                f"<div style='font-size:9px; color:#888;'>1M</div>"
+                f"<div style='font-size:12px; color:white;'>{m1:+.1f}%</div>"
+                f"</div></div></div>"
+            )
+            
             with cols[col_idx]:
                 st.markdown(card_html, unsafe_allow_html=True)
                 if st.button(f"Inspect {ticker}", key=f"btn_{ticker}", use_container_width=True):
@@ -1051,24 +1051,24 @@ def show_global_birdseye(df_inds, df_all_ret):
                         w1_c = "#00ff00" if pd.notna(w1_v) and w1_v > 0 else "#ff4b4b"
                         m1_c = "#00ff00" if pd.notna(m1_v) and m1_v > 0 else "#ff4b4b"
                         
-                        rows_html += f"""
-                        <div style="display: flex; justify-content: space-between; border-bottom: 1px solid #222; padding: 6px 0;">
-                            <div style="font-size: 11px; color: #ddd; width: 55%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{name}</div>
-                            <div style="font-size: 12px; color: {w1_c}; width: 22%; text-align: right; font-family: monospace;">{w1_v:+.1f}%</div>
-                            <div style="font-size: 12px; color: {m1_c}; width: 22%; text-align: right; font-family: monospace;">{m1_v:+.1f}%</div>
-                        </div>
-                        """
+                        rows_html += (
+                            f"<div style='display: flex; justify-content: space-between; border-bottom: 1px solid #222; padding: 6px 0;'>"
+                            f"<div style='font-size: 11px; color: #ddd; width: 55%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;'>{name}</div>"
+                            f"<div style='font-size: 12px; color: {w1_c}; width: 22%; text-align: right; font-family: monospace;'>{w1_v:+.1f}%</div>"
+                            f"<div style='font-size: 12px; color: {m1_c}; width: 22%; text-align: right; font-family: monospace;'>{m1_v:+.1f}%</div>"
+                            f"</div>"
+                        )
                     
-                    list_html = f"""
-                    <div style="display: flex; justify-content: space-between; border-bottom: 1px solid #444; padding-bottom: 4px; margin-bottom: 4px;">
-                        <div style="font-size: 10px; color: #888; width: 55%;">INDUSTRY</div>
-                        <div style="font-size: 10px; color: #888; width: 22%; text-align: right;">1W</div>
-                        <div style="font-size: 10px; color: #888; width: 22%; text-align: right;">1M</div>
-                    </div>
-                    <div style="height: 380px; overflow-y: auto; padding-right: 5px;">
-                        {rows_html}
-                    </div>
-                    """
+                    list_html = (
+                        f"<div style='display: flex; justify-content: space-between; border-bottom: 1px solid #444; padding-bottom: 4px; margin-bottom: 4px;'>"
+                        f"<div style='font-size: 10px; color: #888; width: 55%;'>INDUSTRY</div>"
+                        f"<div style='font-size: 10px; color: #888; width: 22%; text-align: right;'>1W</div>"
+                        f"<div style='font-size: 10px; color: #888; width: 22%; text-align: right;'>1M</div>"
+                        f"</div>"
+                        f"<div style='height: 380px; overflow-y: auto; padding-right: 5px;'>"
+                        f"{rows_html}"
+                        f"</div>"
+                    )
                     st.markdown(list_html, unsafe_allow_html=True)
                     
                     st.markdown("<br>", unsafe_allow_html=True)
