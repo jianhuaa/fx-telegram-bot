@@ -409,7 +409,10 @@ def get_marketbeat_news_live(ticker):
     search_ticker = "FI" if ticker == "FISV" else ticker.replace('.', '-')
 
     co = ChromiumOptions()
-    co.set_browser_path('/usr/bin/google-chrome-stable')
+    
+    # 🔴 UPDATE THIS LINE FOR STREAMLIT CLOUD
+    co.set_browser_path('/usr/bin/chromium') 
+    
     co.set_local_port(9333)
     co.set_argument('--headless=new')
     co.set_argument('--no-sandbox')
