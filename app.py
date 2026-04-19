@@ -797,7 +797,7 @@ def get_verified_fsli_data(ticker):
         'Gross Marg %': 'gross_margin_ttm',
         'Op Marg %': 'operating_margin_ttm',
         'Net Marg %': 'net_margin_ttm',
-        'Cash/Debt %': 'cash_n_short_term_invest_to_total_debt_fq'
+        'Cash/Debt Ratio': 'cash_n_short_term_invest_to_total_debt_fq'
     }
 
     tv_fields = ['name', 'close', 'cash_n_equivalents_fq', 'gross_margin_fy'] + [v for v in field_mapping.values() if v is not None and v != 'close']
@@ -894,6 +894,8 @@ def get_verified_fsli_data(ticker):
             res[display_name] = f"${val:,.2f}"
         elif display_name in ['P/E Ratio']:
             res[display_name] = f"{val:,.2f}"
+        elif 'Ratio' in display_name:              # <-- ADD THIS
+            res[display_name] = f"{val:,.2f}x"     # <-- ADD THIS
         else:
             res[display_name] = f"${val / 1_000_000:,.0f}"
 
