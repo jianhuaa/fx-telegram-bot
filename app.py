@@ -1686,7 +1686,7 @@ def show_industry_overview_overlay(df_all_returns, df_industries, selected_secto
                                 return datetime.datetime(1900, 1, 1)
                                 
                         df_combined_news['sort_date'] = df_combined_news['Date'].apply(parse_for_sort)
-                        df_combined_news = df_combined_news.sort_values(by='sort_date', ascending=False).drop(columns=['sort_date'])
+                        df_combined_news = df_combined_news.sort_values(by=['Ticker', 'sort_date'], ascending=[True, False]).drop(columns=['sort_date'])
                         
                         # Render the Table
                         fig_news2 = go.Figure(data=[go.Table(
