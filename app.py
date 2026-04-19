@@ -1725,7 +1725,7 @@ c4_top = c4.container()
 c2_top = c2.container()
 
 with c4_top:
-    b_col1, b_col2, b_col3, b_col4 = st.columns([0.22, 0.26, 0.26, 0.26])
+    b_col1, b_col2, b_col3, b_col4 = st.columns([0.28, 0.24, 0.24, 0.24])
     with b_col1:
         tf_sel = st.selectbox("TF", ["1D", "1W", "1M", "3M", "1Y"], index=4, label_visibility="collapsed")
 
@@ -1820,14 +1820,14 @@ with c4_top:
             st.toast("Global View Loading...")
             
     with b_col3:
-        if st.button("📊 Brief", use_container_width=True):
+        if st.button("📊", use_container_width=True):
             btn_loader = show_gxs_loader()
             time.sleep(2)
             btn_loader.empty()
             show_summary_overlay(tf_sel, selected_sector, df_all_ret)
             #show_summary_overlay(tf_sel, selected_sector, df_all_ret)
     with b_col4:
-        if st.button("🔭 Industry", use_container_width=True):
+        if st.button("🔭", use_container_width=True):
             btn_loader = show_gxs_loader()
             time.sleep(2)
             btn_loader.empty()
