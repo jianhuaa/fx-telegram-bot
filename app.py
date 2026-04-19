@@ -471,7 +471,7 @@ def get_marketbeat_news_live(ticker):
                         news_data.append({
                             'Date': date_str,
                             'Ticker': ticker,
-                            'Title': title[:70] + "..." if len(title) > 70 else title,
+                            'Title': title[:100] + "..." if len(title) > 100 else title,
                             'Link': f"<a href='{href}'>Link</a>"
                         })
                         items_found += 1
@@ -1690,7 +1690,7 @@ def show_industry_overview_overlay(df_all_returns, df_industries, selected_secto
                         
                         # Render the Table
                         fig_news2 = go.Figure(data=[go.Table(
-                            columnwidth=[50, 35, 160, 25],
+                            columnwidth=[30, 20, 200, 20],
                             header=dict(
                                 values=['<b>DATE</b>','<b>TICK</b>','<b>HEADLINE</b>','<b>LINK</b>'], 
                                 fill_color='#161616', 
