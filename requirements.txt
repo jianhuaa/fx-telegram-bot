@@ -13,3 +13,4 @@ fastparquet
 pyarrow
 python-dateutil
 curl_cffi
+DrissionPage
