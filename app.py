@@ -975,8 +975,9 @@ def get_live_col4_data():
 # ---------------------------------------------------------
 @st.dialog("\u200B", width="large")
 def show_global_birdseye(df_inds, df_all_ret):
-    st.markdown("<h4 style='color:#00aaff; margin-top:-15px;'>🌍 The Sector Detangler</h4>", unsafe_allow_html=True)
+    st.markdown("<h4 style='color:#00aaff; margin-top:-15px;'>🌍 Global View</h4>", unsafe_allow_html=True)
     
+    # Safely pull 3M to guarantee 1W/1M calcs are available
     with st.spinner("Compiling Global View..."):
         df_hist, _ = get_historical_charts_data("3M")
         df_sec_px, _ = get_sector_data("3M")
@@ -990,17 +991,21 @@ def show_global_birdseye(df_inds, df_all_ret):
     if 'global_sec' not in st.session_state:
         st.session_state.global_sec = 'SPX'
         
-    c_grid, c_list = st.columns([0.62, 0.38], gap="medium")
+    # ==========================================
+    # ROW 1: TOP HALF (Macro Grid & Industry List)
+    # ==========================================
+    c_top_left, c_top_right = st.columns([0.5, 0.5], gap="medium")
     
-    # --- PANE A: THE FIXED MACRO GRID ---
-    with c_grid:
-        st.markdown("<div style='color:#888; font-size:12px; margin-bottom:10px;'>MACRO GRID (Click to Detangle)</div>", unsafe_allow_html=True)
+    with c_top_left:
+        # Alphabetical sorting with SPX fixed at the front
+        sector_list = sorted(['XLK', 'XLF', 'XLV', 'XLY', 'XLC', 'XLI', 'XLP', 'XLE', 'XLRE', 'XLU', 'XLB'])
+        grid_items = ['SPX'] + sector_list
         
-        grid_items = ['SPX', 'XLK', 'XLF', 'XLV', 'XLY', 'XLC', 'XLI', 'XLP', 'XLE', 'XLRE', 'XLU', 'XLB']
-        cols = st.columns(3)
+        # 4 columns x 3 rows = 12 tiles
+        cols = st.columns(4)
         
         for i, ticker in enumerate(grid_items):
-            col_idx = i % 3
+            col_idx = i % 4
             w1, m1 = get_returns(df_hist['SPX']) if ticker == 'SPX' else get_returns(df_sec_px[ticker])
                 
             c_w1 = "#00aaff" if ticker == 'SPX' else ("#00ff00" if w1 >= 0 else "#ff4b4b")
@@ -1009,34 +1014,32 @@ def show_global_birdseye(df_inds, df_all_ret):
             b_color = "#00aaff" if st.session_state.global_sec == ticker else "#444"
             bg_color = "#1a2a3a" if st.session_state.global_sec == ticker else "#161616"
             
-            # Using parentheses for safe string concatenation (no multi-line indentation issues)
+            # The HTML Badge sits under the native Streamlit button
             card_html = (
-                f"<div style='border: 1px solid {b_color}; border-radius: 4px; padding: 5px; text-align: center; margin-bottom: 5px; background-color: {bg_color};'>"
-                f"<div style='font-weight: bold; font-size: 15px; color: white;'>{ticker}</div>"
-                f"<div style='display: flex; justify-content: space-between; gap: 5px; margin-top: 5px;'>"
+                f"<div style='border: 1px solid {b_color}; border-top: none; border-bottom-left-radius: 4px; border-bottom-right-radius: 4px; padding: 2px 5px 5px 5px; text-align: center; margin-bottom: 5px; background-color: {bg_color}; margin-top:-5px;'>"
+                f"<div style='display: flex; justify-content: space-between; gap: 5px;'>"
                 f"<div style='flex: 1; border-top: 2px solid {c_w1}; padding-top:2px;'>"
                 f"<div style='font-size:9px; color:#888;'>1W</div>"
-                f"<div style='font-size:12px; color:white;'>{w1:+.1f}%</div>"
+                f"<div style='font-size:11px; color:white;'>{w1:+.1f}%</div>"
                 f"</div>"
                 f"<div style='flex: 1; border-top: 2px solid {c_m1}; padding-top:2px;'>"
                 f"<div style='font-size:9px; color:#888;'>1M</div>"
-                f"<div style='font-size:12px; color:white;'>{m1:+.1f}%</div>"
+                f"<div style='font-size:11px; color:white;'>{m1:+.1f}%</div>"
                 f"</div></div></div>"
             )
             
             with cols[col_idx]:
-                st.markdown(card_html, unsafe_allow_html=True)
-                if st.button(f"Inspect {ticker}", key=f"btn_{ticker}", use_container_width=True):
+                if st.button(ticker, key=f"btn_{ticker}", use_container_width=True):
                     st.session_state.global_sec = ticker
                     st.rerun()
+                st.markdown(card_html, unsafe_allow_html=True)
 
-    # --- PANE B: THE SCROLLING DETANGLER ---
-    with c_list:
+    with c_top_right:
         active = st.session_state.global_sec
         st.markdown(f"<div style='color:#00aaff; font-size:12px; font-weight:bold; margin-bottom:10px; border-bottom:1px solid #333; padding-bottom:5px;'>🔬 {active} SUB-INDUSTRIES</div>", unsafe_allow_html=True)
         
         if active == 'SPX':
-            st.info("SPX Selected. Click any Sector ETF to detangle its underlying industries.")
+            st.info("SPX Selected. Click any Sector ETF to the left to detangle its industries.")
         else:
             if not df_inds.empty:
                 ind_df = df_inds[df_inds['ETF'] == active].copy()
@@ -1046,40 +1049,87 @@ def show_global_birdseye(df_inds, df_all_ret):
                     rows_html = ""
                     for _, row in ind_df.iterrows():
                         name = str(row['IND_A']).replace('<br>', ' ')
-                        name = name[:20] + "..." if len(name) > 20 else name
+                        # Index Mapper based on Cap size
+                        cap_type = row['Cap']
+                        idx_label = "SPX" if cap_type == 'L' else ("RMC" if cap_type == 'M' else "RTY")
+                        
                         w1_v, m1_v = row['1W_raw'], row['1M_raw']
                         w1_c = "#00ff00" if pd.notna(w1_v) and w1_v > 0 else "#ff4b4b"
                         m1_c = "#00ff00" if pd.notna(m1_v) and m1_v > 0 else "#ff4b4b"
                         
                         rows_html += (
                             f"<div style='display: flex; justify-content: space-between; border-bottom: 1px solid #222; padding: 6px 0;'>"
-                            f"<div style='font-size: 11px; color: #ddd; width: 55%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;'>{name}</div>"
-                            f"<div style='font-size: 12px; color: {w1_c}; width: 22%; text-align: right; font-family: monospace;'>{w1_v:+.1f}%</div>"
-                            f"<div style='font-size: 12px; color: {m1_c}; width: 22%; text-align: right; font-family: monospace;'>{m1_v:+.1f}%</div>"
+                            f"<div style='font-size: 11px; color: #ddd; width: 45%;'>{name}</div>"
+                            f"<div style='font-size: 10px; color: #aaa; width: 15%; text-align: center; margin-top: 1px;'>{idx_label}</div>"
+                            f"<div style='font-size: 12px; color: {w1_c}; width: 20%; text-align: right; font-family: monospace;'>{w1_v:+.1f}%</div>"
+                            f"<div style='font-size: 12px; color: {m1_c}; width: 20%; text-align: right; font-family: monospace;'>{m1_v:+.1f}%</div>"
                             f"</div>"
                         )
                     
                     list_html = (
                         f"<div style='display: flex; justify-content: space-between; border-bottom: 1px solid #444; padding-bottom: 4px; margin-bottom: 4px;'>"
-                        f"<div style='font-size: 10px; color: #888; width: 55%;'>INDUSTRY</div>"
-                        f"<div style='font-size: 10px; color: #888; width: 22%; text-align: right;'>1W</div>"
-                        f"<div style='font-size: 10px; color: #888; width: 22%; text-align: right;'>1M</div>"
+                        f"<div style='font-size: 10px; color: #888; width: 45%;'>INDUSTRY</div>"
+                        f"<div style='font-size: 10px; color: #888; width: 15%; text-align: center;'>INDEX</div>"
+                        f"<div style='font-size: 10px; color: #888; width: 20%; text-align: right;'>1W</div>"
+                        f"<div style='font-size: 10px; color: #888; width: 20%; text-align: right;'>1M</div>"
                         f"</div>"
-                        f"<div style='height: 380px; overflow-y: auto; padding-right: 5px;'>"
+                        f"<div style='height: 250px; overflow-y: auto; padding-right: 5px;'>"
                         f"{rows_html}"
                         f"</div>"
                     )
                     st.markdown(list_html, unsafe_allow_html=True)
-                    
-                    st.markdown("<br>", unsafe_allow_html=True)
-                    if st.button(f"🔭 Deep Dive {active}", use_container_width=True):
-                        # Close this dialog and route to Dialog 2
-                        st.session_state['trigger_industry_dialog'] = True
-                        st.session_state['passed_sector'] = active
-                        st.session_state['passed_industry'] = None
-                        st.rerun()
                 else:
                     st.warning(f"No industry data available for {active}.")
+
+    st.markdown("<hr style='margin: 10px 0; border-color:#333;'>", unsafe_allow_html=True)
+
+    # ==========================================
+    # ROW 2: BOTTOM HALF (Worst Tickers & FSLI Placeholder)
+    # ==========================================
+    c_bot_left, c_bot_right = st.columns([0.5, 0.5], gap="medium")
+    
+    with c_bot_left:
+        st.markdown(f"<div style='color:#ff4b4b; font-size:12px; font-weight:bold; margin-bottom:5px;'>🔴 {active} LOSERS (1W or 1M Bleeding)</div>", unsafe_allow_html=True)
+        if active == 'SPX':
+            st.info("Select a Sector above to view its bleeding tickers.")
+        elif not df_all_ret.empty:
+            df_losers = df_all_ret[df_all_ret['Sector'] == active].copy()
+            if not df_losers.empty:
+                # Active Logic: Filter for losses in either 1W or 1M
+                df_losers = df_losers[(df_losers['1W_raw'] < 0) | (df_losers['1M_raw'] < 0)]
+                if not df_losers.empty:
+                    df_losers = df_losers.sort_values(by='1W_raw', ascending=True).head(50)
+                    
+                    df_losers['1W'] = df_losers['1W_raw'].apply(lambda x: f"{x:+.1f}%" if pd.notna(x) else "-")
+                    df_losers['1M'] = df_losers['1M_raw'].apply(lambda x: f"{x:+.1f}%" if pd.notna(x) else "-")
+                    
+                    fig_losers = go.Figure(data=[go.Table(
+                        columnwidth=[35, 30, 90, 35, 35],
+                        header=dict(values=['<b>TICK</b>','<b>IDX</b>','<b>INDUSTRY</b>','<b>1W</b>','<b>1M</b>'], fill_color='#161616', font=dict(color='#ff5252',size=10), align=['left','center','left','right','right']),
+                        cells=dict(values=[df_losers['Ticker'], df_losers['Index'], df_losers['Industry'], df_losers['1W'], df_losers['1M']], fill_color='#0d0d0d', font=dict(color='white',size=10), align=['left','center','left','right','right'], height=26)
+                    )])
+                    fig_losers.update_layout(margin=dict(l=0,r=0,t=0,b=0), height=300)
+                    st.plotly_chart(fig_losers, use_container_width=True)
+                else:
+                    st.success("No bleeding tickers found! Everything is green.")
+            else:
+                st.warning("No ticker data found for this sector.")
+
+    with c_bot_right:
+        st.markdown(f"<div style='color:#f4ca16; font-size:12px; font-weight:bold; margin-bottom:5px;'>⚖️ COMPARISON ENGINE</div>", unsafe_allow_html=True)
+        
+        # FSLI / Composite Options Placeholder
+        st.markdown("""
+        <div style='border:1px dashed #444; border-radius:4px; padding:20px; height:300px; display:flex; flex-direction:column; justify-content:center; align-items:center; background-color:#111;'>
+            <h5 style='color:#00aaff; text-align:center; margin-bottom:10px;'>Constructing the Alpha Engine...</h5>
+            <p style='color:#888; font-size:12px; text-align:center;'>This quadrant is reserved for the FSLI Composite Weighting and Options Open Interest overlay.</p>
+            <ul style='color:#666; font-size:11px;'>
+                <li>Z-Score Factor Radars (Value, Quality, Risk)</li>
+                <li>FSLI Composite Health Weightings</li>
+                <li>Dynamic Put/Call OI Overlays</li>
+            </ul>
+        </div>
+        """, unsafe_allow_html=True)
 
 # ---------------------------------------------------------
 # DIALOG 1: SUMMARY / TICKERS PLACEHOLDER
