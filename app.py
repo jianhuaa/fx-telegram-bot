@@ -987,9 +987,9 @@ def show_global_birdseye(df_inds, df_all_ret):
         r_1m = (price_col.iloc[-1] / price_col.iloc[-22] - 1) * 100
         return r_1w, r_1m
 
-    # Default states
+    # Multi-select state uses a list instead of a string
     if 'global_sec' not in st.session_state:
-        st.session_state.global_sec = 'SPX'
+        st.session_state.global_sec = ['SPX']
     if 'global_sort' not in st.session_state:
         st.session_state.global_sort = '1W'
         
@@ -1011,12 +1011,14 @@ def show_global_birdseye(df_inds, df_all_ret):
             c_w1 = "#00aaff" if ticker == 'SPX' else ("#00ff00" if w1 >= 0 else "#ff4b4b")
             c_m1 = "#00aaff" if ticker == 'SPX' else ("#00ff00" if m1 >= 0 else "#ff4b4b")
             
-            b_color = "#00aaff" if st.session_state.global_sec == ticker else "#444"
-            bg_color = "#1a2a3a" if st.session_state.global_sec == ticker else "#161616"
+            # Check if ticker is in our multi-select list
+            is_active = ticker in st.session_state.global_sec
+            b_color = "#00aaff" if is_active else "#444"
+            bg_color = "#1a2a3a" if is_active else "#161616"
             
-            # Fixed HTML: Removed negative margins to prevent stacking/overlap
+            # Increased padding to stretch the cards taller
             card_html = (
-                f"<div style='border: 1px solid {b_color}; border-top: none; border-bottom-left-radius: 4px; border-bottom-right-radius: 4px; padding: 4px; text-align: center; margin-bottom: 12px; background-color: {bg_color};'>"
+                f"<div style='border: 1px solid {b_color}; border-top: none; border-bottom-left-radius: 4px; border-bottom-right-radius: 4px; padding: 12px 5px 8px 5px; text-align: center; margin-bottom: 12px; background-color: {bg_color}; margin-top:-5px;'>"
                 f"<div style='display: flex; justify-content: space-between; gap: 5px;'>"
                 f"<div style='flex: 1; border-top: 2px solid {c_w1}; padding-top:2px;'>"
                 f"<div style='font-size:9px; color:#888;'>1W</div>"
@@ -1029,32 +1031,41 @@ def show_global_birdseye(df_inds, df_all_ret):
             )
             
             with cols[col_idx]:
-                # Removed st.rerun() so the dialog STAYS OPEN on click
                 if st.button(ticker, key=f"btn_{ticker}", use_container_width=True):
-                    st.session_state.global_sec = ticker
+                    # Multi-Select Toggle Logic
+                    if ticker in st.session_state.global_sec:
+                        # Prevent deselecting the last item
+                        if len(st.session_state.global_sec) > 1:
+                            st.session_state.global_sec.remove(ticker)
+                    else:
+                        st.session_state.global_sec.append(ticker)
+                    st.rerun()
                 st.markdown(card_html, unsafe_allow_html=True)
 
     with c_top_right:
-        active = st.session_state.global_sec
+        active_list = st.session_state.global_sec
+        # Format the title nicely if many sectors are selected
+        active_str = ", ".join(active_list) if len(active_list) <= 3 else f"{len(active_list)} SECTORS"
         
-        # Layout for Title and Native Sorting Toggle
         t_col1, t_col2 = st.columns([0.6, 0.4])
         with t_col1:
-            st.markdown(f"<div style='color:#00aaff; font-size:12px; font-weight:bold; margin-top:8px;'>🔬 {active} SUB-INDUSTRIES</div>", unsafe_allow_html=True)
+            st.markdown(f"<div style='color:#00aaff; font-size:12px; font-weight:bold; margin-top:8px;'>🔬 {active_str} SUB-INDUSTRIES</div>", unsafe_allow_html=True)
         with t_col2:
             sort_choice = st.radio("Sort Focus:", ["1W", "1M"], horizontal=True, label_visibility="collapsed")
         
         st.markdown("<div style='border-bottom:1px solid #333; margin-bottom:10px;'></div>", unsafe_allow_html=True)
         
-        if active == 'SPX':
+        # SPX isn't an ETF with sub-industries in our df, so we filter it out for the tables
+        active_etfs = [x for x in active_list if x != 'SPX']
+        
+        if not active_etfs and 'SPX' in active_list:
             st.info("SPX Selected. Click any Sector ETF to the left to detangle its industries.")
         else:
             if not df_inds.empty:
-                ind_df = df_inds[df_inds['ETF'] == active].copy()
+                ind_df = df_inds[df_inds['ETF'].isin(active_etfs)].copy()
                 if not ind_df.empty:
-                    # Dynamic sorting based on the radio button
                     sort_column = '1W_raw' if sort_choice == "1W" else '1M_raw'
-                    ind_df = ind_df.sort_values(by=sort_column, ascending=True) # Ascending puts biggest bleeding first
+                    ind_df = ind_df.sort_values(by=sort_column, ascending=True)
                     
                     rows_html = ""
                     for _, row in ind_df.iterrows():
@@ -1066,7 +1077,6 @@ def show_global_birdseye(df_inds, df_all_ret):
                         w1_c = "#00ff00" if pd.notna(w1_v) and w1_v > 0 else "#ff4b4b"
                         m1_c = "#00ff00" if pd.notna(m1_v) and m1_v > 0 else "#ff4b4b"
                         
-                        # Centered Data Columns
                         rows_html += (
                             f"<div style='display: flex; justify-content: space-between; border-bottom: 1px solid #222; padding: 6px 0;'>"
                             f"<div style='font-size: 11px; color: #ddd; width: 40%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;'>{name}</div>"
@@ -1076,9 +1086,9 @@ def show_global_birdseye(df_inds, df_all_ret):
                             f"</div>"
                         )
                     
-                    # Fixed Headers: Moved down via margin, and centered properly
+                    # Added margin-top: 15px to push header away from the radio button
                     list_html = (
-                        f"<div style='display: flex; justify-content: space-between; border-bottom: 1px solid #444; padding-bottom: 4px; margin-bottom: 4px; margin-top: 5px;'>"
+                        f"<div style='display: flex; justify-content: space-between; border-bottom: 1px solid #444; padding-bottom: 4px; margin-bottom: 4px; margin-top: 15px;'>"
                         f"<div style='font-size: 10px; color: #888; width: 40%;'>INDUSTRY</div>"
                         f"<div style='font-size: 10px; color: #888; width: 20%; text-align: center;'>INDEX</div>"
                         f"<div style='font-size: 10px; color: #888; width: 20%; text-align: center;'>1W</div>"
@@ -1090,9 +1100,10 @@ def show_global_birdseye(df_inds, df_all_ret):
                     )
                     st.markdown(list_html, unsafe_allow_html=True)
                 else:
-                    st.warning(f"No industry data available for {active}.")
+                    st.warning(f"No industry data available for {active_str}.")
 
-    st.markdown("<hr style='margin: 10px 0; border-color:#333;'>", unsafe_allow_html=True)
+    # Pushes Row 2 down by 25px
+    st.markdown("<div style='height:25px;'></div><hr style='margin: 0; border-color:#333;'><div style='height:15px;'></div>", unsafe_allow_html=True)
 
     # ==========================================
     # ROW 2: BOTTOM HALF (Worst Tickers & FSLI Placeholder)
@@ -1100,15 +1111,14 @@ def show_global_birdseye(df_inds, df_all_ret):
     c_bot_left, c_bot_right = st.columns([0.5, 0.5], gap="medium")
     
     with c_bot_left:
-        st.markdown(f"<div style='color:#ff4b4b; font-size:12px; font-weight:bold; margin-bottom:5px;'>🔴 {active} LOSERS (Sorted by {sort_choice})</div>", unsafe_allow_html=True)
-        if active == 'SPX':
+        st.markdown(f"<div style='color:#ff4b4b; font-size:12px; font-weight:bold; margin-bottom:5px;'>🔴 {active_str} LOSERS (Sorted by {sort_choice})</div>", unsafe_allow_html=True)
+        if not active_etfs and 'SPX' in active_list:
             st.info("Select a Sector above to view its bleeding tickers.")
         elif not df_all_ret.empty:
-            df_losers = df_all_ret[df_all_ret['Sector'] == active].copy()
+            df_losers = df_all_ret[df_all_ret['Sector'].isin(active_etfs)].copy()
             if not df_losers.empty:
                 df_losers = df_losers[(df_losers['1W_raw'] < 0) | (df_losers['1M_raw'] < 0)]
                 if not df_losers.empty:
-                    # Dynamically sort the Losers table based on the radio button choice
                     sort_column = '1W_raw' if sort_choice == "1W" else '1M_raw'
                     df_losers = df_losers.sort_values(by=sort_column, ascending=True).head(50)
                     
@@ -1120,7 +1130,8 @@ def show_global_birdseye(df_inds, df_all_ret):
                         header=dict(values=['<b>TICK</b>','<b>IDX</b>','<b>INDUSTRY</b>','<b>1W</b>','<b>1M</b>'], fill_color='#161616', font=dict(color='#ff5252',size=10), align=['left','center','left','right','right']),
                         cells=dict(values=[df_losers['Ticker'], df_losers['Index'], df_losers['Industry'], df_losers['1W'], df_losers['1M']], fill_color='#0d0d0d', font=dict(color='white',size=10), align=['left','center','left','right','right'], height=26)
                     )])
-                    fig_losers.update_layout(margin=dict(l=0,r=0,t=0,b=0), height=300)
+                    # Added top margin (t=10) to separate table from the title
+                    fig_losers.update_layout(margin=dict(l=0,r=0,t=10,b=0), height=300)
                     st.plotly_chart(fig_losers, use_container_width=True)
                 else:
                     st.success("No bleeding tickers found! Everything is green.")
@@ -1131,7 +1142,7 @@ def show_global_birdseye(df_inds, df_all_ret):
         st.markdown(f"<div style='color:#f4ca16; font-size:12px; font-weight:bold; margin-bottom:5px;'>⚖️ COMPARISON ENGINE</div>", unsafe_allow_html=True)
         
         placeholder_html = (
-            "<div style='border:1px dashed #444; border-radius:4px; padding:20px; height:300px; display:flex; flex-direction:column; justify-content:center; align-items:center; background-color:#111;'>"
+            "<div style='border:1px dashed #444; border-radius:4px; padding:20px; height:295px; margin-top:10px; display:flex; flex-direction:column; justify-content:center; align-items:center; background-color:#111;'>"
             "<h5 style='color:#00aaff; text-align:center; margin-bottom:10px;'>Constructing the Alpha Engine...</h5>"
             "<p style='color:#888; font-size:12px; text-align:center;'>This quadrant is reserved for the FSLI Composite Weighting and Options Open Interest overlay.</p>"
             "<ul style='color:#666; font-size:11px;'>"
