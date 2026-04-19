@@ -969,6 +969,117 @@ def get_live_col4_data():
 
         return df_sec, df_transcripts, df_all_ret
     except: return pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
+    
+# ---------------------------------------------------------
+# DIALOG 0: GLOBAL BIRD'S EYE VIEW
+# ---------------------------------------------------------
+@st.dialog("\u200B", width="large")
+def show_global_birdseye(df_inds, df_all_ret):
+    st.markdown("<h4 style='color:#00aaff; margin-top:-15px;'>🌍 The Sector Detangler</h4>", unsafe_allow_html=True)
+    
+    # Safely grab 3M data behind the scenes to guarantee we can calculate 1W and 1M
+    # regardless of what timeframe the user selected on the main screen.
+    with st.spinner("Compiling Global View..."):
+        df_hist, _ = get_historical_charts_data("3M")
+        df_sec_px, _ = get_sector_data("3M")
+        
+    def get_returns(price_col):
+        if price_col.empty or len(price_col) < 22: return 0.0, 0.0
+        r_1w = (price_col.iloc[-1] / price_col.iloc[-6] - 1) * 100
+        r_1m = (price_col.iloc[-1] / price_col.iloc[-22] - 1) * 100
+        return r_1w, r_1m
+
+    if 'global_sec' not in st.session_state:
+        st.session_state.global_sec = 'SPX'
+        
+    c_grid, c_list = st.columns([0.62, 0.38], gap="medium")
+    
+    # --- PANE A: THE FIXED MACRO GRID ---
+    with c_grid:
+        st.markdown("<div style='color:#888; font-size:12px; margin-bottom:10px;'>MACRO GRID (Click to Detangle)</div>", unsafe_allow_html=True)
+        
+        grid_items = ['SPX', 'XLK', 'XLF', 'XLV', 'XLY', 'XLC', 'XLI', 'XLP', 'XLE', 'XLRE', 'XLU', 'XLB']
+        cols = st.columns(3)
+        
+        for i, ticker in enumerate(grid_items):
+            col_idx = i % 3
+            w1, m1 = get_returns(df_hist['SPX']) if ticker == 'SPX' else get_returns(df_sec_px[ticker])
+                
+            c_w1 = "#00aaff" if ticker == 'SPX' else ("#00ff00" if w1 >= 0 else "#ff4b4b")
+            c_m1 = "#00aaff" if ticker == 'SPX' else ("#00ff00" if m1 >= 0 else "#ff4b4b")
+            
+            # The dual-badge design (much cleaner than diagonals)
+            card_html = f"""
+            <div style="border: 1px solid {'#00aaff' if st.session_state.global_sec == ticker else '#444'}; border-radius: 4px; padding: 5px; text-align: center; margin-bottom: 5px; background-color: {'#1a2a3a' if st.session_state.global_sec == ticker else '#161616'};">
+                <div style="font-weight: bold; font-size: 15px; color: white;">{ticker}</div>
+                <div style="display: flex; justify-content: space-between; gap: 5px; margin-top: 5px;">
+                    <div style="flex: 1; border-top: 2px solid {c_w1}; padding-top:2px;">
+                        <div style="font-size:9px; color:#888;">1W</div>
+                        <div style="font-size:12px; color:white;">{w1:+.1f}%</div>
+                    </div>
+                    <div style="flex: 1; border-top: 2px solid {c_m1}; padding-top:2px;">
+                        <div style="font-size:9px; color:#888;">1M</div>
+                        <div style="font-size:12px; color:white;">{m1:+.1f}%</div>
+                    </div>
+                </div>
+            </div>
+            """
+            with cols[col_idx]:
+                st.markdown(card_html, unsafe_allow_html=True)
+                if st.button(f"Inspect {ticker}", key=f"btn_{ticker}", use_container_width=True):
+                    st.session_state.global_sec = ticker
+                    st.rerun()
+
+    # --- PANE B: THE SCROLLING DETANGLER ---
+    with c_list:
+        active = st.session_state.global_sec
+        st.markdown(f"<div style='color:#00aaff; font-size:12px; font-weight:bold; margin-bottom:10px; border-bottom:1px solid #333; padding-bottom:5px;'>🔬 {active} SUB-INDUSTRIES</div>", unsafe_allow_html=True)
+        
+        if active == 'SPX':
+            st.info("SPX Selected. Click any Sector ETF to detangle its underlying industries.")
+        else:
+            if not df_inds.empty:
+                ind_df = df_inds[df_inds['ETF'] == active].copy()
+                if not ind_df.empty:
+                    ind_df = ind_df.sort_values(by='1W_raw', ascending=False)
+                    
+                    rows_html = ""
+                    for _, row in ind_df.iterrows():
+                        name = str(row['IND_A']).replace('<br>', ' ')
+                        name = name[:20] + "..." if len(name) > 20 else name
+                        w1_v, m1_v = row['1W_raw'], row['1M_raw']
+                        w1_c = "#00ff00" if pd.notna(w1_v) and w1_v > 0 else "#ff4b4b"
+                        m1_c = "#00ff00" if pd.notna(m1_v) and m1_v > 0 else "#ff4b4b"
+                        
+                        rows_html += f"""
+                        <div style="display: flex; justify-content: space-between; border-bottom: 1px solid #222; padding: 6px 0;">
+                            <div style="font-size: 11px; color: #ddd; width: 55%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{name}</div>
+                            <div style="font-size: 12px; color: {w1_c}; width: 22%; text-align: right; font-family: monospace;">{w1_v:+.1f}%</div>
+                            <div style="font-size: 12px; color: {m1_c}; width: 22%; text-align: right; font-family: monospace;">{m1_v:+.1f}%</div>
+                        </div>
+                        """
+                    
+                    list_html = f"""
+                    <div style="display: flex; justify-content: space-between; border-bottom: 1px solid #444; padding-bottom: 4px; margin-bottom: 4px;">
+                        <div style="font-size: 10px; color: #888; width: 55%;">INDUSTRY</div>
+                        <div style="font-size: 10px; color: #888; width: 22%; text-align: right;">1W</div>
+                        <div style="font-size: 10px; color: #888; width: 22%; text-align: right;">1M</div>
+                    </div>
+                    <div style="height: 380px; overflow-y: auto; padding-right: 5px;">
+                        {rows_html}
+                    </div>
+                    """
+                    st.markdown(list_html, unsafe_allow_html=True)
+                    
+                    st.markdown("<br>", unsafe_allow_html=True)
+                    if st.button(f"🔭 Deep Dive {active}", use_container_width=True):
+                        # Close this dialog and route to Dialog 2
+                        st.session_state['trigger_industry_dialog'] = True
+                        st.session_state['passed_sector'] = active
+                        st.session_state['passed_industry'] = None
+                        st.rerun()
+                else:
+                    st.warning(f"No industry data available for {active}.")
 
 # ---------------------------------------------------------
 # DIALOG 1: SUMMARY / TICKERS PLACEHOLDER
@@ -1812,12 +1923,13 @@ main_loader.empty()
 with c4_top:
     df_sec_filtered = df_sec_live[df_sec_live['Sector'] == selected_sector].copy() if not df_sec_live.empty else pd.DataFrame()
     df_trans_filtered = df_transcripts_live[df_transcripts_live['Sector'] == selected_sector].copy() if not df_transcripts_live.empty else pd.DataFrame()
-
+    
     with b_col2:
-        # 🌍 Global (Bird's Eye View)
-        if st.button("🌍", use_container_width=True, help="Global Bird's Eye View"):
-            # Placeholder for your Global logic
-            st.toast("Global View Loading...")
+            if st.button("🌍", use_container_width=True, help="Global Bird's Eye View"):
+                btn_loader = show_gxs_loader()
+                time.sleep(2) # Give the eye a moment to process the transition
+                btn_loader.empty()
+                show_global_birdseye(df_industries, df_all_ret)
             
     with b_col3:
         if st.button("📊", use_container_width=True):
