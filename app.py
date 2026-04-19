@@ -777,7 +777,8 @@ def get_verified_fsli_data(ticker):
     yf_ticker = ticker.replace('.', '-')
 
     field_mapping = {
-        'Earnings Date': 'earnings_release_trading_date_fq',
+        'Recent Earnings Date': 'earnings_release_trading_date_fq',
+        'Upcoming Earnings Date': 'earnings_release_next_trading_date_fq',
         'Last Price': 'close',
         'Short Interest %': None,  
         '1Y%': None,               
@@ -792,9 +793,11 @@ def get_verified_fsli_data(ticker):
         'ST Debt (M)': 'short_term_debt_fq',
         'LT Debt (M)': 'long_term_debt_fq',
         'Total Debt (M)': 'total_debt_fq',
+        'Goodwill, Net (M)': 'goodwill_fq',
         'Gross Marg %': 'gross_margin_ttm',
         'Op Marg %': 'operating_margin_ttm',
-        'Net Marg %': 'net_margin_ttm'
+        'Net Marg %': 'net_margin_ttm',
+        'Cash/Debt Ratio': 'cash_n_short_term_invest_to_total_debt_fq'
     }
 
     tv_fields = ['name', 'close', 'cash_n_equivalents_fq', 'gross_margin_fy'] + [v for v in field_mapping.values() if v is not None and v != 'close']
