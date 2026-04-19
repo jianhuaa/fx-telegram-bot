@@ -1725,7 +1725,7 @@ c4_top = c4.container()
 c2_top = c2.container()
 
 with c4_top:
-    b_col1, b_col2, b_col3 = st.columns([0.30, 0.35, 0.35])
+    b_col1, b_col2, b_col3, b_col4 = st.columns([0.22, 0.26, 0.26, 0.26])
     with b_col1:
         tf_sel = st.selectbox("TF", ["1D", "1W", "1M", "3M", "1Y"], index=4, label_visibility="collapsed")
 
@@ -1814,13 +1814,19 @@ with c4_top:
     df_trans_filtered = df_transcripts_live[df_transcripts_live['Sector'] == selected_sector].copy() if not df_transcripts_live.empty else pd.DataFrame()
 
     with b_col2:
+        # 🌍 Global (Bird's Eye View)
+        if st.button("🌍", use_container_width=True, help="Global Bird's Eye View"):
+            # Placeholder for your Global logic
+            st.toast("Global View Loading...")
+            
+    with b_col3:
         if st.button("📊 Brief", use_container_width=True):
             btn_loader = show_gxs_loader()
             time.sleep(2)
             btn_loader.empty()
             show_summary_overlay(tf_sel, selected_sector, df_all_ret)
             #show_summary_overlay(tf_sel, selected_sector, df_all_ret)
-    with b_col3:
+    with b_col4:
         if st.button("🔭 Industry", use_container_width=True):
             btn_loader = show_gxs_loader()
             time.sleep(2)
