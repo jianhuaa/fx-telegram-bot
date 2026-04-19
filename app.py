@@ -1530,7 +1530,7 @@ def show_industry_overview_overlay(df_all_returns, df_industries, selected_secto
         st.markdown("<div style='height: 40px;'></div>", unsafe_allow_html=True)
 
         # UPDATED TABS: MASTER TICKER HUB
-        t_ins, t_options, t_sec, t_transcript = st.tabs(["🕵️ Insider Trades", "📉 Options", "📄 SEC Filings", "🎙️ Transcript"])
+        t_ins, t_options, t_sec, t_transcript, t_news = st.tabs(["🕵️ Insider Trades", "📉 Options", "📄 SEC Filings", "🎙️ Transcript", "📰 News"])
 
         with t_ins:
             st.markdown("<div style='text-align: right; margin-bottom: -32px; position: relative; z-index: 50; padding-right: 5px; pointer-events: none;'><span style='color:#ff5252; font-weight:bold; font-size:12px;'>🕵️ Insider Trades</span></div>", unsafe_allow_html=True)
@@ -1657,6 +1657,61 @@ def show_industry_overview_overlay(df_all_returns, df_industries, selected_secto
                 st.plotly_chart(fig_trans2, use_container_width=True)
             else:
                 st.markdown(f"<div style='height:{INS_H}px; display:flex; align-items:center; justify-content:center; color:#ab63fa; font-size:12px; border:1px dashed #444; border-radius:4px;'>No recent transcripts found for this sector.</div>", unsafe_allow_html=True)
+
+        with t_news:
+            st.markdown("<div style='text-align: right; margin-top: -50px; margin-bottom: -32px; position: relative; z-index: 50; padding-right: 5px; pointer-events: none;'><span style='color:#f4ca16; font-weight:bold; font-size:12px;'>📰 Live News Wire</span></div>", unsafe_allow_html=True)
+            
+            if selected_tickers:
+                # Button to prevent auto-fetching and freezing the UI on multiselect changes
+                if st.button(f"Fetch Live News for {len(selected_tickers)} Tickers", key="btn_diag2_news", use_container_width=True):
+                    all_news_dfs = []
+                    
+                    with st.spinner(f"Spinning up Chromium to harvest {len(selected_tickers)} tickers. This may take a moment..."):
+                        for tick in selected_tickers:
+                            df_n = get_marketbeat_news_live(tick)
+                            if not df_n.empty:
+                                all_news_dfs.append(df_n)
+                    
+                    if all_news_dfs:
+                        # Combine all DataFrames
+                        df_combined_news = pd.concat(all_news_dfs, ignore_index=True)
+                        
+                        # --- SMART TIME SORTING ---
+                        # Convert the formatted string dates back to datetime temporarily to sort them perfectly
+                        def parse_for_sort(d_str):
+                            if d_str == "Recent": return datetime.datetime.now()
+                            try:
+                                return datetime.datetime.strptime(d_str, "%b %d, %Y")
+                            except:
+                                return datetime.datetime(1900, 1, 1)
+                                
+                        df_combined_news['sort_date'] = df_combined_news['Date'].apply(parse_for_sort)
+                        df_combined_news = df_combined_news.sort_values(by='sort_date', ascending=False).drop(columns=['sort_date'])
+                        
+                        # Render the Table
+                        fig_news2 = go.Figure(data=[go.Table(
+                            columnwidth=[50, 35, 160, 25],
+                            header=dict(
+                                values=['<b>DATE</b>','<b>TICK</b>','<b>HEADLINE</b>','<b>LINK</b>'], 
+                                fill_color='#161616', 
+                                font=dict(color='#f4ca16', size=10), 
+                                align=['left','center','left','center'], 
+                                height=24
+                            ),
+                            cells=dict(
+                                values=[df_combined_news['Date'], df_combined_news['Ticker'], df_combined_news['Title'], df_combined_news['Link']], 
+                                fill_color='#0d0d0d', 
+                                font=dict(color=['white','white','white','#00aaff'], size=10), 
+                                align=['left','center','left','center'], 
+                                height=28
+                            )
+                        )])
+                        fig_news2.update_layout(margin=dict(l=0,r=4,t=0,b=0), height=INS_H)
+                        st.plotly_chart(fig_news2, use_container_width=True)
+                    else:
+                        st.markdown(f"<div style='height:{INS_H}px; display:flex; align-items:center; justify-content:center; color:#f4ca16; font-size:12px; border:1px dashed #444; border-radius:4px;'>No recent news found for selected tickers.</div>", unsafe_allow_html=True)
+            else:
+                st.markdown(f"<div style='height:{INS_H}px; display:flex; align-items:center; justify-content:center; color:#f4ca16; font-size:12px; border:1px dashed #444; border-radius:4px;'>Select tickers from the dropdown to load News.</div>", unsafe_allow_html=True)
 
 CHART_HEIGHT_1 = 185
 TITLE_FONT = dict(size=14, color="white")
