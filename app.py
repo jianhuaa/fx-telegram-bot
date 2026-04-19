@@ -2032,7 +2032,7 @@ if not df_history.empty:
                 if not df_news.empty:
                     fig_news = go.Figure(data=[go.Table(
                         # Adjusted widths since SOURCE is gone: Date (50), Tick (35), Headline (160), Link (25)
-                        columnwidth=[55, 35, 155, 25],
+                        columnwidth=[60, 35, 155, 25],
                         header=dict(
                             values=['<b>DATE</b>','<b>TICK</b>','<b>HEADLINE</b>','<b>LINK</b>'],
                             fill_color='#161616',
