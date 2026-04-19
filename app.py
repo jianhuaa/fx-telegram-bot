@@ -987,11 +987,21 @@ def show_global_birdseye(df_inds, df_all_ret):
         r_1m = (price_col.iloc[-1] / price_col.iloc[-22] - 1) * 100
         return r_1w, r_1m
 
-    # Multi-select state uses a list instead of a string
+    # Multi-select state
     if 'global_sec' not in st.session_state:
         st.session_state.global_sec = ['SPX']
     if 'global_sort' not in st.session_state:
         st.session_state.global_sort = '1W'
+
+    # THE FIX: Callback function to handle clicks without closing the dialog
+    def toggle_sector(ticker_to_toggle):
+        current_list = st.session_state.global_sec.copy()
+        if ticker_to_toggle in current_list:
+            if len(current_list) > 1: # Prevent deselecting the last item
+                current_list.remove(ticker_to_toggle)
+        else:
+            current_list.append(ticker_to_toggle)
+        st.session_state.global_sec = current_list
         
     # ==========================================
     # ROW 1: TOP HALF (Macro Grid & Industry List)
@@ -1011,12 +1021,10 @@ def show_global_birdseye(df_inds, df_all_ret):
             c_w1 = "#00aaff" if ticker == 'SPX' else ("#00ff00" if w1 >= 0 else "#ff4b4b")
             c_m1 = "#00aaff" if ticker == 'SPX' else ("#00ff00" if m1 >= 0 else "#ff4b4b")
             
-            # Check if ticker is in our multi-select list
             is_active = ticker in st.session_state.global_sec
             b_color = "#00aaff" if is_active else "#444"
             bg_color = "#1a2a3a" if is_active else "#161616"
             
-            # Increased padding to stretch the cards taller
             card_html = (
                 f"<div style='border: 1px solid {b_color}; border-top: none; border-bottom-left-radius: 4px; border-bottom-right-radius: 4px; padding: 12px 5px 8px 5px; text-align: center; margin-bottom: 12px; background-color: {bg_color}; margin-top:-5px;'>"
                 f"<div style='display: flex; justify-content: space-between; gap: 5px;'>"
@@ -1031,20 +1039,12 @@ def show_global_birdseye(df_inds, df_all_ret):
             )
             
             with cols[col_idx]:
-                if st.button(ticker, key=f"btn_{ticker}", use_container_width=True):
-                    # Multi-Select Toggle Logic
-                    if ticker in st.session_state.global_sec:
-                        # Prevent deselecting the last item
-                        if len(st.session_state.global_sec) > 1:
-                            st.session_state.global_sec.remove(ticker)
-                    else:
-                        st.session_state.global_sec.append(ticker)
-                    st.rerun()
+                # THE FIX: Hook up the callback instead of using st.rerun()
+                st.button(ticker, key=f"btn_{ticker}", on_click=toggle_sector, args=(ticker,), use_container_width=True)
                 st.markdown(card_html, unsafe_allow_html=True)
 
     with c_top_right:
         active_list = st.session_state.global_sec
-        # Format the title nicely if many sectors are selected
         active_str = ", ".join(active_list) if len(active_list) <= 3 else f"{len(active_list)} SECTORS"
         
         t_col1, t_col2 = st.columns([0.6, 0.4])
@@ -1055,7 +1055,6 @@ def show_global_birdseye(df_inds, df_all_ret):
         
         st.markdown("<div style='border-bottom:1px solid #333; margin-bottom:10px;'></div>", unsafe_allow_html=True)
         
-        # SPX isn't an ETF with sub-industries in our df, so we filter it out for the tables
         active_etfs = [x for x in active_list if x != 'SPX']
         
         if not active_etfs and 'SPX' in active_list:
@@ -1086,7 +1085,6 @@ def show_global_birdseye(df_inds, df_all_ret):
                             f"</div>"
                         )
                     
-                    # Added margin-top: 15px to push header away from the radio button
                     list_html = (
                         f"<div style='display: flex; justify-content: space-between; border-bottom: 1px solid #444; padding-bottom: 4px; margin-bottom: 4px; margin-top: 15px;'>"
                         f"<div style='font-size: 10px; color: #888; width: 40%;'>INDUSTRY</div>"
@@ -1102,7 +1100,6 @@ def show_global_birdseye(df_inds, df_all_ret):
                 else:
                     st.warning(f"No industry data available for {active_str}.")
 
-    # Pushes Row 2 down by 25px
     st.markdown("<div style='height:25px;'></div><hr style='margin: 0; border-color:#333;'><div style='height:15px;'></div>", unsafe_allow_html=True)
 
     # ==========================================
@@ -1112,6 +1109,9 @@ def show_global_birdseye(df_inds, df_all_ret):
     
     with c_bot_left:
         st.markdown(f"<div style='color:#ff4b4b; font-size:12px; font-weight:bold; margin-bottom:5px;'>🔴 {active_str} LOSERS (Sorted by {sort_choice})</div>", unsafe_allow_html=True)
+        # THE FIX: Added 20px spacer to push the table down independently of the title
+        st.markdown("<div style='height:20px;'></div>", unsafe_allow_html=True)
+        
         if not active_etfs and 'SPX' in active_list:
             st.info("Select a Sector above to view its bleeding tickers.")
         elif not df_all_ret.empty:
@@ -1130,8 +1130,8 @@ def show_global_birdseye(df_inds, df_all_ret):
                         header=dict(values=['<b>TICK</b>','<b>IDX</b>','<b>INDUSTRY</b>','<b>1W</b>','<b>1M</b>'], fill_color='#161616', font=dict(color='#ff5252',size=10), align=['left','center','left','right','right']),
                         cells=dict(values=[df_losers['Ticker'], df_losers['Index'], df_losers['Industry'], df_losers['1W'], df_losers['1M']], fill_color='#0d0d0d', font=dict(color='white',size=10), align=['left','center','left','right','right'], height=26)
                     )])
-                    # Added top margin (t=10) to separate table from the title
-                    fig_losers.update_layout(margin=dict(l=0,r=0,t=10,b=0), height=300)
+                    # Plotly margin kept at 0 since the spacer div handles the drop
+                    fig_losers.update_layout(margin=dict(l=0,r=0,t=0,b=0), height=300)
                     st.plotly_chart(fig_losers, use_container_width=True)
                 else:
                     st.success("No bleeding tickers found! Everything is green.")
@@ -1141,8 +1141,9 @@ def show_global_birdseye(df_inds, df_all_ret):
     with c_bot_right:
         st.markdown(f"<div style='color:#f4ca16; font-size:12px; font-weight:bold; margin-bottom:5px;'>⚖️ COMPARISON ENGINE</div>", unsafe_allow_html=True)
         
+        # THE FIX: margin-top increased to 30px to perfectly match the 20px spacer drop on the left
         placeholder_html = (
-            "<div style='border:1px dashed #444; border-radius:4px; padding:20px; height:295px; margin-top:10px; display:flex; flex-direction:column; justify-content:center; align-items:center; background-color:#111;'>"
+            "<div style='border:1px dashed #444; border-radius:4px; padding:20px; height:295px; margin-top:30px; display:flex; flex-direction:column; justify-content:center; align-items:center; background-color:#111;'>"
             "<h5 style='color:#00aaff; text-align:center; margin-bottom:10px;'>Constructing the Alpha Engine...</h5>"
             "<p style='color:#888; font-size:12px; text-align:center;'>This quadrant is reserved for the FSLI Composite Weighting and Options Open Interest overlay.</p>"
             "<ul style='color:#666; font-size:11px;'>"
@@ -1153,6 +1154,7 @@ def show_global_birdseye(df_inds, df_all_ret):
             "</div>"
         )
         st.markdown(placeholder_html, unsafe_allow_html=True)
+
 # ---------------------------------------------------------
 # DIALOG 1: SUMMARY / TICKERS PLACEHOLDER
 # ---------------------------------------------------------
