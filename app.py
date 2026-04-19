@@ -434,7 +434,7 @@ def get_marketbeat_news_live(ticker):
             url = f"https://www.marketbeat.com/stocks/{exch}/{search_ticker}/news/"
             page.get(url, timeout=10.0, retry=1)
 
-            time.sleep(5)
+            time.sleep(3)
             page.scroll.to_half()
             time.sleep(1)
 
@@ -471,7 +471,7 @@ def get_marketbeat_news_live(ticker):
                         news_data.append({
                             'Date': date_str,
                             'Ticker': ticker,
-                            'Title': title[:50] + "..." if len(title) > 50 else title,
+                            'Title': title[:40] + "..." if len(title) > 40 else title,
                             'Link': f"<a href='{href}'>Link</a>"
                         })
                         items_found += 1
@@ -2032,7 +2032,7 @@ if not df_history.empty:
                 if not df_news.empty:
                     fig_news = go.Figure(data=[go.Table(
                         # Adjusted widths since SOURCE is gone: Date (50), Tick (35), Headline (160), Link (25)
-                        columnwidth=[45, 35, 165, 25],
+                        columnwidth=[50, 35, 160, 25],
                         header=dict(
                             values=['<b>DATE</b>','<b>TICK</b>','<b>HEADLINE</b>','<b>LINK</b>'],
                             fill_color='#161616',
