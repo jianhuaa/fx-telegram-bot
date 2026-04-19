@@ -1131,7 +1131,7 @@ def show_global_birdseye(df_inds, df_all_ret):
                         cells=dict(values=[df_losers['Ticker'], df_losers['Index'], df_losers['Industry'], df_losers['1W'], df_losers['1M']], fill_color='#0d0d0d', font=dict(color='white',size=10), align=['left','center','left','right','right'], height=26)
                     )])
                     # Plotly margin kept at 0 since the spacer div handles the drop
-                    fig_losers.update_layout(margin=dict(l=0,r=0,t=0,b=0), height=300)
+                    fig_losers.update_layout(margin=dict(l=0,r=0,t=20,b=0), height=360)
                     st.plotly_chart(fig_losers, use_container_width=True)
                 else:
                     st.success("No bleeding tickers found! Everything is green.")
@@ -2006,14 +2006,14 @@ with c4_top:
                 show_global_birdseye(df_industries, df_all_ret)
             
     with b_col3:
-        if st.button("📊", use_container_width=True):
+        if st.button("🔍", use_container_width=True):
             btn_loader = show_gxs_loader()
             time.sleep(2)
             btn_loader.empty()
             show_summary_overlay(tf_sel, selected_sector, df_all_ret)
             #show_summary_overlay(tf_sel, selected_sector, df_all_ret)
     with b_col4:
-        if st.button("🔭", use_container_width=True):
+        if st.button("🔬", use_container_width=True):
             btn_loader = show_gxs_loader()
             time.sleep(2)
             btn_loader.empty()
