@@ -471,7 +471,7 @@ def get_marketbeat_news_live(ticker):
                         news_data.append({
                             'Date': date_str,
                             'Ticker': ticker,
-                            'Title': title[:35] + "..." if len(title) > 35 else title,
+                            'Title': title[:70] + "..." if len(title) > 70 else title,
                             'Link': f"<a href='{href}'>Link</a>"
                         })
                         items_found += 1
