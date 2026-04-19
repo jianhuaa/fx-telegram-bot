@@ -406,7 +406,7 @@ def get_marketbeat_news_live(ticker):
     import pandas as pd
     import time
 
-    search_ticker = "FI" if ticker == "FISV" else ticker.replace('.', '-')
+    search_ticker = ticker.replace('.', '-')
 
     co = ChromiumOptions()
     
@@ -471,7 +471,7 @@ def get_marketbeat_news_live(ticker):
                         news_data.append({
                             'Date': date_str,
                             'Ticker': ticker,
-                            'Title': title[:40] + "..." if len(title) > 40 else title,
+                            'Title': title[:35] + "..." if len(title) > 35 else title,
                             'Link': f"<a href='{href}'>Link</a>"
                         })
                         items_found += 1
@@ -2032,7 +2032,7 @@ if not df_history.empty:
                 if not df_news.empty:
                     fig_news = go.Figure(data=[go.Table(
                         # Adjusted widths since SOURCE is gone: Date (50), Tick (35), Headline (160), Link (25)
-                        columnwidth=[50, 35, 160, 25],
+                        columnwidth=[55, 35, 155, 25],
                         header=dict(
                             values=['<b>DATE</b>','<b>TICK</b>','<b>HEADLINE</b>','<b>LINK</b>'],
                             fill_color='#161616',
