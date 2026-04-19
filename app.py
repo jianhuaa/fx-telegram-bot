@@ -1978,7 +1978,7 @@ if not df_history.empty:
             df_losers_filtered['3M'] = df_losers_filtered['3M_raw'].apply(lambda x: f"{x:+.0f}%" if pd.notna(x) else "-")
             df_losers_filtered['1Y'] = df_losers_filtered['1Y_raw'].apply(lambda x: f"{x:+.0f}%" if pd.notna(x) else "-")
 
-        t_losers, t_sec, t_transcript = st.tabs(["🔴 Losers", "📄 SEC", "🎙️ Transcript", "📰 News"])
+        t_losers, t_sec, t_transcript, t_news = st.tabs(["🔴 Losers", "📄 SEC", "🎙️ Transcript", "📰 News"])
         TAB_HEIGHT = 640
 
         with t_losers:
