@@ -777,7 +777,7 @@ def get_insider_trades(ticker):
 @st.cache_data(ttl=3600)
 def get_verified_fsli_data(ticker):
     # 1. Ticker Formatting
-    tv_ticker = ticker.replace('-', '.')
+    tv_ticker = "P" if ticker == "PSTG" else ticker.replace('-', '.')
     yf_ticker = ticker.replace('.', '-')
 
     field_mapping = {
