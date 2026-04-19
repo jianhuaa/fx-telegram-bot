@@ -983,13 +983,15 @@ def show_global_birdseye(df_inds, df_all_ret):
         r_1m = (price_col.iloc[-1] / price_col.iloc[-22] - 1) * 100
         return r_1w, r_1m
 
-    # Multi-select state
+    # Multi-select & Interactive states
     if 'global_sec' not in st.session_state:
         st.session_state.global_sec = ['SPX']
     if 'global_sort' not in st.session_state:
         st.session_state.global_sort = '1W'
+    if 'selected_sub_ind' not in st.session_state:
+        st.session_state.selected_sub_ind = None
 
-    # THE FIX: Callback function to handle clicks without closing the dialog
+    # Callback to handle clicks without closing the dialog
     def toggle_sector(ticker_to_toggle):
         current_list = st.session_state.global_sec.copy()
         if ticker_to_toggle in current_list:
@@ -998,6 +1000,8 @@ def show_global_birdseye(df_inds, df_all_ret):
         else:
             current_list.append(ticker_to_toggle)
         st.session_state.global_sec = current_list
+        # Reset the industry filter when changing sectors
+        st.session_state.selected_sub_ind = None
         
     # ==========================================
     # ROW 1: TOP HALF (Macro Grid & Industry List)
@@ -1021,8 +1025,9 @@ def show_global_birdseye(df_inds, df_all_ret):
             b_color = "#00aaff" if is_active else "#444"
             bg_color = "#1a2a3a" if is_active else "#161616"
             
+            # Taller cards via padding: 17px top, 13px bottom
             card_html = (
-                f"<div style='border: 1px solid {b_color}; border-top: none; border-bottom-left-radius: 4px; border-bottom-right-radius: 4px; padding: 15px 5px 10px 5px; text-align: center; margin-bottom: 12px; background-color: {bg_color}; margin-top:-5px;'>"
+                f"<div style='border: 1px solid {b_color}; border-top: none; border-bottom-left-radius: 4px; border-bottom-right-radius: 4px; padding: 17px 5px 13px 5px; text-align: center; margin-bottom: 12px; background-color: {bg_color}; margin-top:-5px;'>"
                 f"<div style='display: flex; justify-content: space-between; gap: 5px;'>"
                 f"<div style='flex: 1; border-top: 2px solid {c_w1}; padding-top:2px;'>"
                 f"<div style='font-size:9px; color:#888;'>1W</div>"
@@ -1035,7 +1040,6 @@ def show_global_birdseye(df_inds, df_all_ret):
             )
             
             with cols[col_idx]:
-                # THE FIX: Hook up the callback instead of using st.rerun()
                 st.button(ticker, key=f"btn_{ticker}", on_click=toggle_sector, args=(ticker,), use_container_width=True)
                 st.markdown(card_html, unsafe_allow_html=True)
 
@@ -1049,12 +1053,11 @@ def show_global_birdseye(df_inds, df_all_ret):
         with t_col2:
             sort_choice = st.radio("Sort Focus:", ["1W", "1M"], horizontal=True, label_visibility="collapsed")
         
-        st.markdown("<div style='border-bottom:1px solid #333; margin-bottom:10px;'></div>", unsafe_allow_html=True)
-        
         active_etfs = [x for x in active_list if x != 'SPX']
         
         if not active_etfs and 'SPX' in active_list:
             st.info("SPX Selected. Click any Sector ETF to the left to detangle its industries.")
+            st.session_state.selected_sub_ind = None
         else:
             if not df_inds.empty:
                 ind_df = df_inds[df_inds['ETF'].isin(active_etfs)].copy()
@@ -1062,58 +1065,76 @@ def show_global_birdseye(df_inds, df_all_ret):
                     sort_column = '1W_raw' if sort_choice == "1W" else '1M_raw'
                     ind_df = ind_df.sort_values(by=sort_column, ascending=True)
                     
-                    rows_html = ""
-                    for _, row in ind_df.iterrows():
-                        name = str(row['IND_A']).replace('<br>', ' ')
-                        cap_type = row['Cap']
-                        idx_label = "SPX" if cap_type == 'L' else ("RMC" if cap_type == 'M' else "RTY")
-                        
-                        w1_v, m1_v = row['1W_raw'], row['1M_raw']
-                        w1_c = "#00ff00" if pd.notna(w1_v) and w1_v > 0 else "#ff4b4b"
-                        m1_c = "#00ff00" if pd.notna(m1_v) and m1_v > 0 else "#ff4b4b"
-                        
-                        rows_html += (
-                            f"<div style='display: flex; justify-content: space-between; border-bottom: 1px solid #222; padding: 6px 0;'>"
-                            f"<div style='font-size: 11px; color: #ddd; width: 40%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;'>{name}</div>"
-                            f"<div style='font-size: 10px; color: #aaa; width: 20%; text-align: center; margin-top: 1px;'>{idx_label}</div>"
-                            f"<div style='font-size: 12px; color: {w1_c}; width: 20%; text-align: center; font-family: monospace;'>{w1_v:+.1f}%</div>"
-                            f"<div style='font-size: 12px; color: {m1_c}; width: 20%; text-align: center; font-family: monospace;'>{m1_v:+.1f}%</div>"
-                            f"</div>"
-                        )
+                    # Prepare for Native Streamlit Dataframe
+                    ind_disp = ind_df[['IND_A', 'Cap', '1W_raw', '1M_raw']].copy()
+                    ind_disp['Cap'] = ind_disp['Cap'].map({'L': 'SPX', 'M': 'RMC', 'S': 'RTY'})
+                    ind_disp['IND_A'] = ind_disp['IND_A'].str.replace('<br>', ' ')
                     
-                    list_html = (
-                        f"<div style='display: flex; justify-content: space-between; border-bottom: 1px solid #444; padding-bottom: 4px; margin-bottom: 4px; margin-top: 15px;'>"
-                        f"<div style='font-size: 10px; color: #888; width: 40%;'>INDUSTRY</div>"
-                        f"<div style='font-size: 10px; color: #888; width: 20%; text-align: center;'>INDEX</div>"
-                        f"<div style='font-size: 10px; color: #888; width: 20%; text-align: center;'>1W</div>"
-                        f"<div style='font-size: 10px; color: #888; width: 20%; text-align: center;'>1M</div>"
-                        f"</div>"
-                        f"<div style='height: 250px; overflow-y: auto; padding-right: 5px;'>"
-                        f"{rows_html}"
-                        f"</div>"
+                    # Styling function to keep your Green/Red text
+                    def color_returns(val):
+                        color = '#00ff00' if pd.notna(val) and val > 0 else '#ff4b4b'
+                        return f'color: {color}; font-family: monospace; text-align: center;'
+
+                    styled_df = ind_disp.style.map(color_returns, subset=['1W_raw', '1M_raw']).format("{:+.1f}%", subset=['1W_raw', '1M_raw'])
+                    
+                    st.markdown("<div style='height:5px;'></div>", unsafe_allow_html=True)
+                    
+                    # Native Clickable Table
+                    event = st.dataframe(
+                        styled_df,
+                        use_container_width=True,
+                        hide_index=True,
+                        height=270,
+                        selection_mode="single-row",
+                        on_select="rerun",
+                        key=f"sub_ind_sel_{active_str}",
+                        column_config={
+                            "IND_A": st.column_config.TextColumn("INDUSTRY"),
+                            "Cap": st.column_config.TextColumn("INDEX", width=60),
+                            "1W_raw": st.column_config.TextColumn("1W", width=60),
+                            "1M_raw": st.column_config.TextColumn("1M", width=60),
+                        }
                     )
-                    st.markdown(list_html, unsafe_allow_html=True)
+                    
+                    # Capture the Click to filter Losers table
+                    if event.selection.rows:
+                        selected_row_idx = event.selection.rows[0]
+                        st.session_state.selected_sub_ind = ind_disp.iloc[selected_row_idx]['IND_A']
+                    else:
+                        st.session_state.selected_sub_ind = None
                 else:
                     st.warning(f"No industry data available for {active_str}.")
 
-    st.markdown("<div style='height:25px;'></div><hr style='margin: 0; border-color:#333;'><div style='height:15px;'></div>", unsafe_allow_html=True)
+    # Pushes Row 2 down
+    st.markdown("<div style='height:20px;'></div><hr style='margin: 0; border-color:#333;'><div style='height:5px;'></div>", unsafe_allow_html=True)
 
     # ==========================================
-    # ROW 2: BOTTOM HALF (Worst Tickers & FSLI Placeholder)
+    # ROW 2: BOTTOM HALF (Worst Tickers & Comparison Engine)
     # ==========================================
     c_bot_left, c_bot_right = st.columns([0.5, 0.5], gap="medium")
     
+    # Check if a specific sub-industry was clicked
+    target_ind = st.session_state.get('selected_sub_ind', None)
+    filter_label = f" ({target_ind})" if target_ind else ""
+    
     with c_bot_left:
-        st.markdown(f"<div style='color:#ff4b4b; font-size:12px; font-weight:bold; margin-bottom:5px;'>🔴 {active_str} LOSERS (Sorted by {sort_choice})</div>", unsafe_allow_html=True)
-        # THE FIX: Added 20px spacer to push the table down independently of the title
-        st.markdown("<div style='height:20px;'></div>", unsafe_allow_html=True)
+        st.markdown(f"<div style='color:#ff4b4b; font-size:12px; font-weight:bold; margin-bottom:5px;'>🔴 LOSERS{filter_label}</div>", unsafe_allow_html=True)
         
         if not active_etfs and 'SPX' in active_list:
+            st.markdown("<div style='height:10px;'></div>", unsafe_allow_html=True)
             st.info("Select a Sector above to view its bleeding tickers.")
+            df_losers = pd.DataFrame()
         elif not df_all_ret.empty:
             df_losers = df_all_ret[df_all_ret['Sector'].isin(active_etfs)].copy()
             if not df_losers.empty:
+                
+                # Apply Sub-Industry Filter if Clicked
+                if target_ind:
+                    df_losers = df_losers[df_losers['Industry'].str.replace('<br>', ' ') == target_ind]
+                
+                # Only show stocks bleeding in 1W or 1M
                 df_losers = df_losers[(df_losers['1W_raw'] < 0) | (df_losers['1M_raw'] < 0)]
+                
                 if not df_losers.empty:
                     sort_column = '1W_raw' if sort_choice == "1W" else '1M_raw'
                     df_losers = df_losers.sort_values(by=sort_column, ascending=True).head(50)
@@ -1126,31 +1147,49 @@ def show_global_birdseye(df_inds, df_all_ret):
                         header=dict(values=['<b>TICK</b>','<b>IDX</b>','<b>INDUSTRY</b>','<b>1W</b>','<b>1M</b>'], fill_color='#161616', font=dict(color='#ff5252',size=10), align=['left','center','left','right','right']),
                         cells=dict(values=[df_losers['Ticker'], df_losers['Index'], df_losers['Industry'], df_losers['1W'], df_losers['1M']], fill_color='#0d0d0d', font=dict(color='white',size=10), align=['left','center','left','right','right'], height=26)
                     )])
-                    # Plotly margin kept at 0 since the spacer div handles the drop
-                    fig_losers.update_layout(margin=dict(l=0,r=0,t=30,b=0), height=360)
+                    # Plotly native top margin protects the header from clipping
+                    fig_losers.update_layout(margin=dict(l=0,r=0,t=25,b=0), height=300)
                     st.plotly_chart(fig_losers, use_container_width=True)
                 else:
-                    st.success("No bleeding tickers found! Everything is green.")
+                    st.success(f"No bleeding tickers found{filter_label}!")
             else:
                 st.warning("No ticker data found for this sector.")
 
     with c_bot_right:
         st.markdown(f"<div style='color:#f4ca16; font-size:12px; font-weight:bold; margin-bottom:5px;'>⚖️ COMPARISON ENGINE</div>", unsafe_allow_html=True)
         
-        # THE FIX: margin-top increased to 30px to perfectly match the 20px spacer drop on the left
-        placeholder_html = (
-            "<div style='border:1px dashed #444; border-radius:4px; padding:20px; height:295px; margin-top:30px; display:flex; flex-direction:column; justify-content:center; align-items:center; background-color:#111;'>"
-            "<h5 style='color:#00aaff; text-align:center; margin-bottom:10px;'>Constructing the Alpha Engine...</h5>"
-            "<p style='color:#888; font-size:12px; text-align:center;'>This quadrant is reserved for the FSLI Composite Weighting and Options Open Interest overlay.</p>"
-            "<ul style='color:#666; font-size:11px;'>"
-            "<li>Z-Score Factor Radars (Value, Quality, Risk)</li>"
-            "<li>FSLI Composite Health Weightings</li>"
-            "<li>Dynamic Put/Call OI Overlays</li>"
-            "</ul>"
-            "</div>"
-        )
-        st.markdown(placeholder_html, unsafe_allow_html=True)
-
+        # Engine output when Losers exist
+        if 'df_losers' in locals() and not df_losers.empty and active_etfs:
+            top_5_tickers = df_losers['Ticker'].head(5).tolist()
+            
+            # Dummy quantitative logic visualization
+            health_scores = ['🟩 High', '🟥 Low', '🟨 Avg', '🟩 High', '🟥 Low'][:len(top_5_tickers)]
+            options_flow = ['📉 Bear', '🌊 Bull Div', '🎲 Neutral', '📉 Bear', '🌊 Bull Div'][:len(top_5_tickers)]
+            percentiles = ['12th 📊', '5th 🎯', '22nd 📊', '18th 📊', '2nd 🎯'][:len(top_5_tickers)]
+            verdicts = ['<span style="color:#ff4b4b">SELL</span>', '<span style="color:#00ff00">BUY</span>', '<span style="color:#f4ca16">MONITOR</span>', '<span style="color:#ff4b4b">SELL</span>', '<span style="color:#00ff00">BUY</span>'][:len(top_5_tickers)]
+            
+            fig_engine = go.Figure(data=[go.Table(
+                columnwidth=[35, 45, 55, 40, 45],
+                header=dict(values=['<b>TICK</b>','<b>🩺 FSLI</b>','<b>🌊 FLOW</b>','<b>📊 %TILE</b>','<b>VERDICT</b>'], fill_color='#161616', font=dict(color='#f4ca16',size=10), align=['left','center','center','center','center']),
+                cells=dict(values=[top_5_tickers, health_scores, options_flow, percentiles, verdicts], fill_color='#0d0d0d', font=dict(color='white',size=11), align=['left','center','center','center','center'], height=32)
+            )])
+            # Plotly native top margin protects the header from clipping
+            fig_engine.update_layout(margin=dict(l=0,r=0,t=25,b=0), height=300)
+            st.plotly_chart(fig_engine, use_container_width=True)
+        else:
+            # Safe HTML string for the empty state
+            placeholder_html = (
+                "<div style='border:1px dashed #444; border-radius:4px; padding:20px; height:275px; margin-top:25px; display:flex; flex-direction:column; justify-content:center; align-items:center; background-color:#111;'>"
+                "<h5 style='color:#00aaff; text-align:center; margin-bottom:10px;'>Constructing the Alpha Engine...</h5>"
+                "<p style='color:#888; font-size:12px; text-align:center;'>This quadrant is reserved for the FSLI Composite Weighting and Options Open Interest overlay.</p>"
+                "<ul style='color:#666; font-size:11px;'>"
+                "<li>Z-Score Factor Radars (Value, Quality, Risk)</li>"
+                "<li>FSLI Composite Health Weightings</li>"
+                "<li>Dynamic Put/Call OI Overlays</li>"
+                "</ul>"
+                "</div>"
+            )
+            st.markdown(placeholder_html, unsafe_allow_html=True)
 # ---------------------------------------------------------
 # DIALOG 1: SUMMARY / TICKERS PLACEHOLDER
 # ---------------------------------------------------------
