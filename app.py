@@ -446,7 +446,7 @@ def get_marketbeat_news_live(ticker):
             if news_containers:
                 items_found = 0
                 for container in news_containers:
-                    if items_found >= 15: break
+                    if items_found >= 50: break
 
                     link_ele = container.ele('tag:a', timeout=0)
                     byline_ele = container.ele('xpath:.//div[contains(@class, "byline")]', timeout=0)
