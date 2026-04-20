@@ -1213,7 +1213,7 @@ def show_global_birdseye(df_inds, df_all_ret):
                 ".alpha-wrap { max-height: 380px; overflow-y: auto; overflow-x: hidden; border-bottom: 1px solid #1a1a1a; }"
                 ".alpha-tbl { width: 100%; border-collapse: collapse; font-family: monospace; font-size: 11px; color: white; background-color: #0d0d0d; }"
                 ".alpha-tbl thead th { position: sticky; top: 0; background-color: #161616; z-index: 2; border-bottom: 1px solid #333; padding: 4px 2px; text-align: center; color: #888; font-size: 10px; letter-spacing: 1px; }"
-                ".alpha-tbl .sub-hdr th { top: 23px; font-size: 9px; padding: 2px 0px; border-bottom: 1px solid #333; background-color: #1a1a1a; z-index: 1; }"
+                ".alpha-tbl .sub-hdr th { top: 20px; font-size: 9px; padding: 2px 0px; border-bottom: 1px solid #333; background-color: #1a1a1a; z-index: 1; }"
                 ".alpha-tbl td { padding: 4px 0px; text-align: center; border-bottom: 1px solid #1a1a1a; }"
                 ".alpha-tbl .tick { font-weight: bold; text-align: left; padding-left: 8px; color: white; }"
                 ".alpha-tbl .idx { color: #888; text-align: left; padding-left: 5px;}"
