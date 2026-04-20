@@ -988,18 +988,19 @@ def get_live_col4_data():
 @st.dialog("\u200B", width="large")
 def show_global_birdseye(df_inds, df_all_ret):
     st.markdown("<h4 style='color:#00aaff; margin-top:-15px;'>🌍 Global View</h4>", unsafe_allow_html=True)
-    
+
     with st.spinner("Compiling Global View..."):
         df_hist, _ = get_historical_charts_data("3M")
         df_sec_px, _ = get_sector_data("3M")
-        
+
     def get_returns(price_col):
-        if price_col.empty or len(price_col) < 22: return 0.0, 0.0
+        if price_col.empty or len(price_col) < 22:
+            return 0.0, 0.0
         r_1w = (price_col.iloc[-1] / price_col.iloc[-6] - 1) * 100
         r_1m = (price_col.iloc[-1] / price_col.iloc[-22] - 1) * 100
         return r_1w, r_1m
 
-    # Multi-select & Interactive states
+    # --- Session state init ---
     if 'global_sec' not in st.session_state:
         st.session_state.global_sec = ['SPX']
     if 'global_sort' not in st.session_state:
@@ -1007,43 +1008,45 @@ def show_global_birdseye(df_inds, df_all_ret):
     if 'selected_sub_ind' not in st.session_state:
         st.session_state.selected_sub_ind = None
 
-    # Callback to handle clicks without closing the dialog
     def toggle_sector(ticker_to_toggle):
         current_list = st.session_state.global_sec.copy()
         if ticker_to_toggle in current_list:
-            if len(current_list) > 1: # Prevent deselecting the last item
+            if len(current_list) > 1:
                 current_list.remove(ticker_to_toggle)
         else:
             current_list.append(ticker_to_toggle)
         st.session_state.global_sec = current_list
-        # Reset the industry filter when changing sectors
         st.session_state.selected_sub_ind = None
-        
+
     # ==========================================
     # ROW 1: TOP HALF (Macro Grid & Industry List)
     # ==========================================
     c_top_left, c_top_right = st.columns([0.5, 0.5], gap="medium")
-    
+
     with c_top_left:
         sector_list = sorted(['XLK', 'XLF', 'XLV', 'XLY', 'XLC', 'XLI', 'XLP', 'XLE', 'XLRE', 'XLU', 'XLB'])
         grid_items = ['SPX'] + sector_list
-        
+
         cols = st.columns(4)
-        
+
         for i, ticker in enumerate(grid_items):
             col_idx = i % 4
-            w1, m1 = get_returns(df_hist['SPX']) if ticker == 'SPX' else get_returns(df_sec_px[ticker])
-                
+            if ticker == 'SPX':
+                w1, m1 = get_returns(df_hist['SPX'])
+            else:
+                w1, m1 = get_returns(df_sec_px[ticker]) if ticker in df_sec_px.columns else (0.0, 0.0)
+
             c_w1 = "#00aaff" if ticker == 'SPX' else ("#00ff00" if w1 >= 0 else "#ff4b4b")
             c_m1 = "#00aaff" if ticker == 'SPX' else ("#00ff00" if m1 >= 0 else "#ff4b4b")
-            
+
             is_active = ticker in st.session_state.global_sec
             b_color = "#00aaff" if is_active else "#444"
             bg_color = "#1a2a3a" if is_active else "#161616"
-            
-            # Taller cards via padding: 17px top, 13px bottom
+
             card_html = (
-                f"<div style='border: 1px solid {b_color}; border-top: none; border-bottom-left-radius: 4px; border-bottom-right-radius: 4px; padding: 17px 5px 13px 5px; text-align: center; margin-bottom: 12px; background-color: {bg_color}; margin-top:-5px;'>"
+                f"<div style='border: 1px solid {b_color}; border-top: none; border-bottom-left-radius: 4px; "
+                f"border-bottom-right-radius: 4px; padding: 17px 5px 13px 5px; text-align: center; "
+                f"margin-bottom: 12px; background-color: {bg_color}; margin-top:-5px;'>"
                 f"<div style='display: flex; justify-content: space-between; gap: 5px;'>"
                 f"<div style='flex: 1; border-top: 2px solid {c_w1}; padding-top:2px;'>"
                 f"<div style='font-size:9px; color:#888;'>1W</div>"
@@ -1054,7 +1057,7 @@ def show_global_birdseye(df_inds, df_all_ret):
                 f"<div style='font-size:11px; color:white;'>{m1:+.1f}%</div>"
                 f"</div></div></div>"
             )
-            
+
             with cols[col_idx]:
                 st.button(ticker, key=f"btn_{ticker}", on_click=toggle_sector, args=(ticker,), use_container_width=True)
                 st.markdown(card_html, unsafe_allow_html=True)
@@ -1062,15 +1065,19 @@ def show_global_birdseye(df_inds, df_all_ret):
     with c_top_right:
         active_list = st.session_state.global_sec
         active_str = ", ".join(active_list) if len(active_list) <= 3 else f"{len(active_list)} SECTORS"
-        
+
         t_col1, t_col2 = st.columns([0.4, 0.6])
         with t_col1:
-            st.markdown(f"<div style='color:#00aaff; font-size:12px; font-weight:bold; margin-top:8px;'>🔬 {active_str} SUB-INDUSTRIES</div>", unsafe_allow_html=True)
+            st.markdown(
+                f"<div style='color:#00aaff; font-size:12px; font-weight:bold; margin-top:8px;'>"
+                f"🔬 {active_str} SUB-INDUSTRIES</div>",
+                unsafe_allow_html=True
+            )
         with t_col2:
             sort_choice = st.radio("Sort Focus:", ["1W", "1M", "3M", "1Y"], horizontal=True, label_visibility="collapsed")
-        
+
         active_etfs = [x for x in active_list if x != 'SPX']
-        
+
         if not active_etfs and 'SPX' in active_list:
             st.info("SPX Selected. Click any Sector ETF to the left to detangle its industries.")
             st.session_state.selected_sub_ind = None
@@ -1078,41 +1085,41 @@ def show_global_birdseye(df_inds, df_all_ret):
             if not df_inds.empty:
                 ind_df = df_inds[df_inds['ETF'].isin(active_etfs)].copy()
                 if not ind_df.empty:
-                    # Dynamically pick the sort column
                     sort_column = f'{sort_choice}_raw'
-                    # Ensure 3M and 1Y exist in your df_inds, fallback to 1M if missing for safety
-                    if sort_column not in ind_df.columns: sort_column = '1M_raw' 
-                    
+                    if sort_column not in ind_df.columns:
+                        sort_column = '1M_raw'
+
                     ind_df = ind_df.sort_values(by=sort_column, ascending=True)
-                    
-                    # Prepare for Native Streamlit Dataframe (Added 3M and 1Y)
+
                     cols_to_disp = ['IND_A', 'Cap', '1W_raw', '1M_raw']
-                    if '3M_raw' in ind_df.columns: cols_to_disp.append('3M_raw')
-                    if '1Y_raw' in ind_df.columns: cols_to_disp.append('1Y_raw')
-                    
+                    if '3M_raw' in ind_df.columns:
+                        cols_to_disp.append('3M_raw')
+                    if '1Y_raw' in ind_df.columns:
+                        cols_to_disp.append('1Y_raw')
+
                     ind_disp = ind_df[cols_to_disp].copy()
                     ind_disp['Cap'] = ind_disp['Cap'].map({'L': 'SPX', 'M': 'RMC', 'S': 'RTY'})
                     ind_disp['IND_A'] = ind_disp['IND_A'].str.replace('<br>', ' ')
-                    
-                    # Styling function to keep your Green/Red text
+
                     def color_returns(val):
                         color = '#00ff00' if pd.notna(val) and val > 0 else '#ff4b4b'
                         return f'color: {color}; font-family: monospace; text-align: center;'
 
                     fmt_cols = [c for c in cols_to_disp if 'raw' in c]
                     styled_df = ind_disp.style.map(color_returns, subset=fmt_cols).format("{:+.1f}%", subset=fmt_cols)
-                    
+
                     st.markdown("<div style='height:5px;'></div>", unsafe_allow_html=True)
-                    
-                    # Native Clickable Table Config
+
                     cfg = {
                         "IND_A": st.column_config.TextColumn("INDUSTRY"),
                         "Cap": st.column_config.TextColumn("IDX", width=40),
                         "1W_raw": st.column_config.TextColumn("1W", width=50),
                         "1M_raw": st.column_config.TextColumn("1M", width=50),
                     }
-                    if '3M_raw' in ind_disp.columns: cfg["3M_raw"] = st.column_config.TextColumn("3M", width=50)
-                    if '1Y_raw' in ind_disp.columns: cfg["1Y_raw"] = st.column_config.TextColumn("1Y", width=50)
+                    if '3M_raw' in ind_disp.columns:
+                        cfg["3M_raw"] = st.column_config.TextColumn("3M", width=50)
+                    if '1Y_raw' in ind_disp.columns:
+                        cfg["1Y_raw"] = st.column_config.TextColumn("1Y", width=50)
 
                     event = st.dataframe(
                         styled_df,
@@ -1124,8 +1131,7 @@ def show_global_birdseye(df_inds, df_all_ret):
                         key=f"sub_ind_sel_{active_str}",
                         column_config=cfg
                     )
-                    
-                    # Capture the Click to filter Losers table
+
                     if event.selection.rows:
                         selected_row_idx = event.selection.rows[0]
                         st.session_state.selected_sub_ind = ind_disp.iloc[selected_row_idx]['IND_A']
@@ -1134,89 +1140,132 @@ def show_global_birdseye(df_inds, df_all_ret):
                 else:
                     st.warning(f"No industry data available for {active_str}.")
 
-    # Pushes Row 2 down
-    st.markdown("<div style='height:20px;'></div><hr style='margin: 0; border-color:#333;'><div style='height:20px;'></div>", unsafe_allow_html=True)
+    st.markdown(
+        "<div style='height:20px;'></div>"
+        "<hr style='margin: 0; border-color:#333;'>"
+        "<div style='height:20px;'></div>",
+        unsafe_allow_html=True
+    )
+
+    # ==========================================
+    # PRE-COMPUTE df_losers BEFORE column split
+    # (fixes the locals() scoping issue)
+    # ==========================================
+    target_ind = st.session_state.get('selected_sub_ind', None)
+    filter_label = f" ({target_ind})" if target_ind else ""
+
+    df_losers = pd.DataFrame()
+
+    if active_etfs and not df_all_ret.empty:
+        df_losers = df_all_ret[df_all_ret['Sector'].isin(active_etfs)].copy()
+
+        if not df_losers.empty:
+            # Apply sub-industry filter if a row was clicked
+            if target_ind:
+                df_losers = df_losers[
+                    df_losers['Industry'].str.replace('<br>', ' ') == target_ind
+                ]
+
+            # Keep only tickers with at least one negative return
+            df_losers = df_losers[
+                (df_losers['1W_raw'] < 0) | (df_losers['1M_raw'] < 0)
+            ]
+
+            if not df_losers.empty:
+                sort_col_losers = f'{sort_choice}_raw' if f'{sort_choice}_raw' in df_losers.columns else '1M_raw'
+                df_losers = df_losers.sort_values(by=sort_col_losers, ascending=True).head(50)
+                df_losers['1W'] = df_losers['1W_raw'].apply(
+                    lambda x: f"{x:+.1f}%" if pd.notna(x) else "-"
+                )
+                df_losers['1M'] = df_losers['1M_raw'].apply(
+                    lambda x: f"{x:+.1f}%" if pd.notna(x) else "-"
+                )
 
     # ==========================================
     # ROW 2: BOTTOM HALF (1/3 Losers | 2/3 Alpha Engine)
     # ==========================================
     c_bot_left, c_bot_right = st.columns([0.33, 0.67], gap="large")
-    
-    # Check if a specific sub-industry was clicked
-    target_ind = st.session_state.get('selected_sub_ind', None)
-    filter_label = f" ({target_ind})" if target_ind else ""
-    
-    # --- 1/3 LEFT: THE LOSERS TABLE (Unchanged) ---
-    with c_bot_left:
-        st.markdown(f"<div style='color:#ff4b4b; font-size:12px; font-weight:bold; margin-bottom:5px;'>🔴 LOSERS{filter_label}</div>", unsafe_allow_html=True)
-        # Push the table itself down an additional 30px, leaving the header fixed
-        st.markdown("<div style='height:30px;'></div>", unsafe_allow_html=True)
-        
-        if not active_etfs and 'SPX' in active_list:
-            st.info("Select a Sector above to view its bleeding tickers.")
-            df_losers = pd.DataFrame()
-        elif not df_all_ret.empty:
-            df_losers = df_all_ret[df_all_ret['Sector'].isin(active_etfs)].copy()
-            if not df_losers.empty:
-                
-                # Apply Sub-Industry Filter if Clicked
-                if target_ind:
-                    df_losers = df_losers[df_losers['Industry'].str.replace('<br>', ' ') == target_ind]
-                
-                df_losers = df_losers[(df_losers['1W_raw'] < 0) | (df_losers['1M_raw'] < 0)]
-                
-                if not df_losers.empty:
-                    sort_col_losers = f'{sort_choice}_raw' if f'{sort_choice}_raw' in df_losers.columns else '1M_raw'
-                    df_losers = df_losers.sort_values(by=sort_col_losers, ascending=True).head(50)
-                    
-                    df_losers['1W'] = df_losers['1W_raw'].apply(lambda x: f"{x:+.1f}%" if pd.notna(x) else "-")
-                    df_losers['1M'] = df_losers['1M_raw'].apply(lambda x: f"{x:+.1f}%" if pd.notna(x) else "-")
-                    
-                    fig_losers = go.Figure(data=[go.Table(
-                        columnwidth=[35, 30, 90, 35, 35],
-                        header=dict(values=['<b>TICK</b>','<b>IDX</b>','<b>INDUSTRY</b>','<b>1W</b>','<b>1M</b>'], fill_color='#161616', font=dict(color='#ff5252',size=10), align=['left','center','left','right','right']),
-                        cells=dict(values=[df_losers['Ticker'], df_losers['Index'], df_losers['Industry'], df_losers['1W'], df_losers['1M']], fill_color='#0d0d0d', font=dict(color='white',size=10), align=['left','center','left','right','right'], height=28)
-                    )])
-                    # Margin set to 0 because the HTML spacer div handles the drop perfectly
-                    fig_losers.update_layout(margin=dict(l=0,r=0,t=0,b=0), height=360)
-                    st.plotly_chart(fig_losers, use_container_width=True)
-                else:
-                    st.success(f"No bleeding tickers found{filter_label}!")
-            else:
-                st.warning("No ticker data found for this sector.")
 
-    # --- 2/3 RIGHT: ALPHA COMPARISON ENGINE (HTML Heatmap) ---
-    with c_bot_right:
-        st.markdown(f"<div style='color:#f4ca16; font-size:12px; font-weight:bold; margin-bottom:5px;'>⚖️ ALPHA COMPARISON ENGINE</div>", unsafe_allow_html=True)
-        
-        # Mobile-friendly cheat sheet for the pillars (Indentation-Safe Version)
+    # --- 1/3 LEFT: LOSERS TABLE ---
+    with c_bot_left:
         st.markdown(
-            "<div style='font-size:10px; color:#888; margin-bottom:12px;'>"
-            "<b>VAL:</b> PE | SI | 1Y | Cap &nbsp;&nbsp;&nbsp; <b>PRF:</b> Gross | Op | Net &nbsp;&nbsp;&nbsp; "
-            "<b>CSH:</b> OpCF | FCF | InvCF | FinCF | Self-Fund &nbsp;&nbsp;&nbsp; "
-            "<b>LEV:</b> Cash | STD | LTD | C/D | GoodW &nbsp;&nbsp;&nbsp; <b>OPT:</b> Vol | Skew"
-            "</div>", 
+            f"<div style='color:#ff4b4b; font-size:12px; font-weight:bold; margin-bottom:5px;'>"
+            f"🔴 LOSERS{filter_label}</div>",
             unsafe_allow_html=True
         )
-        
-        if 'df_losers' in locals() and not df_losers.empty and active_etfs:
-            
-            # 1. Sort strictly by Index (SPX -> RMC -> RTY), then by Return
+        st.markdown("<div style='height:30px;'></div>", unsafe_allow_html=True)
+
+        if not active_etfs and 'SPX' in active_list:
+            st.info("Select a Sector above to view its bleeding tickers.")
+        elif df_losers.empty:
+            if active_etfs:
+                st.success(f"No bleeding tickers found{filter_label}!")
+            else:
+                st.warning("No ticker data found for this sector.")
+        else:
+            fig_losers = go.Figure(data=[go.Table(
+                columnwidth=[35, 30, 90, 35, 35],
+                header=dict(
+                    values=['<b>TICK</b>', '<b>IDX</b>', '<b>INDUSTRY</b>', '<b>1W</b>', '<b>1M</b>'],
+                    fill_color='#161616',
+                    font=dict(color='#ff5252', size=10),
+                    align=['left', 'center', 'left', 'right', 'right']
+                ),
+                cells=dict(
+                    values=[
+                        df_losers['Ticker'],
+                        df_losers['Index'],
+                        df_losers['Industry'],
+                        df_losers['1W'],
+                        df_losers['1M']
+                    ],
+                    fill_color='#0d0d0d',
+                    font=dict(color='white', size=10),
+                    align=['left', 'center', 'left', 'right', 'right'],
+                    height=28
+                )
+            )])
+            fig_losers.update_layout(margin=dict(l=0, r=0, t=0, b=0), height=360)
+            st.plotly_chart(fig_losers, use_container_width=True)
+
+    # --- 2/3 RIGHT: ALPHA COMPARISON ENGINE ---
+    with c_bot_right:
+        st.markdown(
+            "<div style='color:#f4ca16; font-size:12px; font-weight:bold; margin-bottom:5px;'>"
+            "⚖️ ALPHA COMPARISON ENGINE</div>",
+            unsafe_allow_html=True
+        )
+
+        st.markdown(
+            "<div style='font-size:10px; color:#888; margin-bottom:12px;'>"
+            "<b>VAL:</b> PE | SI | 1Y | Cap &nbsp;&nbsp;&nbsp; "
+            "<b>PRF:</b> Gross | Op | Net &nbsp;&nbsp;&nbsp; "
+            "<b>CSH:</b> OpCF | FCF | InvCF | FinCF | Self-Fund &nbsp;&nbsp;&nbsp; "
+            "<b>LEV:</b> Cash | STD | LTD | C/D | GoodW &nbsp;&nbsp;&nbsp; "
+            "<b>OPT:</b> Vol | Skew"
+            "</div>",
+            unsafe_allow_html=True
+        )
+
+        if not df_losers.empty and active_etfs:
+            # Sort by Index tier then by return
             alpha_df = df_losers.copy()
             idx_map = {'SPX': 1, 'RMC': 2, 'RTY': 3}
             alpha_df['SortIndex'] = alpha_df['Index'].map(idx_map).fillna(4)
             sort_col_alpha = f'{sort_choice}_raw' if f'{sort_choice}_raw' in alpha_df.columns else '1M_raw'
-            alpha_df = alpha_df.sort_values(by=['SortIndex', sort_col_alpha]).head(12) # Show top 12
+            alpha_df = alpha_df.sort_values(by=['SortIndex', sort_col_alpha]).head(12)
 
-            # 2. Build the HTML Table Framework (Indentation-Safe Version)
+            # Build HTML table
             html_table = (
                 "<style>"
-                ".alpha-tbl { width: 100%; border-collapse: collapse; font-family: monospace; font-size: 11px; color: white; background-color: #0d0d0d; }"
-                ".alpha-tbl th { background-color: #161616; padding: 6px 2px; text-align: center; border-bottom: 1px solid #333; color: #888; font-size: 10px; letter-spacing: 1px; }"
+                ".alpha-tbl { width: 100%; border-collapse: collapse; font-family: monospace; "
+                "font-size: 11px; color: white; background-color: #0d0d0d; }"
+                ".alpha-tbl th { background-color: #161616; padding: 6px 2px; text-align: center; "
+                "border-bottom: 1px solid #333; color: #888; font-size: 10px; letter-spacing: 1px; }"
                 ".alpha-tbl td { padding: 5px 2px; text-align: center; border-bottom: 1px solid #1a1a1a; }"
                 ".alpha-tbl .tick { font-weight: bold; text-align: left; padding-left: 10px; color: white; }"
-                ".alpha-tbl .idx { color: #888; text-align: left; padding-left: 5px;}"
-                ".a-blk { cursor: help; font-size: 11px; margin: 0 1px; transition: transform 0.1s;}"
+                ".alpha-tbl .idx { color: #888; text-align: left; padding-left: 5px; }"
+                ".a-blk { cursor: help; font-size: 11px; margin: 0 1px; transition: transform 0.1s; }"
                 ".a-blk:hover { transform: scale(1.3); }"
                 "</style>"
                 "<table class='alpha-tbl'>"
@@ -1231,31 +1280,58 @@ def show_global_birdseye(df_inds, df_all_ret):
                 "<th style='color:#f4ca16; font-size:12px;'>ACT</th>"
                 "</tr>"
             )
-            
-            # --- DUMMY GENERATOR (Replace with your actual FSLI math later) ---
+
             import random
-            def get_blk(): return random.choice(['<span style="color:#00ff00;">█</span>', '<span style="color:#333;">█</span>', '<span style="color:#ff5252;">█</span>'])
-            def get_bin(): return random.choice(['<span style="color:#00ff00;">█</span>', '<span style="color:#ff5252;">█</span>']) # For absolute yes/no metrics
-            
+
+            def get_blk():
+                return random.choice([
+                    '<span style="color:#00ff00;">█</span>',
+                    '<span style="color:#333;">█</span>',
+                    '<span style="color:#ff5252;">█</span>'
+                ])
+
+            def get_bin():
+                return random.choice([
+                    '<span style="color:#00ff00;">█</span>',
+                    '<span style="color:#ff5252;">█</span>'
+                ])
+
             for _, row in alpha_df.iterrows():
                 t = row['Ticker']
                 ix = row['Index']
-                
-                # VAL (4 blocks)
-                b_val = f'<span class="a-blk" title="P/E Ratio">{get_blk()}</span><span class="a-blk" title="Short Interest %">{get_blk()}</span><span class="a-blk" title="1Y Momentum">{get_blk()}</span><span class="a-blk" title="Market Cap">{get_blk()}</span>'
-                # PRF (3 blocks)
-                b_prf = f'<span class="a-blk" title="Gross Margin %">{get_blk()}</span><span class="a-blk" title="Operating Margin %">{get_blk()}</span><span class="a-blk" title="Net Margin %">{get_blk()}</span>'
-                # CSH (5 blocks)
-                b_csh = f'<span class="a-blk" title="Operating CF">{get_blk()}</span><span class="a-blk" title="Free Cash Flow">{get_blk()}</span><span class="a-blk" title="Investing CF (Binary)">{get_bin()}</span><span class="a-blk" title="Financing CF">{get_blk()}</span><span class="a-blk" title="Self-Funding Check (Binary)">{get_bin()}</span>'
-                # LEV (5 blocks)
-                b_lev = f'<span class="a-blk" title="Cash & STI">{get_blk()}</span><span class="a-blk" title="ST Debt">{get_blk()}</span><span class="a-blk" title="Total Debt">{get_blk()}</span><span class="a-blk" title="Cash/Debt Ratio">{get_blk()}</span><span class="a-blk" title="Goodwill/Mkt Cap">{get_blk()}</span>'
-                # OPT (2 blocks)
-                b_opt = f'<span class="a-blk" title="Volume Surge">{get_blk()}</span><span class="a-blk" title="Skew Shift">{get_blk()}</span>'
-                
-                # Verdict
+
+                b_val = (
+                    f'<span class="a-blk" title="P/E Ratio">{get_blk()}</span>'
+                    f'<span class="a-blk" title="Short Interest %">{get_blk()}</span>'
+                    f'<span class="a-blk" title="1Y Momentum">{get_blk()}</span>'
+                    f'<span class="a-blk" title="Market Cap">{get_blk()}</span>'
+                )
+                b_prf = (
+                    f'<span class="a-blk" title="Gross Margin %">{get_blk()}</span>'
+                    f'<span class="a-blk" title="Operating Margin %">{get_blk()}</span>'
+                    f'<span class="a-blk" title="Net Margin %">{get_blk()}</span>'
+                )
+                b_csh = (
+                    f'<span class="a-blk" title="Operating CF">{get_blk()}</span>'
+                    f'<span class="a-blk" title="Free Cash Flow">{get_blk()}</span>'
+                    f'<span class="a-blk" title="Investing CF">{get_bin()}</span>'
+                    f'<span class="a-blk" title="Financing CF">{get_blk()}</span>'
+                    f'<span class="a-blk" title="Self-Funding Check">{get_bin()}</span>'
+                )
+                b_lev = (
+                    f'<span class="a-blk" title="Cash & STI">{get_blk()}</span>'
+                    f'<span class="a-blk" title="ST Debt">{get_blk()}</span>'
+                    f'<span class="a-blk" title="Total Debt">{get_blk()}</span>'
+                    f'<span class="a-blk" title="Cash/Debt Ratio">{get_blk()}</span>'
+                    f'<span class="a-blk" title="Goodwill/Mkt Cap">{get_blk()}</span>'
+                )
+                b_opt = (
+                    f'<span class="a-blk" title="Volume Surge">{get_blk()}</span>'
+                    f'<span class="a-blk" title="Skew Shift">{get_blk()}</span>'
+                )
+
                 verdict = random.choice(['🔥', '⏳', '🧊'])
-                
-                # Indentation-safe row addition
+
                 html_table += (
                     "<tr>"
                     f"<td class='idx'>{ix}</td>"
@@ -1268,10 +1344,10 @@ def show_global_birdseye(df_inds, df_all_ret):
                     f"<td style='font-size:13px;'>{verdict}</td>"
                     "</tr>"
                 )
-            
+
             html_table += "</table>"
             st.markdown(html_table, unsafe_allow_html=True)
-            
+
         else:
             st.info("Alpha Comparison Engine requires bleeding tickers to activate.")
 # ---------------------------------------------------------
