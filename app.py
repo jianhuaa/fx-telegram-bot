@@ -1215,10 +1215,10 @@ def show_global_birdseye(df_inds, df_all_ret):
                 ".alpha-tbl .idx { color: #888; text-align: left; padding-left: 5px;}"
                 ".a-blk { cursor: help; font-size: 11px; transition: transform 0.1s; display: inline-block; width: 100%; text-align: center; }"
                 ".a-blk:hover { transform: scale(1.5); }"
-                ".alpha-tbl tbody tr { cursor: pointer; transition: background-color 0.1s; }"
                 ".alpha-tbl tbody tr:hover { background-color: #161616; }"
-                ".alpha-tbl tbody tr.selected { background-color: #0a192f !important; box-shadow: inset 3px 0 0 #00aaff; }"
-                "</style>"
+                ".clickable-cell { cursor: pointer; }"
+                ".alpha-tbl tbody tr.selected { background-color: #00aaff !important; }"
+                ".alpha-tbl tbody tr.selected td.idx, .alpha-tbl tbody tr.selected td.tick { color: #0d0d0d !important; font-weight: bold; }" "</style>"
                 "<div class='alpha-wrap'>"
                 "<table class='alpha-tbl'>"
                 "<thead>"
@@ -1263,9 +1263,9 @@ def show_global_birdseye(df_inds, df_all_ret):
                 
                 # Unpacking the blocks into 19 individual <td> cells so they spread out evenly!
                 html_table += (
-                    "<tr onclick=\"this.classList.toggle('selected')\">"
-                    f"<td class='idx'>{ix}</td>"
-                    f"<td class='tick'>{t}</td>"
+                   "<tr>"
+                    f"<td class='idx clickable-cell' onclick=\"this.parentElement.classList.toggle('selected')\">{ix}</td>"
+                    f"<td class='tick clickable-cell' onclick=\"this.parentElement.classList.toggle('selected')\">{t}</td>"
                     f"<td><span class='a-blk' title='P/E Ratio'>{v1}</span></td>"
                     f"<td><span class='a-blk' title='Short Interest'>{v2}</span></td>"
                     f"<td><span class='a-blk' title='1Y%'>{v3}</span></td>"
@@ -1285,7 +1285,7 @@ def show_global_birdseye(df_inds, df_all_ret):
                     f"<td><span class='a-blk' title='Goodwill'>{l5}</span></td>"
                     f"<td><span class='a-blk' title='Volume Surge'>{o1}</span></td>"
                     f"<td><span class='a-blk' title='Skew Shift'>{o2}</span></td>"
-                    f"<td style='font-size:13px;'>{verdict}</td>"
+                    f"<td class='clickable-cell' style='font-size:13px;' onclick=\"this.parentElement.classList.toggle('selected')\">{verdict}</td>"
                     "</tr>"
                 )
             
