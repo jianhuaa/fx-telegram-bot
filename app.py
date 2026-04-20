@@ -1196,31 +1196,71 @@ def show_global_birdseye(df_inds, df_all_ret):
             alpha_df['SortIndex'] = alpha_df['Index'].map(idx_map).fillna(4)
             sort_col_alpha = f'{sort_choice}_raw' if f'{sort_choice}_raw' in alpha_df.columns else '1M_raw'
             alpha_df = alpha_df.sort_values(by=['SortIndex', sort_col_alpha]).head(12) # Show top 12
+
+            # 2. Build the HTML Table Framework (Indentation-Safe Version)
+            html_table = (
+                "<style>"
+                ".alpha-tbl { width: 100%; border-collapse: collapse; font-family: monospace; font-size: 11px; color: white; background-color: #0d0d0d; }"
+                ".alpha-tbl th { background-color: #161616; padding: 6px 2px; text-align: center; border-bottom: 1px solid #333; color: #888; font-size: 10px; letter-spacing: 1px; }"
+                ".alpha-tbl td { padding: 5px 2px; text-align: center; border-bottom: 1px solid #1a1a1a; }"
+                ".alpha-tbl .tick { font-weight: bold; text-align: left; padding-left: 10px; color: white; }"
+                ".alpha-tbl .idx { color: #888; text-align: left; padding-left: 5px;}"
+                ".a-blk { cursor: help; font-size: 11px; margin: 0 1px; transition: transform 0.1s;}"
+                ".a-blk:hover { transform: scale(1.3); }"
+                "</style>"
+                "<table class='alpha-tbl'>"
+                "<tr>"
+                "<th style='width: 8%; text-align: left; padding-left: 5px;'>IDX</th>"
+                "<th style='width: 12%; text-align: left; padding-left: 10px;'>TICK</th>"
+                "<th colspan='4' style='color:#00aaff;'>VAL</th>"
+                "<th colspan='3' style='color:#00ff00;'>PRF</th>"
+                "<th colspan='5' style='color:#00fa9a;'>CSH</th>"
+                "<th colspan='5' style='color:#ff5252;'>LEV</th>"
+                "<th colspan='2' style='color:#b19cd9;'>OPT</th>"
+                "<th style='color:#f4ca16; font-size:12px;'>ACT</th>"
+                "</tr>"
+            )
             
-            # 2. Build the HTML Table Framework
-            html_table = """
-            <style>
-            .alpha-tbl { width: 100%; border-collapse: collapse; font-family: monospace; font-size: 11px; color: white; background-color: #0d0d0d; }
-            .alpha-tbl th { background-color: #161616; padding: 6px 2px; text-align: center; border-bottom: 1px solid #333; color: #888; font-size: 10px; letter-spacing: 1px; }
-            .alpha-tbl td { padding: 5px 2px; text-align: center; border-bottom: 1px solid #1a1a1a; }
-            .alpha-tbl .tick { font-weight: bold; text-align: left; padding-left: 10px; color: white; }
-            .alpha-tbl .idx { color: #888; text-align: left; padding-left: 5px;}
-            .a-blk { cursor: help; font-size: 11px; margin: 0 1px; transition: transform 0.1s;}
-            .a-blk:hover { transform: scale(1.3); }
-            </style>
-            <table class="alpha-tbl">
-                <tr>
-                    <th style="width: 8%; text-align: left; padding-left: 5px;">IDX</th>
-                    <th style="width: 12%; text-align: left; padding-left: 10px;">TICK</th>
-                    <th colspan="4" style="color:#00aaff;">VAL</th>
-                    <th colspan="3" style="color:#00ff00;">PRF</th>
-                    <th colspan="5" style="color:#00fa9a;">CSH</th>
-                    <th colspan="5" style="color:#ff5252;">LEV</th>
-                    <th colspan="2" style="color:#b19cd9;">OPT</th>
-                    <th style="color:#f4ca16; font-size:12px;">ACT</th>
-                </tr>
-            """
+            # --- DUMMY GENERATOR (Replace with your actual FSLI math later) ---
+            import random
+            def get_blk(): return random.choice(['<span style="color:#00ff00;">█</span>', '<span style="color:#333;">█</span>', '<span style="color:#ff5252;">█</span>'])
+            def get_bin(): return random.choice(['<span style="color:#00ff00;">█</span>', '<span style="color:#ff5252;">█</span>']) # For absolute yes/no metrics
             
+            for _, row in alpha_df.iterrows():
+                t = row['Ticker']
+                ix = row['Index']
+                
+                # VAL (4 blocks)
+                b_val = f'<span class="a-blk" title="P/E Ratio">{get_blk()}</span><span class="a-blk" title="Short Interest %">{get_blk()}</span><span class="a-blk" title="1Y Momentum">{get_blk()}</span><span class="a-blk" title="Market Cap">{get_blk()}</span>'
+                # PRF (3 blocks)
+                b_prf = f'<span class="a-blk" title="Gross Margin %">{get_blk()}</span><span class="a-blk" title="Operating Margin %">{get_blk()}</span><span class="a-blk" title="Net Margin %">{get_blk()}</span>'
+                # CSH (5 blocks)
+                b_csh = f'<span class="a-blk" title="Operating CF">{get_blk()}</span><span class="a-blk" title="Free Cash Flow">{get_blk()}</span><span class="a-blk" title="Investing CF (Binary)">{get_bin()}</span><span class="a-blk" title="Financing CF">{get_blk()}</span><span class="a-blk" title="Self-Funding Check (Binary)">{get_bin()}</span>'
+                # LEV (5 blocks)
+                b_lev = f'<span class="a-blk" title="Cash & STI">{get_blk()}</span><span class="a-blk" title="ST Debt">{get_blk()}</span><span class="a-blk" title="Total Debt">{get_blk()}</span><span class="a-blk" title="Cash/Debt Ratio">{get_blk()}</span><span class="a-blk" title="Goodwill/Mkt Cap">{get_blk()}</span>'
+                # OPT (2 blocks)
+                b_opt = f'<span class="a-blk" title="Volume Surge">{get_blk()}</span><span class="a-blk" title="Skew Shift">{get_blk()}</span>'
+                
+                # Verdict
+                verdict = random.choice(['🔥', '⏳', '🧊'])
+                
+                # Indentation-safe row addition
+                html_table += (
+                    "<tr>"
+                    f"<td class='idx'>{ix}</td>"
+                    f"<td class='tick'>{t}</td>"
+                    f"<td>{b_val}</td>"
+                    f"<td>{b_prf}</td>"
+                    f"<td>{b_csh}</td>"
+                    f"<td>{b_lev}</td>"
+                    f"<td>{b_opt}</td>"
+                    f"<td style='font-size:13px;'>{verdict}</td>"
+                    "</tr>"
+                )
+            
+            html_table += "</table>"
+            st.markdown(html_table, unsafe_allow_html=True)
+
             # --- DUMMY GENERATOR (Replace with your actual FSLI math later) ---
             import random
             def get_blk(): return random.choice(['<span style="color:#00ff00;">█</span>', '<span style="color:#333;">█</span>', '<span style="color:#ff5252;">█</span>'])
