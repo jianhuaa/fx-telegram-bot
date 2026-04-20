@@ -1215,6 +1215,9 @@ def show_global_birdseye(df_inds, df_all_ret):
                 ".alpha-tbl .idx { color: #888; text-align: left; padding-left: 5px;}"
                 ".a-blk { cursor: help; font-size: 11px; transition: transform 0.1s; display: inline-block; width: 100%; text-align: center; }"
                 ".a-blk:hover { transform: scale(1.5); }"
+                ".alpha-tbl tbody tr { cursor: pointer; transition: background-color 0.1s; }"
+                ".alpha-tbl tbody tr:hover { background-color: #161616; }" /* Subtle hover tracking */
+                ".alpha-tbl tbody tr.selected { background-color: #0a192f !important; box-shadow: inset 3px 0 0 #00aaff; }" /* Click to highlight */
                 "</style>"
                 "<div class='alpha-wrap'>"
                 "<table class='alpha-tbl'>"
@@ -1260,7 +1263,7 @@ def show_global_birdseye(df_inds, df_all_ret):
                 
                 # Unpacking the blocks into 19 individual <td> cells so they spread out evenly!
                 html_table += (
-                    "<tr>"
+                    "<tr onclick=\"this.classList.toggle('selected')\">"
                     f"<td class='idx'>{ix}</td>"
                     f"<td class='tick'>{t}</td>"
                     f"<td><span class='a-blk' title='P/E Ratio'>{v1}</span></td>"
