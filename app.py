@@ -1207,7 +1207,6 @@ def show_global_birdseye(df_inds, df_all_ret):
             # 2. Build the HTML Table Framework (Scrollable & 2-Tier Header - Indentation Safe)
             html_table = (
                 "<style>"
-                "body { background-color: #0d0d0d; margin: 0; font-family: sans-serif; }"
                 ".alpha-wrap { max-height: 380px; overflow-y: auto; overflow-x: hidden; border-bottom: 1px solid #1a1a1a; -ms-overflow-style: none; scrollbar-width: none; }"
                 ".alpha-wrap::-webkit-scrollbar { display: none; }"
                 ".alpha-wrap { max-height: 380px; overflow-y: auto; overflow-x: hidden; border-bottom: 1px solid #1a1a1a; }"
