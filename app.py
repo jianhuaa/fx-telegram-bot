@@ -1178,12 +1178,15 @@ def show_global_birdseye(df_inds, df_all_ret):
     with c_bot_right:
         st.markdown(f"<div style='color:#f4ca16; font-size:12px; font-weight:bold; margin-bottom:5px;'>⚖️ ALPHA COMPARISON ENGINE</div>", unsafe_allow_html=True)
         
-        # Mobile-friendly cheat sheet for the pillars
-        st.markdown("""
-        <div style='font-size:10px; color:#888; margin-bottom:12px;'>
-        <b>VAL:</b> PE | SI | 1Y | Cap &nbsp;&nbsp;&nbsp; <b>PRF:</b> Gross | Op | Net &nbsp;&nbsp;&nbsp; <b>CSH:</b> OpCF | FCF | InvCF | FinCF | Self-Fund &nbsp;&nbsp;&nbsp; <b>LEV:</b> Cash | STD | LTD | C/D | GoodW &nbsp;&nbsp;&nbsp; <b>OPT:</b> Vol | Skew
-        </div>
-        """, unsafe_allow_html=True)
+        # Mobile-friendly cheat sheet for the pillars (Indentation-Safe Version)
+        st.markdown(
+            "<div style='font-size:10px; color:#888; margin-bottom:12px;'>"
+            "<b>VAL:</b> PE | SI | 1Y | Cap &nbsp;&nbsp;&nbsp; <b>PRF:</b> Gross | Op | Net &nbsp;&nbsp;&nbsp; "
+            "<b>CSH:</b> OpCF | FCF | InvCF | FinCF | Self-Fund &nbsp;&nbsp;&nbsp; "
+            "<b>LEV:</b> Cash | STD | LTD | C/D | GoodW &nbsp;&nbsp;&nbsp; <b>OPT:</b> Vol | Skew"
+            "</div>", 
+            unsafe_allow_html=True
+        )
         
         if 'df_losers' in locals() and not df_losers.empty and active_etfs:
             
