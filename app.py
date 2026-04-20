@@ -1260,45 +1260,6 @@ def show_global_birdseye(df_inds, df_all_ret):
             
             html_table += "</table>"
             st.markdown(html_table, unsafe_allow_html=True)
-
-            # --- DUMMY GENERATOR (Replace with your actual FSLI math later) ---
-            import random
-            def get_blk(): return random.choice(['<span style="color:#00ff00;">█</span>', '<span style="color:#333;">█</span>', '<span style="color:#ff5252;">█</span>'])
-            def get_bin(): return random.choice(['<span style="color:#00ff00;">█</span>', '<span style="color:#ff5252;">█</span>']) # For absolute yes/no metrics
-            
-            for _, row in alpha_df.iterrows():
-                t = row['Ticker']
-                ix = row['Index']
-                
-                # VAL (4 blocks)
-                b_val = f'<span class="a-blk" title="P/E Ratio">{get_blk()}</span><span class="a-blk" title="Short Interest %">{get_blk()}</span><span class="a-blk" title="1Y Momentum">{get_blk()}</span><span class="a-blk" title="Market Cap">{get_blk()}</span>'
-                # PRF (3 blocks)
-                b_prf = f'<span class="a-blk" title="Gross Margin %">{get_blk()}</span><span class="a-blk" title="Operating Margin %">{get_blk()}</span><span class="a-blk" title="Net Margin %">{get_blk()}</span>'
-                # CSH (5 blocks - Note Inv CF and Self Fund are strictly binary here!)
-                b_csh = f'<span class="a-blk" title="Operating CF">{get_blk()}</span><span class="a-blk" title="Free Cash Flow">{get_blk()}</span><span class="a-blk" title="Investing CF (Binary)">{get_bin()}</span><span class="a-blk" title="Financing CF">{get_blk()}</span><span class="a-blk" title="Self-Funding Check (Binary)">{get_bin()}</span>'
-                # LEV (5 blocks)
-                b_lev = f'<span class="a-blk" title="Cash & STI">{get_blk()}</span><span class="a-blk" title="ST Debt">{get_blk()}</span><span class="a-blk" title="Total Debt">{get_blk()}</span><span class="a-blk" title="Cash/Debt Ratio">{get_blk()}</span><span class="a-blk" title="Goodwill/Mkt Cap">{get_blk()}</span>'
-                # OPT (2 blocks)
-                b_opt = f'<span class="a-blk" title="Volume Surge">{get_blk()}</span><span class="a-blk" title="Skew Shift">{get_blk()}</span>'
-                
-                # Verdict
-                verdict = random.choice(['🔥', '⏳', '🧊'])
-                
-                html_table += f"""
-                <tr>
-                    <td class="idx">{ix}</td>
-                    <td class="tick">{t}</td>
-                    <td>{b_val}</td>
-                    <td>{b_prf}</td>
-                    <td>{b_csh}</td>
-                    <td>{b_lev}</td>
-                    <td>{b_opt}</td>
-                    <td style="font-size:13px;">{verdict}</td>
-                </tr>
-                """
-            
-            html_table += "</table>"
-            st.markdown(html_table, unsafe_allow_html=True)
             
         else:
             st.info("Alpha Comparison Engine requires bleeding tickers to activate.")
