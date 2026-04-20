@@ -1190,6 +1190,8 @@ def show_global_birdseye(df_inds, df_all_ret):
     # --- 2/3 RIGHT: ALPHA COMPARISON ENGINE (HTML Heatmap) ---
     with c_bot_right:
         st.markdown(f"<div style='color:#f4ca16; font-size:12px; font-weight:bold; margin-bottom:5px;'>⚖️ ALPHA COMPARISON ENGINE</div>", unsafe_allow_html=True)
+        # Push the table itself down an additional 30px, leaving the header fixed
+        st.markdown("<div style='height:30px;'></div>", unsafe_allow_html=True)
         
         if 'df_losers' in locals() and not df_losers.empty and active_etfs:
             
@@ -1219,16 +1221,16 @@ def show_global_birdseye(df_inds, df_all_ret):
                 "<thead>"
                 "<tr>"
                 "<th rowspan='2' style='width: 5%; text-align: left; padding-left: 5px;'>IDX</th>"
-                "<th rowspan='2' style='width: 9%; text-align: left; padding-left: 8px;'>TICK</th>"
-                "<th colspan='4' style='color:#00aaff;'>VAL</th>"
-                "<th colspan='3' style='color:#00ff00;'>PRF</th>"
-                "<th colspan='5' style='color:#00fa9a;'>CSH</th>"
-                "<th colspan='5' style='color:#ff5252;'>LEV</th>"
-                "<th colspan='2' style='color:#b19cd9;'>OPT</th>"
-                "<th rowspan='2' style='width: 5%; color:#f4ca16; font-size:11px;'>ACT</th>"
+                "<th rowspan='2' style='width: 7%; text-align: left; padding-left: 8px;'>TICK</th>"
+                "<th colspan='4' style='color:#00aaff;'>VALUATION</th>"
+                "<th colspan='3' style='color:#00ff00;'>PROFITS</th>"
+                "<th colspan='5' style='color:#00fa9a;'>CASH FLOWS</th>"
+                "<th colspan='5' style='color:#ff5252;'>LEVERAGE</th>"
+                "<th colspan='2' style='color:#b19cd9;'>OPTIONS</th>"
+                "<th rowspan='2' style='width: 5%; color:#f4ca16; font-size:11px;'>ANS</th>"
                 "</tr>"
                 "<tr class='sub-hdr'>"
-                "<th title='P/E Ratio'>PE</th><th title='Short Interest'>SI</th><th title='1Y Momentum'>1Y</th><th title='Market Cap'>CAP</th>"
+                "<th title='P/E Ratio'>P/E</th><th title='Short Interest'>SI</th><th title='1Y Momentum'>1Y</th><th title='Market Cap'>CAP</th>"
                 "<th title='Gross Margin'>GM</th><th title='Operating Margin'>OM</th><th title='Net Margin'>NM</th>"
                 "<th title='Operating CF'>OPC</th><th title='Free Cash Flow'>FCF</th><th title='Investing CF'>IVC</th><th title='Financing CF'>FNC</th><th title='Self-Funding'>SLF</th>"
                 "<th title='Cash & STI'>CSH</th><th title='Short Term Debt'>STD</th><th title='Long Term Debt'>LTD</th><th title='Cash/Debt'>C/D</th><th title='Goodwill'>GW</th>"
@@ -1263,7 +1265,7 @@ def show_global_birdseye(df_inds, df_all_ret):
                     f"<td class='tick'>{t}</td>"
                     f"<td><span class='a-blk' title='P/E Ratio'>{v1}</span></td>"
                     f"<td><span class='a-blk' title='Short Interest'>{v2}</span></td>"
-                    f"<td><span class='a-blk' title='1Y Momentum'>{v3}</span></td>"
+                    f"<td><span class='a-blk' title='1Y%'>{v3}</span></td>"
                     f"<td><span class='a-blk' title='Market Cap'>{v4}</span></td>"
                     f"<td><span class='a-blk' title='Gross Margin'>{p1}</span></td>"
                     f"<td><span class='a-blk' title='Operating Margin'>{p2}</span></td>"
