@@ -1293,8 +1293,9 @@ def show_global_birdseye(df_inds, df_all_ret):
                 )
             
             html_table += "</tbody></table></div>"
-            st.markdown(html_table, unsafe_allow_html=True)
-            
+            #st.markdown(html_table, unsafe_allow_html=True)
+            # This bypasses Streamlit's JS filter and allows your clicks to work!
+            components.html(html_table, height=390, scrolling=False)
         else:
             st.info("Alpha Comparison Engine requires bleeding tickers to activate.")
 
