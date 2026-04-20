@@ -1335,15 +1335,16 @@ def show_global_birdseye(df_inds, df_all_ret):
 
                 verdict = random.choice(['🔥', '⏳', '🧊'])
 
+                # Indentation-safe row addition
                 html_table += (
                     "<tr>"
                     f"<td class='idx'>{ix}</td>"
                     f"<td class='tick'>{t}</td>"
-                    f"<td>{b_val}</td>"
-                    f"<td>{b_prf}</td>"
-                    f"<td>{b_csh}</td>"
-                    f"<td>{b_lev}</td>"
-                    f"<td>{b_opt}</td>"
+                    f"<td colspan='4'>{b_val}</td>"
+                    f"<td colspan='3'>{b_prf}</td>"
+                    f"<td colspan='5'>{b_csh}</td>"
+                    f"<td colspan='5'>{b_lev}</td>"
+                    f"<td colspan='2'>{b_opt}</td>"
                     f"<td style='font-size:13px;'>{verdict}</td>"
                     "</tr>"
                 )
