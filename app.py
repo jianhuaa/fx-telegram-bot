@@ -153,6 +153,9 @@ df_rut_ret = get_sheet_returns(rut_sheet_df, 'RTY')
 
 df_all_returns = pd.concat([df_spx_ret, df_rmc_ret, df_rut_ret]).dropna(subset=['Ticker']).drop_duplicates(subset=['Ticker'])
 df_all_returns.to_parquet('col4_all_returns.parquet')
+# After the df_all_returns.to_parquet line, add:
+print(f"[DEBUG] Parquet written: {len(df_all_returns)} rows, columns: {df_all_returns.columns.tolist()}")
+print(f"[DEBUG] Sample sectors: {df_all_returns['Sector'].value_counts().head()}")
 
 print("\n" + "="*50 + f"\nDATA GENERATION SUCCESS! Total Time: {time.time()-start_all:.2f}s\n" + "="*50)
 
