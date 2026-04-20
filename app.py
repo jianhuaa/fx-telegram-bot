@@ -952,13 +952,24 @@ def get_dynamic_options_data(ticker):
 @st.cache_data(ttl=60)
 def get_live_col4_data():
     try:
-        try: df_all_ret = pd.read_parquet('col4_all_returns.parquet')
-        except: df_all_ret = pd.DataFrame()
+        # Try local parquet first
+        try: 
+            df_all_ret = pd.read_parquet('col4_all_returns.parquet')
+            if df_all_ret.empty: raise ValueError("Empty parquet")
+        except: 
+            df_all_ret = pd.DataFrame()
+            # ADD THIS: fallback to remote GitHub copy if local is missing
+            try:
+                import requests, io
+                res = requests.get("https://raw.githubusercontent.com/jianhuaa/fx-telegram-bot/main/col4_all_returns.parquet")
+                if res.status_code == 200:
+                    df_all_ret = pd.read_parquet(io.BytesIO(res.content))
+            except:
+                pass
 
         base_url = "https://raw.githubusercontent.com/jianhuaa/fx-telegram-bot/main/"
         def safe_read_remote(fname):
             try:
-                import requests, io
                 res = requests.get(base_url + fname)
                 if res.status_code == 200: return pd.read_parquet(io.BytesIO(res.content))
             except: pass
