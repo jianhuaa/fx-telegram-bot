@@ -1180,7 +1180,7 @@ def show_global_birdseye(df_inds, df_all_ret):
                         cells=dict(values=[df_losers['Ticker'], df_losers['Index'], df_losers['Industry'], df_losers['1W'], df_losers['1M']], fill_color='#0d0d0d', font=dict(color='white',size=10), align=['left','center','left','right','right'], height=28)
                     )])
                     # Margin set to 0 because the HTML spacer div handles the drop perfectly
-                    fig_losers.update_layout(margin=dict(l=0,r=0,t=0,b=0), height=360)
+                    fig_losers.update_layout(margin=dict(l=0,r=0,t=0,b=0), height=380)
                     st.plotly_chart(fig_losers, use_container_width=True)
                 else:
                     st.success(f"No bleeding tickers found{filter_label}!")
@@ -1206,7 +1206,7 @@ def show_global_birdseye(df_inds, df_all_ret):
             # 2. Build the HTML Table Framework (Scrollable & 2-Tier Header - Indentation Safe)
             html_table = (
                 "<style>"
-                ".alpha-wrap { max-height: 340px; overflow-y: auto; overflow-x: hidden; border-bottom: 1px solid #1a1a1a; }"
+                ".alpha-wrap { max-height: 380px; overflow-y: auto; overflow-x: hidden; border-bottom: 1px solid #1a1a1a; }"
                 ".alpha-tbl { width: 100%; border-collapse: collapse; font-family: monospace; font-size: 11px; color: white; background-color: #0d0d0d; }"
                 ".alpha-tbl thead th { position: sticky; top: 0; background-color: #161616; z-index: 2; border-bottom: 1px solid #333; padding: 4px 2px; text-align: center; color: #888; font-size: 10px; letter-spacing: 1px; }"
                 ".alpha-tbl .sub-hdr th { top: 23px; font-size: 9px; padding: 2px 0px; border-bottom: 1px solid #333; background-color: #1a1a1a; z-index: 1; }"
