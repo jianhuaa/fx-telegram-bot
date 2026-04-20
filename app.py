@@ -1216,8 +1216,8 @@ def show_global_birdseye(df_inds, df_all_ret):
                 ".a-blk { cursor: help; font-size: 11px; transition: transform 0.1s; display: inline-block; width: 100%; text-align: center; }"
                 ".a-blk:hover { transform: scale(1.5); }"
                 ".alpha-tbl tbody tr { cursor: pointer; transition: background-color 0.1s; }"
-                ".alpha-tbl tbody tr:hover { background-color: #161616; }" /* Subtle hover tracking */
-                ".alpha-tbl tbody tr.selected { background-color: #0a192f !important; box-shadow: inset 3px 0 0 #00aaff; }" /* Click to highlight */
+                ".alpha-tbl tbody tr:hover { background-color: #161616; }"
+                ".alpha-tbl tbody tr.selected { background-color: #0a192f !important; box-shadow: inset 3px 0 0 #00aaff; }"
                 "</style>"
                 "<div class='alpha-wrap'>"
                 "<table class='alpha-tbl'>"
