@@ -1208,6 +1208,8 @@ def show_global_birdseye(df_inds, df_all_ret):
             html_table = (
                 "<style>"
                 "body { background-color: #0d0d0d; margin: 0; font-family: sans-serif; }"
+                ".alpha-wrap { max-height: 380px; overflow-y: auto; overflow-x: hidden; border-bottom: 1px solid #1a1a1a; -ms-overflow-style: none; scrollbar-width: none; }"
+                ".alpha-wrap::-webkit-scrollbar { display: none; }"
                 ".alpha-wrap { max-height: 380px; overflow-y: auto; overflow-x: hidden; border-bottom: 1px solid #1a1a1a; }"
                 ".alpha-tbl { width: 100%; border-collapse: collapse; font-family: monospace; font-size: 11px; color: white; background-color: #0d0d0d; }"
                 ".alpha-tbl thead th { position: sticky; top: 0; background-color: #161616; z-index: 2; border-bottom: 1px solid #333; padding: 4px 2px; text-align: center; color: #888; font-size: 10px; letter-spacing: 1px; }"
