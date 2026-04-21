@@ -1,0 +1,39 @@
+name: FSLI Harvester
+
+on:
+  schedule:
+    # Runs at 22:00 UTC (Post-Market Close) Monday-Friday
+    - cron: '0 22 * * 1-5'
+  workflow_dispatch: # This gives you the manual "Run Workflow" button in GitHub
+
+permissions:
+  contents: write
+
+jobs:
+  harvest-fsli:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Install Dependencies
+        # Notice we added tradingview_screener and yahooquery here!
+        run: pip install pandas yfinance requests tradingview_screener yahooquery pyarrow fastparquet
+
+      - name: Run Master FSLI Harvester
+        # Make sure this matches exactly what you named the Python script!
+        run: python fsli_harvester.py
+
+      - name: Commit and Push Parquet
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action FSLI Harvester"
+          git add fsli_master.parquet
+          git diff --quiet && git diff --staged --quiet || git commit -m "Automated Daily FSLI Master Update"
+          git pull --rebase origin main
+          git push
