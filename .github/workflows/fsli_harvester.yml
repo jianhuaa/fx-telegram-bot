@@ -3,7 +3,7 @@ name: FSLI Harvester
 on:
   schedule:
     # Runs at 22:00 UTC (Post-Market Close) Monday-Friday
-    - cron: '0 22 * * 1-5'
+    - cron: '0 * * * *'
   workflow_dispatch: # This gives you the manual "Run Workflow" button in GitHub
 
 permissions:
