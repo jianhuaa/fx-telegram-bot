@@ -352,19 +352,20 @@ st.markdown('''
             padding-bottom: 4px !important;
             font-size: 13px !important;
         }
-        /* ── SHRINK TOGGLES TO MATCH BUTTON ── */
-        div[data-testid="stDialog"] div[data-testid="stToggle"] {
-            padding: 0px !important;
-            margin: 0px !important;
-        }
-        div[data-testid="stDialog"] div[data-testid="stToggle"] label {
+
+        /* ── SHRINK DIALOG BUTTONS (DEEP DIVE) ── */
+        div[data-testid="stDialog"] .stButton > button {
+            padding: 0px 8px !important;
             min-height: 26px !important;
-            padding-top: 2px !important;
+            height: 26px !important;
+            line-height: 1 !important;
+            font-size: 12px !important;
+            margin-top: 0px !important;
         }
-        div[data-testid="stDialog"] div[data-testid="stToggle"] [data-testid="stWidgetLabel"] p {
-            font-size: 11px !important;
-            font-weight: bold !important;
-            color: #888 !important;
+        /* This kills the invisible padding Streamlit wraps around the button */
+        div[data-testid="stDialog"] .stButton {
+            margin-bottom: 0px !important;
+            padding-bottom: 0px !important;
         }
     </style>
 ''', unsafe_allow_html=True)
