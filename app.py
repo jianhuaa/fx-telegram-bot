@@ -370,16 +370,16 @@ st.markdown('''
 
         /* ── SHRINK TOGGLES (Restored) ── */
         div[data-testid="stDialog"] div[data-testid="stToggle"] {
-            min-height: 20px !important;
-            height: 20px !important;
+            min-height: 10px !important;
+            height: 10px !important;
             padding: 0px !important;
             margin-top: -20px !important; /* FIX: Levitates the toggle up by 13px */
             margin-bottom: 0px !important;
         }
         
         div[data-testid="stDialog"] div[data-testid="stToggle"] label {
-            min-height: 20px !important;
-            height: 20px !important;
+            min-height: 10px !important;
+            height: 10px !important;
             padding: 0px !important;
             margin: 0px !important;
             display: flex;
@@ -394,8 +394,10 @@ st.markdown('''
 
         /* Shrink the switch graphic to 80% */
         div[data-testid="stDialog"] div[data-testid="stToggle"] div[data-testid="stWidgetLabel"] + div {
-            transform: scale(0.8); 
-            margin-left: -5px;
+            transform: scale(0.55) !important; /* Crushes the switch to 55% size */
+            transform-origin: center center !important; 
+            margin-left: -10px !important; /* Pulls it closer to the text */
+            margin-right: -5px !important;
         }
     </style>        
 ''', unsafe_allow_html=True)
