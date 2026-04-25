@@ -368,32 +368,34 @@ st.markdown('''
             padding-bottom: 0px !important;
         }
 
-        /* ── SHRINK TOGGLES & FIX VERTICAL ALIGNMENT ── */
+        /* ── SHRINK TOGGLES & FORCE BASELINE ALIGNMENT ── */
         div[data-testid="stDialog"] div[data-testid="stToggle"] {
-            min-height: 20px !important; /* Crushing height even further */
+            min-height: 20px !important;
             height: 20px !important;
-            margin-top: -10px !important; /* Pulling upward aggressively */
             padding: 0px !important;
+            margin-top: -8px !important; /* Yanks the toggles upward to align with text */
+            margin-bottom: 0px !important;
         }
-        
+
         div[data-testid="stDialog"] div[data-testid="stToggle"] label {
             min-height: 20px !important;
             height: 20px !important;
             padding: 0px !important;
+            margin: 0px !important;
             display: flex;
             align-items: center;
         }
 
-        /* Shrink the switch itself slightly so it doesn't look cramped */
-        div[data-testid="stDialog"] div[data-testid="stToggle"] div[data-testid="stWidgetLabel"] + div {
-            transform: scale(0.8); /* Scales the actual switch down to 80% size */
-            margin-left: -5px; /* Adjusts position after scaling */
-        }
-
         div[data-testid="stDialog"] div[data-testid="stToggle"] p {
-            font-size: 11px !important; 
+            font-size: 11px !important;
             font-weight: bold !important;
             color: #888 !important;
+        }
+
+        /* Physically shrinks the switch graphic by 25% */
+        div[data-testid="stDialog"] div[data-testid="stToggle"] div[data-testid="stWidgetLabel"] + div {
+            transform: scale(0.5); 
+            margin-left: -5px;
         }
     </style>        
 ''', unsafe_allow_html=True)
@@ -1200,7 +1202,7 @@ def show_global_birdseye(df_inds, df_all_ret):
         
         with h_los_1:
             # FIX: Added a 6px bottom margin to lift the text perfectly flush with the toggles' baseline
-            st.markdown(f"<div style='color:#ff4b4b; font-size:12px; font-weight:bold;'>🔴 LOSERS</div>", unsafe_allow_html=True)
+            st.markdown(f"<div style='color:#ff4b4b; font-size:12px; font-weight:bold; margin-top:2px;'>🔴 LOSERS</div>", unsafe_allow_html=True)
         with h_los_2:
             tgl_earn = st.toggle("⏱️ 7D", key="tgl_earn")
         with h_los_3:
