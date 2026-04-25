@@ -1734,23 +1734,31 @@ def show_industry_overview_overlay(df_all_returns, df_industries, selected_secto
     else: available_tickers = []
 
     with c3:
-        # --- THE MAGIC RECEPTION DESK ---
-        # 1. Grab the raw tickers passed from Dialog 0 (e.g., ['TSLA', 'GM'])
-        passed_tickers_raw = st.session_state.get('passed_tickers', [])
+        # --- THE MAGIC RECEPTION DESK (V2: State-Safe) ---
+        # Generate a unique memory key for this specific Sector + Industry combo
+        ms_key = f"ms_{sel_sec}_{sel_ind}"
         
-        # 2. Match them to your dropdown's rich labels (e.g., 'TSLA (SPX)')
-        default_selection = []
-        if passed_tickers_raw:
-            default_selection = [lbl for lbl in available_tickers if lbl.split(' ')[0] in passed_tickers_raw]
-        
-        # 3. Fallback if nothing was passed or the match failed
-        if not default_selection:
-            default_selection = available_tickers[:3] if len(available_tickers) >= 3 else available_tickers
+        # 1. Check if we just arrived from Dialog 0's Deep Dive
+        if 'passed_tickers' in st.session_state:
+            # .pop() grabs the data AND deletes the variable in one fell swoop!
+            passed_raw = st.session_state.pop('passed_tickers') 
+            
+            # Map raw tickers (TSLA) to rich labels (TSLA (SPX))
+            passed_labels = [lbl for lbl in available_tickers if lbl.split(' ')[0] in passed_raw]
+            
+            # Inject directly into the widget's memory key
+            if passed_labels:
+                st.session_state[ms_key] = passed_labels
 
+        # 2. Fallback: If no routing happened and it's a fresh dropdown, set standard defaults
+        if ms_key not in st.session_state:
+            st.session_state[ms_key] = available_tickers[:3] if len(available_tickers) >= 3 else available_tickers
+
+        # 3. Render the widget tied purely to the key (NO `default=` parameter!)
         selected_labels = st.multiselect(
             "Tickers", 
             available_tickers,
-            default=default_selection,
+            key=ms_key,
             label_visibility="collapsed", 
             placeholder="Select tickers for FSLI/Options..."
         )
