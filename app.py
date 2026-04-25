@@ -370,13 +370,9 @@ st.markdown('''
 
         /* ── SHRINK TOGGLES & FORCE BASELINE ALIGNMENT ── */
         div[data-testid="stDialog"] div[data-testid="stToggle"] {
-            min-height: 20px !important;
-            height: 20px !important;
-            padding: 0px !important;
-            margin-top: -8px !important; /* Yanks the toggles upward to align with text */
-            margin-bottom: 0px !important;
+            display: none !important;
         }
-
+        
         div[data-testid="stDialog"] div[data-testid="stToggle"] label {
             min-height: 20px !important;
             height: 20px !important;
