@@ -372,6 +372,7 @@ st.markdown('''
         div[data-testid="stDialog"] div[data-testid="stToggle"] {
             min-height: 26px !important;
             height: 26px !important;
+            margin-top: -8px !important;    /* <-- NEW: Pulls it up to align with text */
             margin-bottom: 0px !important;
             padding-bottom: 0px !important;
         }
