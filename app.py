@@ -1207,19 +1207,14 @@ def show_global_birdseye(df_inds, df_all_ret):
     with c_bot_left:
 
         # Create 3 mini-columns for the Title and the 2 Toggles
-        # FIX: Changed to "bottom" alignment
-        h_los_1, h_los_2, h_los_3 = st.columns([0.40, 0.30, 0.30], vertical_alignment="bottom")
+        h_los_1, h_los_2, h_los_3 = st.columns([0.40, 0.30, 0.30])
         
         with h_los_1:
-            # FIX: Added a 6px bottom margin to lift the text perfectly flush with the toggles' baseline
-            st.markdown(f"<div style='color:#ff4b4b; font-size:12px; font-weight:bold; margin-top:-20px;'>🔴 LOSERS</div>", unsafe_allow_html=True)
+            st.markdown("<div style='color:#ff4b4b; font-size:12px; font-weight:bold; line-height:32px; height:32px;'>🔴 LOSERS</div>", unsafe_allow_html=True)
         with h_los_2:
-            tgl_earn = st.toggle("⏱️ 7D", key="tgl_earn")
+            tgl_earn = st.checkbox("⏱️ 7D", key="tgl_earn")
         with h_los_3:
-            tgl_flow = st.toggle("🔄 OI", key="tgl_flow")
-
-        # Smaller spacer to align with the Alpha Engine title
-        st.markdown("<div style='height:12px;'></div>", unsafe_allow_html=True)
+            tgl_flow = st.checkbox("🔄 OI", key="tgl_flow")
         
         #st.markdown(f"<div style='color:#ff4b4b; font-size:12px; font-weight:bold; margin-bottom:5px;'>🔴 LOSERS{filter_label}</div>", unsafe_allow_html=True)
         # Push the table itself down an additional 30px, leaving the header fixed
