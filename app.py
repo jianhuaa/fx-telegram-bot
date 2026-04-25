@@ -368,6 +368,25 @@ st.markdown('''
             padding-bottom: 0px !important;
         }
     </style>
+        /* ── SHRINK TOGGLES TO MATCH YOUR BUTTON ── */
+        div[data-testid="stDialog"] div[data-testid="stToggle"] {
+            min-height: 26px !important;
+            height: 26px !important;
+            margin-bottom: 0px !important;
+            padding-bottom: 0px !important;
+        }
+        
+        div[data-testid="stDialog"] div[data-testid="stToggle"] label {
+            min-height: 26px !important;
+            padding-top: 0px !important;
+            margin-top: 0px !important;
+        }
+
+        div[data-testid="stDialog"] div[data-testid="stToggle"] p {
+            font-size: 12px !important; /* Matches your button font size */
+            font-weight: bold !important;
+            color: #888 !important;
+        }
 ''', unsafe_allow_html=True)
 
 # >>> UNAFFECTED CODE A START (Data Functions for Columns 1, 2, and 3) <<<
@@ -1165,7 +1184,21 @@ def show_global_birdseye(df_inds, df_all_ret):
     
     # --- 1/3 LEFT: THE LOSERS TABLE (Unchanged) ---
     with c_bot_left:
-        st.markdown(f"<div style='color:#ff4b4b; font-size:12px; font-weight:bold; margin-bottom:5px;'>🔴 LOSERS{filter_label}</div>", unsafe_allow_html=True)
+
+        # Create 3 mini-columns for the Title and the 2 Toggles
+        h_los_1, h_los_2, h_los_3 = st.columns([0.45, 0.25, 0.30], vertical_alignment="center")
+        
+        with h_los_1:
+            st.markdown(f"<div style='color:#ff4b4b; font-size:12px; font-weight:bold;'>🔴 LOSERS</div>", unsafe_allow_html=True)
+        with h_los_2:
+            tgl_earn = st.toggle("⏱️ 7D", key="tgl_earn")
+        with h_los_3:
+            tgl_flow = st.toggle("🔄 OI", key="tgl_flow")
+
+        # Smaller spacer to align with the Alpha Engine title
+        st.markdown("<div style='height:12px;'></div>", unsafe_allow_html=True)
+        
+        #st.markdown(f"<div style='color:#ff4b4b; font-size:12px; font-weight:bold; margin-bottom:5px;'>🔴 LOSERS{filter_label}</div>", unsafe_allow_html=True)
         # Push the table itself down an additional 30px, leaving the header fixed
         st.markdown("<div style='height:30px;'></div>", unsafe_allow_html=True)
         
