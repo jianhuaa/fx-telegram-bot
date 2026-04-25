@@ -1206,9 +1206,13 @@ def show_global_birdseye(df_inds, df_all_ret):
 
 
 # --- 2/3 RIGHT: ALPHA COMPARISON ENGINE (HTML Heatmap) ---
-# --- 2/3 RIGHT: ALPHA COMPARISON ENGINE (Native MultiIndex Dataframe) ---
+# --- 2/3 RIGHT: ALPHA COMPARISON ENGINE (Native MultiIndex + Multi-Select + External Button) ---
     with c_bot_right:
-        st.markdown(f"<div style='color:#f4ca16; font-size:12px; font-weight:bold; margin-bottom:10px;'>⚖️ ALPHA COMPARISON ENGINE</div>", unsafe_allow_html=True)
+        # Create a row for the Title and the Deep Dive Button
+        h_col1, h_col2 = st.columns([0.7, 0.3], vertical_alignment="center")
+        
+        with h_col1:
+            st.markdown(f"<div style='color:#f4ca16; font-size:12px; font-weight:bold;'>⚖️ ALPHA COMPARISON ENGINE</div>", unsafe_allow_html=True)
             
         if 'df_losers' in locals() and not df_losers.empty and active_etfs:
             alpha_df = df_losers.copy()
@@ -1217,7 +1221,7 @@ def show_global_birdseye(df_inds, df_all_ret):
             sort_col_alpha = f'{sort_choice}_raw' if f'{sort_choice}_raw' in alpha_df.columns else '1M_raw'
             alpha_df = alpha_df.sort_values(by=['SortIndex', sort_col_alpha]).head(25)
             
-            # --- 1. DUMMY GENERATOR (Replace with real logic later) ---
+            # --- 1. DUMMY GENERATOR (Restoring your original Fire/Ice icons) ---
             import random
             def get_blk(): return random.choice(['🟩', '⬛', '🟥'])
             def get_bin(): return random.choice(['🟩', '🟥'])
@@ -1232,7 +1236,7 @@ def show_global_birdseye(df_inds, df_all_ret):
                     get_blk(), get_blk(), get_bin(), get_blk(), get_bin(), # CASH FLOWS
                     get_blk(), get_blk(), get_blk(), get_blk(), get_blk(), # LEVERAGE
                     get_blk(), get_blk(),                        # OPTIONS
-                    "🤿"                                         # ANS/DIVE
+                    random.choice(['🔥', '⏳', '🧊'])            # ANS (Restored!)
                 ])
             
             display_df = pd.DataFrame(display_data)
@@ -1245,32 +1249,37 @@ def show_global_birdseye(df_inds, df_all_ret):
                 ("CASH FLOWS", "CFO"), ("CASH FLOWS", "FCF"), ("CASH FLOWS", "CFI"), ("CASH FLOWS", "CFF"), ("CASH FLOWS", "SELF?"),
                 ("LEVERAGE", "CASH"), ("LEVERAGE", "STD"), ("LEVERAGE", "LTD"), ("LEVERAGE", "C/D"), ("LEVERAGE", "GW"),
                 ("OPTIONS", "VOL"), ("OPTIONS", "SKW"),
-                ("DIVE", "🤿") 
+                (" ", "ANS") # Restored the ANS header
             ]
             display_df.columns = pd.MultiIndex.from_tuples(header_tuples)
             
-            # --- 4. RENDER NATIVE INTERACTIVE TABLE ---
+            st.markdown("<div style='height:10px;'></div>", unsafe_allow_html=True)
+            
+            # --- 4. RENDER NATIVE INTERACTIVE TABLE (Multi-Select) ---
             alpha_event = st.dataframe(
                 display_df,
                 use_container_width=True,
                 hide_index=True,
                 height=380,
-                selection_mode="single-row", # Enables the click-to-dive
-                on_select="rerun",           # Wakes up Python on click
+                selection_mode="multi-row", # Allows selecting multiple tickers!
+                on_select="rerun",          
                 key="alpha_table_native"
             )
             
-            # --- 5. THE ROUTER (Catches the click and dives) ---
-            if alpha_event.selection.rows:
-                selected_row_idx = alpha_event.selection.rows[0]
-                # Because we used MultiIndex, selecting the TICK column requires a tuple
-                clicked_ticker = display_df.iloc[selected_row_idx][(" ", "TICK")]
-                
-                st.session_state['trigger_industry_dialog'] = True
-                st.session_state['passed_sector'] = active_etfs[0] if len(active_etfs) == 1 else 'SPX'
-                st.session_state['passed_industry'] = st.session_state.get('selected_sub_ind', None)
-                st.session_state['passed_tickers'] = [clicked_ticker]
-                st.rerun()
+            # --- 5. GRAB THE SELECTED TICKERS ---
+            selected_rows = alpha_event.selection.rows
+            # Safely extract the tickers using the MultiIndex tuple (" ", "TICK")
+            selected_tickers = [display_df.iloc[i][(" ", "TICK")] for i in selected_rows] if selected_rows else []
+
+            # --- 6. THE ROUTER (The External Button) ---
+            with h_col2:
+                # This button dynamically updates with the number of tickers you've clicked
+                if st.button(f"🤿 Deep Dive ({len(selected_tickers)})", use_container_width=True, disabled=len(selected_tickers)==0):
+                    st.session_state['trigger_industry_dialog'] = True
+                    st.session_state['passed_sector'] = active_etfs[0] if len(active_etfs) == 1 else 'SPX'
+                    st.session_state['passed_industry'] = st.session_state.get('selected_sub_ind', None)
+                    st.session_state['passed_tickers'] = selected_tickers
+                    st.rerun()
 
         else:
             st.info("Alpha Comparison Engine requires bleeding tickers to activate.")
