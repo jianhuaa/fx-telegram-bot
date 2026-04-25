@@ -1219,7 +1219,7 @@ def show_global_birdseye(df_inds, df_all_ret):
         h_col1, h_col2 = st.columns([0.80, 0.20], vertical_alignment="center")
         
         with h_col1:
-            st.markdown(f"<div style='color:#f4ca16; font-size:12px; font-weight:bold;'>⚖️ ALPHA COMPARISON ENGINE</div>", unsafe_allow_html=True)
+            st.markdown(f"<div style='color:#f4ca16; font-size:12px; font-weight:bold; margin-top:-5px;'>⚖️ ALPHA COMPARISON ENGINE <span style='color:#888; font-size:10px; font-weight:normal;'>(Select 1 industry to dive)</span></div>", unsafe_allow_html=True)
             
         if 'df_losers' in locals() and not df_losers.empty and active_etfs:
             alpha_df = df_losers.copy()
@@ -1289,7 +1289,7 @@ def show_global_birdseye(df_inds, df_all_ret):
                 display_df,
                 use_container_width=True,
                 hide_index=True,
-                height=380,
+                height=350,
                 selection_mode="multi-row", 
                 on_select="rerun",
                 column_config=col_cfg,
