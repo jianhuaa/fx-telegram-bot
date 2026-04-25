@@ -1196,11 +1196,11 @@ def show_global_birdseye(df_inds, df_all_ret):
 
         # Create 3 mini-columns for the Title and the 2 Toggles
         # FIX: Changed to "bottom" alignment
-        h_los_1, h_los_2, h_los_3 = st.columns([0.40, 0.30, 0.30], vertical_alignment="bottom")
+        h_los_1, h_los_2, h_los_3 = st.columns([0.40, 0.30, 0.30], vertical_alignment="center")
         
         with h_los_1:
             # FIX: Added a 6px bottom margin to lift the text perfectly flush with the toggles' baseline
-            st.markdown(f"<div style='color:#ff4b4b; font-size:12px; font-weight:bold; margin-bottom:6px;'>🔴 LOSERS</div>", unsafe_allow_html=True)
+            st.markdown(f"<div style='color:#ff4b4b; font-size:12px; font-weight:bold;'>🔴 LOSERS</div>", unsafe_allow_html=True)
         with h_los_2:
             tgl_earn = st.toggle("⏱️ 7D", key="tgl_earn")
         with h_los_3:
@@ -1264,11 +1264,10 @@ def show_global_birdseye(df_inds, df_all_ret):
 
 # --- 2/3 RIGHT: ALPHA COMPARISON ENGINE (Pixel-Perfect MultiIndex) ---
     with c_bot_right:
-        h_col1, h_col2 = st.columns([0.80, 0.20], vertical_alignment="bottom")
+        h_col1, h_col2 = st.columns([0.80, 0.20])
         
         with h_col1:
-            #st.markdown(f"<div style='color:#f4ca16; font-size:12px; font-weight:bold; margin-top:2px;'>⚖️ ALPHA COMPARISON ENGINE <span style='color:#888; font-size:10px; font-weight:normal;'>(Select 1 industry to dive)</span></div>", unsafe_allow_html=True)
-            st.markdown(f"<div style='color:#f4ca16; font-size:12px; font-weight:bold; margin-bottom:6px;'>⚖️ ALPHA COMPARISON ENGINE <span style='color:#888; font-size:10px; font-weight:normal;'>(Select 1 industry to dive)</span></div>", unsafe_allow_html=True)
+            st.markdown(f"<div style='color:#f4ca16; font-size:12px; font-weight:bold; margin-top:2px;'>⚖️ ALPHA COMPARISON ENGINE <span style='color:#888; font-size:10px; font-weight:normal;'>(Select 1 industry to dive)</span></div>", unsafe_allow_html=True)
             
         if 'df_losers' in locals() and not df_losers.empty and active_etfs:
             alpha_df = df_losers.copy()
