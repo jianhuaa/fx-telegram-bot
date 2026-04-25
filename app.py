@@ -1261,10 +1261,11 @@ def show_global_birdseye(df_inds, df_all_ret):
             display_df.columns = pd.MultiIndex.from_tuples(header_tuples)
 
             # --- COLUMN CONFIGURATION: EXACT PIXEL WIDTHS ---
+            # FIX: We wrap the tuple keys in str() so JSON can serialize them safely
             col_cfg = {
-                (" ", "IDX"): st.column_config.TextColumn(width=30),
-                (" ", "TICK"): st.column_config.TextColumn(width=45),
-                (" ", "ANS"): st.column_config.TextColumn(width=30),
+                str((" ", "IDX")): st.column_config.TextColumn(width=30),
+                str((" ", "TICK")): st.column_config.TextColumn(width=45),
+                str((" ", "ANS")): st.column_config.TextColumn(width=30),
             }
             
             # Custom mapping to surgically kill dead space based on word length
@@ -1276,10 +1277,10 @@ def show_global_birdseye(df_inds, df_all_ret):
                 "SELF?": 50
             }
             
-            # Apply the specific pixel widths
+            # Apply the specific pixel widths using str(col)
             for col in header_tuples[2:-1]:
-                exact_w = pixel_widths.get(col[1], 30) # Default to 30px if not in dict
-                col_cfg[col] = st.column_config.TextColumn(width=exact_w)
+                exact_w = pixel_widths.get(col[1], 30) 
+                col_cfg[str(col)] = st.column_config.TextColumn(width=exact_w)
             
             st.markdown("<div style='height:10px;'></div>", unsafe_allow_html=True)
             
