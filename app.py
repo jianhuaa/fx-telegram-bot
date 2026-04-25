@@ -367,7 +367,7 @@ st.markdown('''
             margin-bottom: 0px !important;
             padding-bottom: 0px !important;
         }
-    </style>
+
         /* ── SHRINK TOGGLES TO MATCH YOUR BUTTON ── */
         div[data-testid="stDialog"] div[data-testid="stToggle"] {
             min-height: 26px !important;
@@ -387,6 +387,7 @@ st.markdown('''
             font-weight: bold !important;
             color: #888 !important;
         }
+    </style>        
 ''', unsafe_allow_html=True)
 
 # >>> UNAFFECTED CODE A START (Data Functions for Columns 1, 2, and 3) <<<
