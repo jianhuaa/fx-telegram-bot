@@ -1082,14 +1082,14 @@ def show_global_birdseye(df_inds, df_all_ret):
         
         t_col1, t_col2 = st.columns([0.4, 0.6])
         with t_col1:
-            st.markdown(f"<div style='color:#00aaff; font-size:12px; font-weight:bold; margin-top:8px;'>🔬 {active_str} SUB-INDUSTRIES</div>", unsafe_allow_html=True)
+            st.markdown(f"<div style='color:#00aaff; font-size:12px; font-weight:bold; margin-top:8px;'>🔬 {active_str} INDUSTRIES</div>", unsafe_allow_html=True)
         with t_col2:
             sort_choice = st.radio("Sort Focus:", ["1W", "1M", "3M", "1Y"], horizontal=True, label_visibility="collapsed")
         
         active_etfs = [x for x in active_list if x != 'SPX']
         
         if not active_etfs and 'SPX' in active_list:
-            st.info("SPX Selected. Click any Sector ETF to the left to detangle its industries.")
+            st.info("SPX Selected. Click any Sector ETF to the left to display its industries.")
             st.session_state.selected_sub_ind = None
         else:
             if not df_inds.empty:
@@ -1169,7 +1169,7 @@ def show_global_birdseye(df_inds, df_all_ret):
         st.markdown("<div style='height:30px;'></div>", unsafe_allow_html=True)
         
         if not active_etfs and 'SPX' in active_list:
-            st.info("Select a Sector above to view its bleeding tickers.")
+            st.info("Select a Sector above to view its losers.")
             df_losers = pd.DataFrame()
         elif not df_all_ret.empty:
             df_losers = df_all_ret[df_all_ret['Sector'].isin(active_etfs)].copy()
@@ -1315,7 +1315,8 @@ def show_global_birdseye(df_inds, df_all_ret):
                     st.rerun()
 
         else:
-            st.info("Alpha Comparison Engine requires bleeding tickers to activate.")
+            st.markdown("<div style='height:30px;'></div>", unsafe_allow_html=True)
+            st.info("Alpha Comparison Engine requires losers to activate.")
 
 # ---------------------------------------------------------
 # DIALOG 1: SUMMARY / TICKERS PLACEHOLDER
