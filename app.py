@@ -1733,12 +1733,32 @@ def show_industry_overview_overlay(df_all_returns, df_industries, selected_secto
         available_tickers = sorted(ind_df_clean['Label'].tolist())
     else: available_tickers = []
 
-    with c3:
+   with c3:
+        # --- THE MAGIC RECEPTION DESK ---
+        # 1. Grab the raw tickers passed from Dialog 0 (e.g., ['TSLA', 'GM'])
+        passed_tickers_raw = st.session_state.get('passed_tickers', [])
+        
+        # 2. Match them to your dropdown's rich labels (e.g., 'TSLA (SPX)')
+        default_selection = []
+        if passed_tickers_raw:
+            default_selection = [lbl for lbl in available_tickers if lbl.split(' ')[0] in passed_tickers_raw]
+        
+        # 3. Fallback if nothing was passed or the match failed
+        if not default_selection:
+            default_selection = available_tickers[:3] if len(available_tickers) >= 3 else available_tickers
+
         selected_labels = st.multiselect(
-            "Tickers", available_tickers,
-            default=available_tickers[:3] if len(available_tickers) >= 3 else available_tickers,
-            label_visibility="collapsed", placeholder="Select tickers for FSLI/Options..."
+            "Tickers", 
+            available_tickers,
+            default=default_selection,
+            label_visibility="collapsed", 
+            placeholder="Select tickers for FSLI/Options..."
         )
+        
+        # 4. MEMORY WIPE: Delete the variable so it doesn't get permanently stuck 
+        # if the user manually changes sectors later inside this dialog
+        if 'passed_tickers' in st.session_state:
+            del st.session_state['passed_tickers']
 
     st.markdown("<hr style='margin:10px 0; border-color:#333;'>", unsafe_allow_html=True)
 
