@@ -1206,145 +1206,72 @@ def show_global_birdseye(df_inds, df_all_ret):
 
 
 # --- 2/3 RIGHT: ALPHA COMPARISON ENGINE (HTML Heatmap) ---
+# --- 2/3 RIGHT: ALPHA COMPARISON ENGINE (Native MultiIndex Dataframe) ---
     with c_bot_right:
-        # 1. Define the data FIRST so we can use it to populate our UI controls
+        st.markdown(f"<div style='color:#f4ca16; font-size:12px; font-weight:bold; margin-bottom:10px;'>⚖️ ALPHA COMPARISON ENGINE</div>", unsafe_allow_html=True)
+            
         if 'df_losers' in locals() and not df_losers.empty and active_etfs:
             alpha_df = df_losers.copy()
             idx_map = {'SPX': 1, 'RMC': 2, 'RTY': 3}
             alpha_df['SortIndex'] = alpha_df['Index'].map(idx_map).fillna(4)
             sort_col_alpha = f'{sort_choice}_raw' if f'{sort_choice}_raw' in alpha_df.columns else '1M_raw'
             alpha_df = alpha_df.sort_values(by=['SortIndex', sort_col_alpha]).head(25)
-            available_tickers = alpha_df['Ticker'].tolist()
-        else:
-            alpha_df = pd.DataFrame()
-            available_tickers = []
-
-        # 2. THE NEW UX: Inline Header + Select + Deep Dive Button
-        # vertical_alignment="center" perfectly aligns the text with the button
-        h_col1, h_col2, h_col3 = st.columns([0.45, 0.35, 0.20], vertical_alignment="center")
-        
-        with h_col1:
-            st.markdown(f"<div style='color:#f4ca16; font-size:12px; font-weight:bold;'>⚖️ ALPHA COMPARISON ENGINE</div>", unsafe_allow_html=True)
             
-        with h_col2:
-            # This captures the tickers for Python to use
-            dive_tickers = st.multiselect("Tickers", available_tickers, placeholder="Add to Deep Dive...", label_visibility="collapsed", key="dive_sel")
+            # --- 1. DUMMY GENERATOR (Replace with real logic later) ---
+            import random
+            def get_blk(): return random.choice(['🟩', '⬛', '🟥'])
+            def get_bin(): return random.choice(['🟩', '🟥'])
             
-        with h_col3:
-            # Button is disabled until they pick at least one ticker
-            if st.button("🤿 Deep Dive", use_container_width=True, disabled=len(dive_tickers)==0):
-                # 3. State Capture Routing
-                st.session_state['trigger_industry_dialog'] = True
-                # Pass the single sector
-                st.session_state['passed_sector'] = active_etfs[0] if len(active_etfs) == 1 else 'SPX'
-                # Pass the single selected industry (from your left table)
-                st.session_state['passed_industry'] = st.session_state.get('selected_sub_ind', None)
-                # Pass the multiple tickers they selected
-                st.session_state['passed_tickers'] = dive_tickers 
-                st.rerun()
-
-        # Small spacer to push the HTML table down slightly
-        st.markdown("<div style='height:10px;'></div>", unsafe_allow_html=True)
-        
-        # 4. Generate the HTML Table (YOUR CODE STAYS EXACTLY THE SAME BELOW THIS)
-        if not alpha_df.empty:
-            html_table = (
-                "<style>"
+            # --- 2. BUILD THE DATA ROWS ---
+            display_data = []
+            for _, row in alpha_df.iterrows():
+                display_data.append([
+                    row['Index'], row['Ticker'],
+                    get_blk(), get_blk(), get_blk(), get_blk(),  # VALUATION
+                    get_blk(), get_blk(), get_blk(),             # PROFITS
+                    get_blk(), get_blk(), get_bin(), get_blk(), get_bin(), # CASH FLOWS
+                    get_blk(), get_blk(), get_blk(), get_blk(), get_blk(), # LEVERAGE
+                    get_blk(), get_blk(),                        # OPTIONS
+                    "🤿"                                         # ANS/DIVE
+                ])
             
-            # 2. Build the HTML Table Framework (Scrollable & 2-Tier Header - Indentation Safe)
-            #html_table = (
-            #    "<style>"
-                ".alpha-wrap { max-height: 380px; overflow-y: auto; overflow-x: hidden; border-bottom: 1px solid #1a1a1a; -ms-overflow-style: none; scrollbar-width: none; }"
-                ".alpha-wrap::-webkit-scrollbar { display: none; }"
-                ".alpha-wrap { max-height: 380px; overflow-y: auto; overflow-x: hidden; border-bottom: 1px solid #1a1a1a; }"
-                ".alpha-tbl { width: 100%; border-collapse: collapse; font-family: monospace; font-size: 11px; color: white; background-color: #0d0d0d; }"
-                ".alpha-tbl thead th { position: sticky; top: 0; background-color: #161616; z-index: 2; border-bottom: 1px solid #333; padding: 4px 2px; text-align: center; color: #888; font-size: 10px; letter-spacing: 1px; }"
-                ".alpha-tbl thead tr:first-child th { height: 26px; box-sizing: border-box; }"
-                ".alpha-tbl .sub-hdr th { top: 25px; font-size: 9px; padding: 2px 0px; border-bottom: 1px solid #333; background-color: #1a1a1a; z-index: 1; }"
-                ".alpha-tbl td { padding: 4px 0px; text-align: center; border-bottom: 1px solid #1a1a1a; }"
-                ".alpha-tbl .tick { font-weight: bold; text-align: left; padding-left: 8px; color: white; }"
-                ".alpha-tbl .idx { color: #888; text-align: left; padding-left: 5px;}"
-                ".a-blk { cursor: help; font-size: 11px; transition: transform 0.1s; display: inline-block; width: 100%; text-align: center; }"
-                ".a-blk:hover { transform: scale(1.5); }"
-                ".alpha-tbl tbody tr:hover { background-color: #161616; }"
-                ".clickable-cell { cursor: pointer; }"
-                ".alpha-tbl tbody tr.selected { background-color: #00aaff !important; }"
-                ".alpha-tbl tbody tr.selected td.idx, .alpha-tbl tbody tr.selected td.tick { color: #0d0d0d !important; font-weight: bold; }"
-                "</style>"
-                "<div class='alpha-wrap'>"
-                "<table class='alpha-tbl'>"
-                "<thead>"
-                "<tr>"
-                "<th rowspan='2' style='width: 5%; text-align: left; padding-left: 5px;'>IDX</th>"
-                "<th rowspan='2' style='width: 7%; text-align: left; padding-left: 8px;'>TICK</th>"
-                "<th colspan='4' style='color:#00aaff;'>VALUATION</th>"
-                "<th colspan='3' style='color:#00ff00;'>PROFITS</th>"
-                "<th colspan='5' style='color:#00fa9a;'>CASH FLOWS</th>"
-                "<th colspan='5' style='color:#ff5252;'>LEVERAGE</th>"
-                "<th colspan='2' style='color:#b19cd9;'>OPTIONS</th>"
-                "<th rowspan='2' style='width: 5%; color:#f4ca16; font-size:11px;'>ANS</th>"
-                "</tr>"
-                "<tr class='sub-hdr'>"
-                "<th title='P/E Ratio'>P/E</th><th title='Short Interest'>SI</th><th title='1Y Momentum'>1Y</th><th title='Market Cap'>CAP</th>"
-                "<th title='Gross Margin'>GM</th><th title='Operating Margin'>OM</th><th title='Net Margin'>NM</th>"
-                "<th title='Operating CF'>CFO</th><th title='Free Cash Flow'>FCF</th><th title='Investing CF'>CFI</th><th title='Financing CF'>CFF</th><th title='Self-Funding'>SELF?</th>"
-                "<th title='Cash & STI'>CASH</th><th title='Short Term Debt'>STD</th><th title='Long Term Debt'>LTD</th><th title='Cash/Debt'>C/D</th><th title='Goodwill'>GW</th>"
-                "<th title='Volume Surge'>VOL</th><th title='Skew Shift'>SKW</th>"
-                "</tr>"
-                "</thead>"
-                "<tbody>"
+            display_df = pd.DataFrame(display_data)
+            
+            # --- 3. BUILD THE 2-TIER NATIVE HEADER (MultiIndex) ---
+            header_tuples = [
+                (" ", "IDX"), (" ", "TICK"),
+                ("VALUATION", "P/E"), ("VALUATION", "SI"), ("VALUATION", "1Y"), ("VALUATION", "CAP"),
+                ("PROFITS", "GM"), ("PROFITS", "OM"), ("PROFITS", "NM"),
+                ("CASH FLOWS", "CFO"), ("CASH FLOWS", "FCF"), ("CASH FLOWS", "CFI"), ("CASH FLOWS", "CFF"), ("CASH FLOWS", "SELF?"),
+                ("LEVERAGE", "CASH"), ("LEVERAGE", "STD"), ("LEVERAGE", "LTD"), ("LEVERAGE", "C/D"), ("LEVERAGE", "GW"),
+                ("OPTIONS", "VOL"), ("OPTIONS", "SKW"),
+                ("DIVE", "🤿") 
+            ]
+            display_df.columns = pd.MultiIndex.from_tuples(header_tuples)
+            
+            # --- 4. RENDER NATIVE INTERACTIVE TABLE ---
+            alpha_event = st.dataframe(
+                display_df,
+                use_container_width=True,
+                hide_index=True,
+                height=380,
+                selection_mode="single-row", # Enables the click-to-dive
+                on_select="rerun",           # Wakes up Python on click
+                key="alpha_table_native"
             )
             
-            # --- DUMMY GENERATOR (Replace with actual FSLI engine later) ---
-            import random
-            def get_blk(): return random.choice(['<span style="color:#00ff00;">█</span>', '<span style="color:#333;">█</span>', '<span style="color:#ff5252;">█</span>'])
-            def get_bin(): return random.choice(['<span style="color:#00ff00;">█</span>', '<span style="color:#ff5252;">█</span>'])
-            
-            for _, row in alpha_df.iterrows():
-                t = row['Ticker']
-                ix = row['Index']
+            # --- 5. THE ROUTER (Catches the click and dives) ---
+            if alpha_event.selection.rows:
+                selected_row_idx = alpha_event.selection.rows[0]
+                # Because we used MultiIndex, selecting the TICK column requires a tuple
+                clicked_ticker = display_df.iloc[selected_row_idx][(" ", "TICK")]
                 
-                # Generate individual blocks
-                v1, v2, v3, v4 = get_blk(), get_blk(), get_blk(), get_blk()
-                p1, p2, p3 = get_blk(), get_blk(), get_blk()
-                c1, c2, c3, c4, c5 = get_blk(), get_blk(), get_bin(), get_blk(), get_bin()
-                l1, l2, l3, l4, l5 = get_blk(), get_blk(), get_blk(), get_blk(), get_blk()
-                o1, o2 = get_blk(), get_blk()
-                
-                verdict = random.choice(['🔥', '⏳', '🧊'])
-                
-                # Unpacking the blocks into 19 individual <td> cells so they spread out evenly!
-                html_table += (
-                   "<tr>"
-                    f"<td class='idx clickable-cell' onclick=\"this.parentElement.classList.toggle('selected')\">{ix}</td>"
-                    f"<td class='tick clickable-cell' onclick=\"this.parentElement.classList.toggle('selected')\">{t}</td>"
-                    f"<td><span class='a-blk' title='P/E Ratio'>{v1}</span></td>"
-                    f"<td><span class='a-blk' title='Short Interest'>{v2}</span></td>"
-                    f"<td><span class='a-blk' title='1Y%'>{v3}</span></td>"
-                    f"<td><span class='a-blk' title='Market Cap'>{v4}</span></td>"
-                    f"<td><span class='a-blk' title='Gross Margin'>{p1}</span></td>"
-                    f"<td><span class='a-blk' title='Operating Margin'>{p2}</span></td>"
-                    f"<td><span class='a-blk' title='Net Margin'>{p3}</span></td>"
-                    f"<td><span class='a-blk' title='Operating CF'>{c1}</span></td>"
-                    f"<td><span class='a-blk' title='Free Cash Flow'>{c2}</span></td>"
-                    f"<td><span class='a-blk' title='Investing CF'>{c3}</span></td>"
-                    f"<td><span class='a-blk' title='Financing CF'>{c4}</span></td>"
-                    f"<td><span class='a-blk' title='Self-Funding'>{c5}</span></td>"
-                    f"<td><span class='a-blk' title='Cash & STI'>{l1}</span></td>"
-                    f"<td><span class='a-blk' title='ST Debt'>{l2}</span></td>"
-                    f"<td><span class='a-blk' title='LT Debt'>{l3}</span></td>"
-                    f"<td><span class='a-blk' title='Cash/Debt'>{l4}</span></td>"
-                    f"<td><span class='a-blk' title='Goodwill'>{l5}</span></td>"
-                    f"<td><span class='a-blk' title='Volume Surge'>{o1}</span></td>"
-                    f"<td><span class='a-blk' title='Skew Shift'>{o2}</span></td>"
-                    f"<td class='clickable-cell' style='font-size:13px;' onclick=\"this.parentElement.classList.toggle('selected')\">{verdict}</td>"
-                    "</tr>"
-                )
-            
-            html_table += "</tbody></table></div>"
-            #st.markdown(html_table, unsafe_allow_html=True)
-            # This bypasses Streamlit's JS filter and allows your clicks to work!
-            components.html(html_table, height=390, scrolling=False)
+                st.session_state['trigger_industry_dialog'] = True
+                st.session_state['passed_sector'] = active_etfs[0] if len(active_etfs) == 1 else 'SPX'
+                st.session_state['passed_industry'] = st.session_state.get('selected_sub_ind', None)
+                st.session_state['passed_tickers'] = [clicked_ticker]
+                st.rerun()
+
         else:
             st.info("Alpha Comparison Engine requires bleeding tickers to activate.")
 
