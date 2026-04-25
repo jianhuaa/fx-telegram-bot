@@ -368,6 +368,30 @@ st.markdown('''
             padding-bottom: 0px !important;
         }
 
+        /* ── SHRINK CHECKBOXES (LOSERS ROW) ── */
+        div[data-testid="stDialog"] div[data-testid="stCheckbox"] {
+            min-height: 13px !important;
+            height: 13px !important;
+            padding: 0px !important;
+            margin: 0px !important;
+        }
+        div[data-testid="stDialog"] div[data-testid="stCheckbox"] label {
+            min-height: 13px !important;
+            height: 13px !important;
+            padding: 0px !important;
+            margin: 0px !important;
+            font-size: 11px !important;
+            line-height: 13px !important;
+        }
+        div[data-testid="stDialog"] div[data-testid="stCheckbox"] label span[data-baseweb="checkbox"] {
+            width: 13px !important;
+            height: 13px !important;
+        }
+        div[data-testid="stDialog"] div[data-testid="stCheckbox"] label span[data-baseweb="checkbox"] svg {
+            width: 13px !important;
+            height: 13px !important;
+        }
+
         /* ── SHRINK TOGGLES (Restored) ── */
         div[data-testid="stDialog"] div[data-testid="stToggle"] {
             min-height: 10px !important;
