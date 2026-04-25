@@ -1187,7 +1187,7 @@ def show_global_birdseye(df_inds, df_all_ret):
     with c_bot_left:
 
         # Create 3 mini-columns for the Title and the 2 Toggles
-        h_los_1, h_los_2, h_los_3 = st.columns([0.45, 0.25, 0.30], vertical_alignment="center")
+        h_los_1, h_los_2, h_los_3 = st.columns([0.40, 0.30, 0.30], vertical_alignment="center")
         
         with h_los_1:
             st.markdown(f"<div style='color:#ff4b4b; font-size:12px; font-weight:bold;'>🔴 LOSERS</div>", unsafe_allow_html=True)
