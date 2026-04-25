@@ -1733,7 +1733,7 @@ def show_industry_overview_overlay(df_all_returns, df_industries, selected_secto
         available_tickers = sorted(ind_df_clean['Label'].tolist())
     else: available_tickers = []
 
-   with c3:
+    with c3:
         # --- THE MAGIC RECEPTION DESK ---
         # 1. Grab the raw tickers passed from Dialog 0 (e.g., ['TSLA', 'GM'])
         passed_tickers_raw = st.session_state.get('passed_tickers', [])
