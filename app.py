@@ -352,7 +352,15 @@ st.markdown('''
             padding-bottom: 4px !important;
             font-size: 13px !important;
         }
-
+        /* ── SHRINK DIALOG BUTTONS (DEEP DIVE) ── */
+        div[data-testid="stDialog"] div[data-testid="column"] button[kind="secondary"] {
+            padding: 0px 8px !important;
+            min-height: 24px !important;
+            height: 24px !important;
+            line-height: 1 !important;
+            font-size: 12px !important;
+            margin-top: 0px !important;
+        }
     </style>
 ''', unsafe_allow_html=True)
 
@@ -1206,10 +1214,9 @@ def show_global_birdseye(df_inds, df_all_ret):
 
 
 # --- 2/3 RIGHT: ALPHA COMPARISON ENGINE (HTML Heatmap) ---
-# --- 2/3 RIGHT: ALPHA COMPARISON ENGINE (Native MultiIndex + Multi-Select + External Button) ---
+# --- 2/3 RIGHT: ALPHA COMPARISON ENGINE (Pixel-Perfect MultiIndex) ---
     with c_bot_right:
-        # Create a row for the Title and the Deep Dive Button
-        h_col1, h_col2 = st.columns([0.7, 0.3], vertical_alignment="center")
+        h_col1, h_col2 = st.columns([0.80, 0.20], vertical_alignment="center")
         
         with h_col1:
             st.markdown(f"<div style='color:#f4ca16; font-size:12px; font-weight:bold;'>⚖️ ALPHA COMPARISON ENGINE</div>", unsafe_allow_html=True)
@@ -1221,60 +1228,80 @@ def show_global_birdseye(df_inds, df_all_ret):
             sort_col_alpha = f'{sort_choice}_raw' if f'{sort_choice}_raw' in alpha_df.columns else '1M_raw'
             alpha_df = alpha_df.sort_values(by=['SortIndex', sort_col_alpha]).head(25)
             
-            # --- 1. DUMMY GENERATOR (Restoring your original Fire/Ice icons) ---
+            # --- 1. DUMMY GENERATOR ---
             import random
             def get_blk(): return random.choice(['🟩', '⬛', '🟥'])
             def get_bin(): return random.choice(['🟩', '🟥'])
             
-            # --- 2. BUILD THE DATA ROWS ---
             display_data = []
             for _, row in alpha_df.iterrows():
                 display_data.append([
                     row['Index'], row['Ticker'],
-                    get_blk(), get_blk(), get_blk(), get_blk(),  # VALUATION
-                    get_blk(), get_blk(), get_blk(),             # PROFITS
-                    get_blk(), get_blk(), get_bin(), get_blk(), get_bin(), # CASH FLOWS
-                    get_blk(), get_blk(), get_blk(), get_blk(), get_blk(), # LEVERAGE
-                    get_blk(), get_blk(),                        # OPTIONS
-                    random.choice(['🔥', '⏳', '🧊'])            # ANS (Restored!)
+                    get_blk(), get_blk(), get_blk(), get_blk(),  
+                    get_blk(), get_blk(), get_blk(),             
+                    get_blk(), get_blk(), get_bin(), get_blk(), get_bin(), 
+                    get_blk(), get_blk(), get_blk(), get_blk(), get_blk(), 
+                    get_blk(), get_blk(),                        
+                    random.choice(['🔥', '⏳', '🧊'])            
                 ])
             
             display_df = pd.DataFrame(display_data)
             
-            # --- 3. BUILD THE 2-TIER NATIVE HEADER (MultiIndex) ---
+            # --- 3. BUILD THE ORIGINAL 2-TIER HEADER ---
+            # Restored your original names exactly as you had them
             header_tuples = [
                 (" ", "IDX"), (" ", "TICK"),
-                ("VALUATION", "P/E"), ("VALUATION", "SI"), ("VALUATION", "1Y"), ("VALUATION", "CAP"),
-                ("PROFITS", "GM"), ("PROFITS", "OM"), ("PROFITS", "NM"),
-                ("CASH FLOWS", "CFO"), ("CASH FLOWS", "FCF"), ("CASH FLOWS", "CFI"), ("CASH FLOWS", "CFF"), ("CASH FLOWS", "SELF?"),
-                ("LEVERAGE", "CASH"), ("LEVERAGE", "STD"), ("LEVERAGE", "LTD"), ("LEVERAGE", "C/D"), ("LEVERAGE", "GW"),
-                ("OPTIONS", "VOL"), ("OPTIONS", "SKW"),
-                (" ", "ANS") # Restored the ANS header
+                ("VALUE", "P/E"), ("VALUE", "SI"), ("VALUE", "1Y"), ("VALUE", "CAP"),
+                ("PROFIT", "GM"), ("PROFIT", "OM"), ("PROFIT", "NM"),
+                ("FLOWS", "CFO"), ("FLOWS", "FCF"), ("FLOWS", "CFI"), ("FLOWS", "CFF"), ("FLOWS", "SELF?"),
+                ("DEBT", "CASH"), ("DEBT", "STD"), ("DEBT", "LTD"), ("DEBT", "C/D"), ("DEBT", "GW"),
+                ("OPT", "VOL"), ("OPT", "SKW"),
+                (" ", "ANS") 
             ]
             display_df.columns = pd.MultiIndex.from_tuples(header_tuples)
+
+            # --- COLUMN CONFIGURATION: EXACT PIXEL WIDTHS ---
+            col_cfg = {
+                (" ", "IDX"): st.column_config.TextColumn(width=30),
+                (" ", "TICK"): st.column_config.TextColumn(width=45),
+                (" ", "ANS"): st.column_config.TextColumn(width=30),
+            }
+            
+            # Custom mapping to surgically kill dead space based on word length
+            pixel_widths = {
+                "1Y": 25, "SI": 25, "GM": 25, "OM": 25, "NM": 25, "GW": 25, 
+                "P/E": 30, "C/D": 30,
+                "CAP": 35, "CFO": 35, "FCF": 35, "CFI": 35, "CFF": 35, "STD": 35, "LTD": 35, "VOL": 35, "SKW": 35,
+                "CASH": 45, 
+                "SELF?": 50
+            }
+            
+            # Apply the specific pixel widths
+            for col in header_tuples[2:-1]:
+                exact_w = pixel_widths.get(col[1], 30) # Default to 30px if not in dict
+                col_cfg[col] = st.column_config.TextColumn(width=exact_w)
             
             st.markdown("<div style='height:10px;'></div>", unsafe_allow_html=True)
             
-            # --- 4. RENDER NATIVE INTERACTIVE TABLE (Multi-Select) ---
+            # --- 4. RENDER NATIVE INTERACTIVE TABLE ---
             alpha_event = st.dataframe(
                 display_df,
                 use_container_width=True,
                 hide_index=True,
                 height=380,
-                selection_mode="multi-row", # Allows selecting multiple tickers!
-                on_select="rerun",          
+                selection_mode="multi-row", 
+                on_select="rerun",
+                column_config=col_cfg,
                 key="alpha_table_native"
             )
             
             # --- 5. GRAB THE SELECTED TICKERS ---
             selected_rows = alpha_event.selection.rows
-            # Safely extract the tickers using the MultiIndex tuple (" ", "TICK")
             selected_tickers = [display_df.iloc[i][(" ", "TICK")] for i in selected_rows] if selected_rows else []
 
-            # --- 6. THE ROUTER (The External Button) ---
+            # --- 6. THE ROUTER BUTTON ---
             with h_col2:
-                # This button dynamically updates with the number of tickers you've clicked
-                if st.button(f"🤿 Deep Dive ({len(selected_tickers)})", use_container_width=True, disabled=len(selected_tickers)==0):
+                if st.button(f"🤿 Dive ({len(selected_tickers)})", use_container_width=True, disabled=len(selected_tickers)==0):
                     st.session_state['trigger_industry_dialog'] = True
                     st.session_state['passed_sector'] = active_etfs[0] if len(active_etfs) == 1 else 'SPX'
                     st.session_state['passed_industry'] = st.session_state.get('selected_sub_ind', None)
