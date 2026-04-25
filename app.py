@@ -373,7 +373,8 @@ st.markdown('''
             min-height: 20px !important;
             height: 20px !important;
             padding: 0px !important;
-            margin: 0px !important;
+            margin-top: -20px !important; /* FIX: Levitates the toggle up by 13px */
+            margin-bottom: 0px !important;
         }
         
         div[data-testid="stDialog"] div[data-testid="stToggle"] label {
@@ -1201,7 +1202,7 @@ def show_global_birdseye(df_inds, df_all_ret):
         
         with h_los_1:
             # FIX: Added a 6px bottom margin to lift the text perfectly flush with the toggles' baseline
-            st.markdown(f"<div style='color:#ff4b4b; font-size:12px; font-weight:bold; margin-top:2px;'>🔴 LOSERS</div>", unsafe_allow_html=True)
+            st.markdown(f"<div style='color:#ff4b4b; font-size:12px; font-weight:bold; margin-top:-20px;'>🔴 LOSERS</div>", unsafe_allow_html=True)
         with h_los_2:
             tgl_earn = st.toggle("⏱️ 7D", key="tgl_earn")
         with h_los_3:
