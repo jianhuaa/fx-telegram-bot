@@ -353,13 +353,18 @@ st.markdown('''
             font-size: 13px !important;
         }
         /* ── SHRINK DIALOG BUTTONS (DEEP DIVE) ── */
-        div[data-testid="stDialog"] div[data-testid="column"] button[kind="secondary"] {
+        div[data-testid="stDialog"] .stButton > button {
             padding: 0px 8px !important;
-            min-height: 24px !important;
-            height: 24px !important;
+            min-height: 26px !important;
+            height: 26px !important;
             line-height: 1 !important;
             font-size: 12px !important;
             margin-top: 0px !important;
+        }
+        /* This kills the invisible padding Streamlit wraps around the button */
+        div[data-testid="stDialog"] .stButton {
+            margin-bottom: 0px !important;
+            padding-bottom: 0px !important;
         }
     </style>
 ''', unsafe_allow_html=True)
@@ -1216,10 +1221,10 @@ def show_global_birdseye(df_inds, df_all_ret):
 # --- 2/3 RIGHT: ALPHA COMPARISON ENGINE (HTML Heatmap) ---
 # --- 2/3 RIGHT: ALPHA COMPARISON ENGINE (Pixel-Perfect MultiIndex) ---
     with c_bot_right:
-        h_col1, h_col2 = st.columns([0.80, 0.20], vertical_alignment="center")
+        h_col1, h_col2 = st.columns([0.80, 0.20])
         
         with h_col1:
-            st.markdown(f"<div style='color:#f4ca16; font-size:12px; font-weight:bold; margin-top:-5px;'>⚖️ ALPHA COMPARISON ENGINE <span style='color:#888; font-size:10px; font-weight:normal;'>(Select 1 industry to dive)</span></div>", unsafe_allow_html=True)
+            st.markdown(f"<div style='color:#f4ca16; font-size:12px; font-weight:bold; margin-top:2px;'>⚖️ ALPHA COMPARISON ENGINE <span style='color:#888; font-size:10px; font-weight:normal;'>(Select 1 industry to dive)</span></div>", unsafe_allow_html=True)
             
         if 'df_losers' in locals() and not df_losers.empty and active_etfs:
             alpha_df = df_losers.copy()
