@@ -386,18 +386,26 @@ st.markdown('''
             align-items: center;
         }
 
+        /* ── 1. PHYSICALLY SHRINK THE TRACK (The background pill) ── */
+        div[data-testid="stDialog"] div[data-testid="stToggle"] label[data-baseweb="checkbox"] > div:last-child {
+            height: 10px !important;       /* Forces the pill to be thin */
+            width: 28px !important;        /* Forces the pill to be short */
+            margin-left: 4px !important;
+        }
+
+        /* ── 2. PHYSICALLY SHRINK THE THUMB (The moving circle) ── */
+        div[data-testid="stDialog"] div[data-testid="stToggle"] label[data-baseweb="checkbox"] > div:last-child > div {
+            height: 10px !important;       /* Tiny circle */
+            width: 10px !important;        /* Tiny circle */
+        }
+
         div[data-testid="stDialog"] div[data-testid="stToggle"] p {
             font-size: 11px !important;
             font-weight: bold !important;
             color: #888 !important;
-        }
-
-        /* Shrink the switch graphic to 80% */
-        div[data-testid="stDialog"] div[data-testid="stToggle"] div[data-testid="stWidgetLabel"] + div {
-            transform: scale(0.55) !important; /* Crushes the switch to 55% size */
-            transform-origin: center center !important; 
-            margin-left: -10px !important; /* Pulls it closer to the text */
-            margin-right: -5px !important;
+            margin: 0px !important;
+            padding: 0px !important;
+            line-height: 1 !important;
         }
     </style>        
 ''', unsafe_allow_html=True)
