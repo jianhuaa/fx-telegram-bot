@@ -368,23 +368,30 @@ st.markdown('''
             padding-bottom: 0px !important;
         }
 
-        /* ── SHRINK TOGGLES TO MATCH YOUR BUTTON ── */
+        /* ── SHRINK TOGGLES & FIX VERTICAL ALIGNMENT ── */
         div[data-testid="stDialog"] div[data-testid="stToggle"] {
-            min-height: 26px !important;
-            height: 26px !important;
-            margin-top: -8px !important;    /* <-- NEW: Pulls it up to align with text */
-            margin-bottom: 0px !important;
-            padding-bottom: 0px !important;
+            min-height: 20px !important; /* Crushing height even further */
+            height: 20px !important;
+            margin-top: -10px !important; /* Pulling upward aggressively */
+            padding: 0px !important;
         }
         
         div[data-testid="stDialog"] div[data-testid="stToggle"] label {
-            min-height: 26px !important;
-            padding-top: 0px !important;
-            margin-top: 0px !important;
+            min-height: 20px !important;
+            height: 20px !important;
+            padding: 0px !important;
+            display: flex;
+            align-items: center;
+        }
+
+        /* Shrink the switch itself slightly so it doesn't look cramped */
+        div[data-testid="stDialog"] div[data-testid="stToggle"] div[data-testid="stWidgetLabel"] + div {
+            transform: scale(0.8); /* Scales the actual switch down to 80% size */
+            margin-left: -5px; /* Adjusts position after scaling */
         }
 
         div[data-testid="stDialog"] div[data-testid="stToggle"] p {
-            font-size: 12px !important; /* Matches your button font size */
+            font-size: 11px !important; 
             font-weight: bold !important;
             color: #888 !important;
         }
