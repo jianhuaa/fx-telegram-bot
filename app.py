@@ -1281,7 +1281,7 @@ def show_global_birdseye(df_inds, df_all_ret):
     #with c_bot_right:
     #    st.markdown(f"<div style='color:#f4ca16; font-size:12px; font-weight:bold; margin-bottom:5px;'>⚖️ ALPHA COMPARISON ENGINE</div>", unsafe_allow_html=True)
     #    # Push the table itself down an additional 30px, leaving the header fixed
-    #    st.markdown("<div style='height:35px;'></div>", unsafe_allow_html=True)
+    #    st.markdown("<div style='height:30px;'></div>", unsafe_allow_html=True)
         
     #    if 'df_losers' in locals() and not df_losers.empty and active_etfs:
             
@@ -1389,7 +1389,7 @@ def show_global_birdseye(df_inds, df_all_ret):
                     st.rerun()
 
         else:
-            st.markdown("<div style='height:30px;'></div>", unsafe_allow_html=True)
+            st.markdown("<div style='height:35px;'></div>", unsafe_allow_html=True)
             st.info("Alpha Comparison Engine requires losers to activate.")
 
 # ---------------------------------------------------------
