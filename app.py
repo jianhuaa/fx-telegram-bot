@@ -1188,25 +1188,72 @@ def show_global_birdseye(df_inds, df_all_ret):
             else:
                 st.warning("No ticker data found for this sector.")
 
-    # --- 2/3 RIGHT: ALPHA COMPARISON ENGINE (HTML Heatmap) ---
-    with c_bot_right:
-        st.markdown(f"<div style='color:#f4ca16; font-size:12px; font-weight:bold; margin-bottom:5px;'>⚖️ ALPHA COMPARISON ENGINE</div>", unsafe_allow_html=True)
-        # Push the table itself down an additional 30px, leaving the header fixed
-        st.markdown("<div style='height:30px;'></div>", unsafe_allow_html=True)
+    ## --- 2/3 RIGHT: ALPHA COMPARISON ENGINE (HTML Heatmap) ---
+    #with c_bot_right:
+    #    st.markdown(f"<div style='color:#f4ca16; font-size:12px; font-weight:bold; margin-bottom:5px;'>⚖️ ALPHA COMPARISON ENGINE</div>", unsafe_allow_html=True)
+    #    # Push the table itself down an additional 30px, leaving the header fixed
+    #    st.markdown("<div style='height:30px;'></div>", unsafe_allow_html=True)
         
-        if 'df_losers' in locals() and not df_losers.empty and active_etfs:
+    #    if 'df_losers' in locals() and not df_losers.empty and active_etfs:
             
-            # 1. Sort strictly by Index (SPX -> RMC -> RTY), then by Return
+    #        # 1. Sort strictly by Index (SPX -> RMC -> RTY), then by Return
+    #        alpha_df = df_losers.copy()
+    #        idx_map = {'SPX': 1, 'RMC': 2, 'RTY': 3}
+    #        alpha_df['SortIndex'] = alpha_df['Index'].map(idx_map).fillna(4)
+    #        sort_col_alpha = f'{sort_choice}_raw' if f'{sort_choice}_raw' in alpha_df.columns else '1M_raw'
+    #        # Pull top 25 to show off the scrollable container
+    #        alpha_df = alpha_df.sort_values(by=['SortIndex', sort_col_alpha]).head(25) 
+
+
+# --- 2/3 RIGHT: ALPHA COMPARISON ENGINE (HTML Heatmap) ---
+    with c_bot_right:
+        # 1. Define the data FIRST so we can use it to populate our UI controls
+        if 'df_losers' in locals() and not df_losers.empty and active_etfs:
             alpha_df = df_losers.copy()
             idx_map = {'SPX': 1, 'RMC': 2, 'RTY': 3}
             alpha_df['SortIndex'] = alpha_df['Index'].map(idx_map).fillna(4)
             sort_col_alpha = f'{sort_choice}_raw' if f'{sort_choice}_raw' in alpha_df.columns else '1M_raw'
-            # Pull top 25 to show off the scrollable container
-            alpha_df = alpha_df.sort_values(by=['SortIndex', sort_col_alpha]).head(25) 
+            alpha_df = alpha_df.sort_values(by=['SortIndex', sort_col_alpha]).head(25)
+            available_tickers = alpha_df['Ticker'].tolist()
+        else:
+            alpha_df = pd.DataFrame()
+            available_tickers = []
+
+        # 2. THE NEW UX: Inline Header + Select + Deep Dive Button
+        # vertical_alignment="center" perfectly aligns the text with the button
+        h_col1, h_col2, h_col3 = st.columns([0.45, 0.35, 0.20], vertical_alignment="center")
+        
+        with h_col1:
+            st.markdown(f"<div style='color:#f4ca16; font-size:12px; font-weight:bold;'>⚖️ ALPHA COMPARISON ENGINE</div>", unsafe_allow_html=True)
             
-            # 2. Build the HTML Table Framework (Scrollable & 2-Tier Header - Indentation Safe)
+        with h_col2:
+            # This captures the tickers for Python to use
+            dive_tickers = st.multiselect("Tickers", available_tickers, placeholder="Add to Deep Dive...", label_visibility="collapsed", key="dive_sel")
+            
+        with h_col3:
+            # Button is disabled until they pick at least one ticker
+            if st.button("🤿 Deep Dive", use_container_width=True, disabled=len(dive_tickers)==0):
+                # 3. State Capture Routing
+                st.session_state['trigger_industry_dialog'] = True
+                # Pass the single sector
+                st.session_state['passed_sector'] = active_etfs[0] if len(active_etfs) == 1 else 'SPX'
+                # Pass the single selected industry (from your left table)
+                st.session_state['passed_industry'] = st.session_state.get('selected_sub_ind', None)
+                # Pass the multiple tickers they selected
+                st.session_state['passed_tickers'] = dive_tickers 
+                st.rerun()
+
+        # Small spacer to push the HTML table down slightly
+        st.markdown("<div style='height:10px;'></div>", unsafe_allow_html=True)
+        
+        # 4. Generate the HTML Table (YOUR CODE STAYS EXACTLY THE SAME BELOW THIS)
+        if not alpha_df.empty:
             html_table = (
                 "<style>"
+            
+            # 2. Build the HTML Table Framework (Scrollable & 2-Tier Header - Indentation Safe)
+            #html_table = (
+            #    "<style>"
                 ".alpha-wrap { max-height: 380px; overflow-y: auto; overflow-x: hidden; border-bottom: 1px solid #1a1a1a; -ms-overflow-style: none; scrollbar-width: none; }"
                 ".alpha-wrap::-webkit-scrollbar { display: none; }"
                 ".alpha-wrap { max-height: 380px; overflow-y: auto; overflow-x: hidden; border-bottom: 1px solid #1a1a1a; }"
