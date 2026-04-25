@@ -1423,8 +1423,20 @@ def show_global_birdseye(df_inds, df_all_ret):
             with h_col2:
                 if st.button(f"🤿 Dive ({len(selected_tickers)})", use_container_width=True, disabled=len(selected_tickers)==0):
                     st.session_state['trigger_industry_dialog'] = True
-                    st.session_state['passed_sector'] = active_etfs[0] if len(active_etfs) == 1 else 'SPX'
-                    st.session_state['passed_industry'] = st.session_state.get('selected_sub_ind', None)
+                    # Default fallbacks
+                    p_sec = active_etfs[0] if len(active_etfs) == 1 else 'SPX'
+                    p_ind = st.session_state.get('selected_sub_ind', None)
+                    
+                    # Override with the EXACT location of the primary ticker selected
+                    if selected_tickers and not df_all_ret.empty:
+                        first_tick = selected_tickers[0]
+                        tick_match = df_all_ret[df_all_ret['Ticker'] == first_tick]
+                        if not tick_match.empty:
+                            p_sec = tick_match['Sector'].iloc[0]
+                            p_ind = tick_match['Industry'].iloc[0]
+                            
+                    st.session_state['passed_sector'] = p_sec
+                    st.session_state['passed_industry'] = p_ind
                     st.session_state['passed_tickers'] = selected_tickers
                     st.rerun()
 
