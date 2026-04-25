@@ -1234,7 +1234,7 @@ def show_global_birdseye(df_inds, df_all_ret):
         h_los_1, h_los_2, h_los_3 = st.columns([0.40, 0.30, 0.30])
         
         with h_los_1:
-            st.markdown(f"<div style='color:#ff4b4b; font-size:12px; font-weight:bold; margin-top:-20px;'>🔴 LOSERS</div>", unsafe_allow_html=True)
+            st.markdown(f"<div style='color:#ff4b4b; font-size:12px; font-weight:bold; margin-top:0px;'>🔴 LOSERS</div>", unsafe_allow_html=True)
         with h_los_2:
             tgl_earn = st.checkbox("⏱️ 7D", key="tgl_earn")
         with h_los_3:
