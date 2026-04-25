@@ -152,6 +152,33 @@ df_rmc_ret = get_sheet_returns(rmc_sheet_df, 'RMC')
 df_rut_ret = get_sheet_returns(rut_sheet_df, 'RTY')
 
 df_all_returns = pd.concat([df_spx_ret, df_rmc_ret, df_rut_ret]).dropna(subset=['Ticker']).drop_duplicates(subset=['Ticker'])
+# --- NEW: BRIDGE FSLI EARNINGS DATA FROM GITHUB ---
+print("[INFO] --- MERGING PRE-COMPUTED EARNINGS DATES ---")
+try:
+    import requests
+    import io
+    
+    # Using the raw.githubusercontent URL is required for pandas to read it directly
+    fsli_url = "https://raw.githubusercontent.com/jianhuaa/fx-telegram-bot/main/fsli_master.parquet"
+    res = requests.get(fsli_url)
+    
+    if res.status_code == 200:
+        df_fsli = pd.read_parquet(io.BytesIO(res.content))
+        
+        if 'Upcoming Earnings Date' in df_fsli.columns:
+            df_all_returns = df_all_returns.merge(df_fsli[['Ticker', 'Upcoming Earnings Date']], on='Ticker', how='left')
+            print("[INFO] Earnings dates successfully merged into Returns Master.")
+        else:
+            print("[WARNING] 'Upcoming Earnings Date' column not found in fsli_master.parquet.")
+            df_all_returns['Upcoming Earnings Date'] = float('nan')
+    else:
+        print(f"[ERROR] Failed to fetch fsli_master.parquet. Status Code: {res.status_code}")
+        df_all_returns['Upcoming Earnings Date'] = float('nan')
+
+except Exception as e:
+    print(f"[ERROR] Failed to merge FSLI data: {e}")
+    df_all_returns['Upcoming Earnings Date'] = float('nan')
+
 df_all_returns.to_parquet('col4_all_returns.parquet')
 # After the df_all_returns.to_parquet line, add:
 print(f"[DEBUG] Parquet written: {len(df_all_returns)} rows, columns: {df_all_returns.columns.tolist()}")
@@ -1256,6 +1283,19 @@ def show_global_birdseye(df_inds, df_all_ret):
                     df_losers = df_losers[df_losers['Industry'].str.replace('<br>', ' ') == target_ind]
                 
                 df_losers = df_losers[(df_losers['1W_raw'] < 0) | (df_losers['1M_raw'] < 0)]
+
+                # --- NEW: 7D EARNINGS TOGGLE LOGIC ---
+                if tgl_earn:
+                    import time
+                    now_epoch = time.time()
+                    # 7 days * 24 hours * 60 minutes * 60 seconds
+                    seven_days_epoch = now_epoch + (7 * 24 * 60 * 60) 
+                    
+                    # Filter for rows where the earnings timestamp is between now and 7 days from now
+                    df_losers = df_losers[
+                        (df_losers['Upcoming Earnings Date'] >= now_epoch) & 
+                        (df_losers['Upcoming Earnings Date'] <= seven_days_epoch)
+                    ]
                 
                 if not df_losers.empty:
                     sort_col_losers = f'{sort_choice}_raw' if f'{sort_choice}_raw' in df_losers.columns else '1M_raw'
