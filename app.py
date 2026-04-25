@@ -1151,7 +1151,7 @@ def show_global_birdseye(df_inds, df_all_ret):
     # ==========================================
     # ROW 2: BOTTOM HALF (1/3 Losers | 2/3 Alpha Engine)
     # ==========================================
-    c_bot_left, c_bot_right = st.columns([0.33, 0.67], gap="large")
+    c_bot_left, c_bot_right = st.columns([0.25, 0.75], gap="small")
     
     # Check if a specific sub-industry was clicked
     target_ind = st.session_state.get('selected_sub_ind', None)
