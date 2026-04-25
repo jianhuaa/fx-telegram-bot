@@ -370,12 +370,16 @@ st.markdown('''
 
         /* ── SHRINK TOGGLES & FORCE BASELINE ALIGNMENT ── */
         div[data-testid="stDialog"] div[data-testid="stToggle"] {
-            display: none !important;
+            min-height: 10px !important;
+            height: 10px !important;
+            padding: 0px !important;
+            margin-top: -8px !important; /* Yanks the toggles upward to align with text */
+            margin-bottom: 0px !important;
         }
         
         div[data-testid="stDialog"] div[data-testid="stToggle"] label {
-            min-height: 20px !important;
-            height: 20px !important;
+            min-height: 10px !important;
+            height: 10px !important;
             padding: 0px !important;
             margin: 0px !important;
             display: flex;
@@ -383,14 +387,14 @@ st.markdown('''
         }
 
         div[data-testid="stDialog"] div[data-testid="stToggle"] p {
-            font-size: 11px !important;
+            font-size: 10px !important;
             font-weight: bold !important;
             color: #888 !important;
         }
 
         /* Physically shrinks the switch graphic by 25% */
         div[data-testid="stDialog"] div[data-testid="stToggle"] div[data-testid="stWidgetLabel"] + div {
-            transform: scale(0.5); 
+            transform: scale(0.75); 
             margin-left: -5px;
         }
     </style>        
