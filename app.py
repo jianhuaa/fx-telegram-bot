@@ -1474,33 +1474,32 @@ def show_global_birdseye(df_inds, df_all_ret):
                 (" ", "ANS")
             ]
             
-            display_df.columns = pd.MultiIndex.from_tuples(header_tuples)
+            flat_cols = [b.strip() for _, b in header_tuples]
+            display_df.columns = flat_cols
             
-
-            # Streamlit actually accepts the SECOND level string as the key when MultiIndex is used
             col_cfg = {
-                (" ", "IDX"): st.column_config.TextColumn(width="small"),
-                (" ", "TICK"): st.column_config.TextColumn(width="small"),
-                ("VALUE", "P/E"): st.column_config.TextColumn(width="small"),
-                ("VALUE", "SI"): st.column_config.TextColumn(width="small"),
-                ("VALUE", "1Y"): st.column_config.TextColumn(width="small"),
-                ("VALUE", "CAP"): st.column_config.TextColumn(width="small"),
-                ("PROFIT", "GM"): st.column_config.TextColumn(width="small"),
-                ("PROFIT", "OM"): st.column_config.TextColumn(width="small"),
-                ("PROFIT", "NM"): st.column_config.TextColumn(width="small"),
-                ("FLOWS", "CFO"): st.column_config.TextColumn(width="small"),
-                ("FLOWS", "FCF"): st.column_config.TextColumn(width="small"),
-                ("FLOWS", "CFI"): st.column_config.TextColumn(width="small"),
-                ("FLOWS", "CFF"): st.column_config.TextColumn(width="small"),
-                ("FLOWS", "SELF?"): st.column_config.TextColumn(width="small"),
-                ("DEBT", "CASH"): st.column_config.TextColumn(width="small"),
-                ("DEBT", "STD"): st.column_config.TextColumn(width="small"),
-                ("DEBT", "LTD"): st.column_config.TextColumn(width="small"),
-                ("DEBT", "C/D"): st.column_config.TextColumn(width="small"),
-                ("DEBT", "GW"): st.column_config.TextColumn(width="small"),
-                ("OPT", "ΔOI"): st.column_config.TextColumn(width="small"),
-                ("OPT", "OI"): st.column_config.TextColumn(width="small"),
-                (" ", "ANS"): st.column_config.TextColumn(width="small"),
+                "IDX":   st.column_config.TextColumn(width="small"),
+                "TICK":  st.column_config.TextColumn(width="small"),
+                "P/E":   st.column_config.TextColumn(width="small"),
+                "SI":    st.column_config.TextColumn(width="small"),
+                "1Y":    st.column_config.TextColumn(width="small"),
+                "CAP":   st.column_config.TextColumn(width="small"),
+                "GM":    st.column_config.TextColumn(width="small"),
+                "OM":    st.column_config.TextColumn(width="small"),
+                "NM":    st.column_config.TextColumn(width="small"),
+                "CFO":   st.column_config.TextColumn(width="small"),
+                "FCF":   st.column_config.TextColumn(width="small"),
+                "CFI":   st.column_config.TextColumn(width="small"),
+                "CFF":   st.column_config.TextColumn(width="small"),
+                "SELF?": st.column_config.TextColumn(width="small"),
+                "CASH":  st.column_config.TextColumn(width="small"),
+                "STD":   st.column_config.TextColumn(width="small"),
+                "LTD":   st.column_config.TextColumn(width="small"),
+                "C/D":   st.column_config.TextColumn(width="small"),
+                "GW":    st.column_config.TextColumn(width="small"),
+                "ΔOI":   st.column_config.TextColumn(width="small"),
+                "OI":    st.column_config.TextColumn(width="small"),
+                "ANS":   st.column_config.TextColumn(width="small"),
             }
             st.markdown("<div style='height:10px;'></div>", unsafe_allow_html=True)
 
@@ -1514,7 +1513,7 @@ def show_global_birdseye(df_inds, df_all_ret):
                 height=350,
                 selection_mode="multi-row", 
                 on_select="rerun",
-                #column_config=col_cfg,
+                column_config=col_cfg,
                 key="alpha_table_native"
             )
             
