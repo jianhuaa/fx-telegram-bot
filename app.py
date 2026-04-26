@@ -1481,8 +1481,8 @@ def show_global_birdseye(df_inds, df_all_ret):
             # Custom mapping to surgically kill dead space based on word length
             pixel_widths = {
                 "1Y": 15, "SI": 15, "GM": 15, "OM": 15, "NM": 15, "GW": 15, 
-                "P/E": 30, "C/D": 30,
-                "CAP": 35, "CFO": 35, "FCF": 35, "CFI": 35, "CFF": 35, "STD": 35, "LTD": 35, "ΔOI": 35, "OI": 35,
+                "P/E": 20, "C/D": 20,
+                "CAP": 25, "CFO": 25, "FCF": 25, "CFI": 25, "CFF": 25, "STD": 25, "LTD": 25, "ΔOI": 25, "OI": 25,
                 "CASH": 45, 
                 "SELF?": 50
             }
