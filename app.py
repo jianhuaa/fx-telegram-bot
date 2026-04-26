@@ -1471,7 +1471,7 @@ def show_global_birdseye(df_inds, df_all_ret):
             header_tuples = [
                 (" ", "IDX"), (" ", "TICK"),
                 #("VALUE", "P/E"), ("VALUE", "SI"), ("VALUE", "1Y"), ("VALUE", "CAP"),
-                ("VALUE", "P/E" · "SI" · "1Y" · "CAP"),
+                ("VALUE", "P/E · SI · 1Y · CAP"),
                 ("PROFIT", "GM · OM · NM"),
                 ("FLOWS", "CFO"), ("FLOWS", "FCF"), ("FLOWS", "CFI"), ("FLOWS", "CFF"), ("FLOWS", "SLF"),
                 ("DEBT", "CSH"), ("DEBT", "STD"), ("DEBT", "LTD"), ("DEBT", "C/D"), ("DEBT", "GW"),
