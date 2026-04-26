@@ -1459,7 +1459,7 @@ def show_global_birdseye(df_inds, df_all_ret):
                             if d2 != 0: return 1 if d2 > 0 else -1
                         return 0
 
-                    df_delta_events = df_no_expiry.groupby('Ticker').apply(find_recent_event).reset_index()
+                    df_delta_events = df_no_expiry.groupby('Ticker').apply(find_deal_event).reset_index()
                     df_delta_events.columns = ['Ticker', 'Opt_DeltaOI_Score']
                     
                     # --- D. FINAL MERGE ---
