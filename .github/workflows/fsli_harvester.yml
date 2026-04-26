@@ -33,7 +33,9 @@ jobs:
         run: |
           git config --local user.email "action@github.com"
           git config --local user.name "GitHub Action FSLI Harvester"
+          # Incremental Change: Increase buffer for larger parquet file
+          git config --global http.postBuffer 524288000 
           git add fsli_master.parquet
-          git diff --quiet && git diff --staged --quiet || git commit -m "Automated Daily FSLI Master Update"
+          git diff --quiet && git diff --staged --quiet || git commit -m "Automated Daily FSLI Master Update [skip ci]"
           git pull --rebase origin main
           git push
