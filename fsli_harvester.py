@@ -156,7 +156,7 @@ df_master = df_master.rename(columns=rename_map)
 metric_rules = {
     'P/E Ratio': -1, 'Short Interest %': -1, '1Y%': 1, 'Mkt Cap (M)': 1,
     'Gross Marg %': 1, 'Op Marg %': 1, 'Net Marg %': 1,
-    'Op CF (M)': 1, 'FCF (M)': 1,
+    'Op CF (M)': 1, 'FCF (M)': 1, 'Fin CF (M)': -1,
     'Cash & STI (M)': 1, 'ST Debt (M)': -1, 'LT Debt (M)': -1, 
     'Total Debt (M)': -1, 'Cash/Debt Ratio': 1, 'Goodwill, Net (M)': -1
 }
