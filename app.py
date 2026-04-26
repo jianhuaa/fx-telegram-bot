@@ -1473,16 +1473,29 @@ def show_global_birdseye(df_inds, df_all_ret):
 
             st.markdown("<div style='height:10px;'></div>", unsafe_allow_html=True)
             st.markdown("<style>div[data-testid='stDataFrame'] div[role='columnheader'], div[data-testid='stDataFrame'] div[role='gridcell'] { min-width: 40px !important; max-width: 60px !important; padding: 0px 2px !important; font-size: 11px !important; }</style>", unsafe_allow_html=True)
+
+            strict_col_config = {}
+            for col_tuple in display_df.columns:
+                # Give TICK slightly more room, crush everything else down to 40-45 pixels
+                if col_tuple[1] == "TICK":
+                    strict_col_config[col_tuple] = st.column_config.TextColumn(width=50)
+                elif col_tuple[1] == "IDX":
+                    strict_col_config[col_tuple] = st.column_config.TextColumn(width=40)
+                else:
+                    # Force all score columns to be tiny
+                    strict_col_config[col_tuple] = st.column_config.TextColumn(width=40)
             
             # --- 4. RENDER NATIVE INTERACTIVE TABLE ---
             alpha_event = st.dataframe(
                 display_df,
-                width='stretch',
+                #width='stretch',
+                use_container_width=False,
                 hide_index=True,
                 height=350,
                 selection_mode="multi-row",
                 on_select="rerun",
-                key="alpha_table_native"
+                key="alpha_table_native",
+                column_config=strict_col_config
             )
             
             # --- 5. GRAB THE SELECTED TICKERS ---
