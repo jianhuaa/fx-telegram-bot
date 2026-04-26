@@ -1450,7 +1450,7 @@ def show_global_birdseye(df_inds, df_all_ret):
                 ("PROFIT", "GM"), ("PROFIT", "OM"), ("PROFIT", "NM"),
                 ("FLOWS", "CFO"), ("FLOWS", "FCF"), ("FLOWS", "CFI"), ("FLOWS", "CFF"), ("FLOWS", "SELF?"),
                 ("DEBT", "CASH"), ("DEBT", "STD"), ("DEBT", "LTD"), ("DEBT", "C/D"), ("DEBT", "GW"),
-                ("OPT", "VOL"), ("OPT", "SKW"),
+                ("OPT", "ΔOI"), ("OPT", "OI"),
                 (" ", "ANS") 
             ]
             display_df.columns = pd.MultiIndex.from_tuples(header_tuples)
@@ -1467,7 +1467,7 @@ def show_global_birdseye(df_inds, df_all_ret):
             pixel_widths = {
                 "1Y": 15, "SI": 15, "GM": 15, "OM": 15, "NM": 15, "GW": 15, 
                 "P/E": 30, "C/D": 30,
-                "CAP": 35, "CFO": 35, "FCF": 35, "CFI": 35, "CFF": 35, "STD": 35, "LTD": 35, "VOL": 35, "SKW": 35,
+                "CAP": 35, "CFO": 35, "FCF": 35, "CFI": 35, "CFF": 35, "STD": 35, "LTD": 35, "ΔOI": 35, "OI": 35,
                 "CASH": 45, 
                 "SELF?": 50
             }
