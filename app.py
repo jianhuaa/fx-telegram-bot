@@ -1475,6 +1475,7 @@ def show_global_birdseye(df_inds, df_all_ret):
             ]
             
             display_df.columns = pd.MultiIndex.from_tuples(header_tuples)
+            
 
             # Streamlit actually accepts the SECOND level string as the key when MultiIndex is used
             col_cfg = {
@@ -1501,7 +1502,7 @@ def show_global_birdseye(df_inds, df_all_ret):
                 "ΔOI": st.column_config.TextColumn(width="small"),
                 "OI": st.column_config.TextColumn(width="small"),
             }
-            
+            print(display_df.columns.tolist())
             st.markdown("<div style='height:10px;'></div>", unsafe_allow_html=True)
 
             
