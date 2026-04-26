@@ -1400,6 +1400,10 @@ def show_global_birdseye(df_inds, df_all_ret):
             df_fsli = get_fsli_master_data()
             
             if not df_fsli.empty:
+                # FIX: Drop overlapping metadata columns from FSLI before merging
+                # This prevents Pandas from creating 'Index_x' and 'Index_y'
+                cols_to_drop = [c for c in ['Index', 'Sector', 'Industry', 'ticker', 'name'] if c in df_fsli.columns]
+                df_fsli_clean = df_fsli.drop(columns=cols_to_drop)
                 # Merge the FSLI scores into our active Alpha DataFrame
                 alpha_df = alpha_df.merge(df_fsli, on='Ticker', how='left')
 
