@@ -1426,6 +1426,7 @@ def show_global_birdseye(df_inds, df_all_ret):
                 if res_opt.status_code == 200:
                     df_opt_raw = pd.read_parquet(io.BytesIO(res_opt.content))
                     df_opt_raw['Date'] = pd.to_datetime(df_opt_raw['Date'])
+                    df_opt_raw = df_opt_raw.sort_values(['Ticker', 'Date'])
                     
                     # 1. Expiry Detection
                     def is_third_friday(d):
@@ -1439,29 +1440,25 @@ def show_global_birdseye(df_inds, df_all_ret):
                         return 1 if val > 0 else (-1 if val < 0 else 0)
                     df_oi_latest['Opt_OI_Score'] = df_oi_latest.apply(calc_oi_score, axis=1)
 
-                    # 3. Opt_DeltaOI_Score: Robust 10-Day Impact Scanner
-                    df_no_expiry = df_opt_raw[df_opt_raw['Is_Expiry'] == False].sort_values(['Ticker', 'Date'])
+                    # 3. DELTA SCORE: Scan 10-day window EXCLUDING Expiry-Day Taint
+                    # Create a dataset that contains NO expiry data for the scanner
+                    df_clean_delta = df_opt_raw[df_opt_raw['Is_Expiry'] == False]
                     
                     def find_max_impact_deal(group):
-                        # Force a clean, unique integer index for this specific stock's window
+                        # Look at the last 10 non-expiry trading days
                         window = group.tail(10).reset_index(drop=True)
                         if window.empty: return 0
                         
-                        # Calculate impact magnitude
+                        # Find the magnitude of the largest move across both potential active months
                         window['impact'] = window[['M1_DeltaNetOI', 'M2_DeltaNetOI']].abs().max(axis=1)
                         
-                        # Identify the position of the largest deal
+                        # Get the specific row index with the highest impact
                         max_idx = window['impact'].idxmax()
-                        
-                        # Extract the single row using .iloc to ensure we get a scalar row (Series)
                         max_row = window.iloc[max_idx]
                         
-                        impact_val = max_row['impact']
-                        
-                        if impact_val > 0:
-                            d1 = max_row['M1_DeltaNetOI']
-                            d2 = max_row['M2_DeltaNetOI']
-                            # Determine direction from the contract with the bigger move
+                        if max_row['impact'] > 0:
+                            d1, d2 = max_row['M1_DeltaNetOI'], max_row['M2_DeltaNetOI']
+                            # Set direction based on whichever month had the dominant move that day
                             dominant_delta = d1 if abs(d1) >= abs(d2) else d2
                             return 1 if dominant_delta > 0 else -1
                         return 0
