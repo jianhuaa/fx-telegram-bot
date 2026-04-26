@@ -1463,6 +1463,7 @@ def show_global_birdseye(df_inds, df_all_ret):
 
 
             # --- 3. BUILD THE ORIGINAL 2-TIER HEADER ---
+            # --- 3. BUILD FLAT COLUMNS (for column_config compatibility) ---
             header_tuples = [
                 (" ", "IDX"), (" ", "TICK"),
                 ("VALUE", "P/E"), ("VALUE", "SI"), ("VALUE", "1Y"), ("VALUE", "CAP"),
@@ -1472,7 +1473,8 @@ def show_global_birdseye(df_inds, df_all_ret):
                 ("OPT", "ΔOI"), ("OPT", "OI"),
                 (" ", "ANS")
             ]
-            display_df.columns = pd.MultiIndex.from_tuples(header_tuples)  # ← keep MultiIndex for 2-row header
+            flat_cols = [b.strip() for _, b in header_tuples]
+            display_df.columns = flat_cols
             
             # --- COLUMN CONFIGURATION ---
             pixel_widths = {
@@ -1484,12 +1486,45 @@ def show_global_birdseye(df_inds, df_all_ret):
                 "CASH": 45, "SELF?": 50
             }
             
-            col_cfg = {}
-            for flat, (_, short) in zip(flat_cols, header_tuples):
-                w = pixel_widths.get(short.strip(), 30)
-                col_cfg[flat] = st.column_config.TextColumn(width=w)
+            col_cfg = {col: st.column_config.TextColumn(width=pixel_widths.get(col, 30)) for col in flat_cols}
+            
+            # --- FAKE 2-ROW HEADER via HTML ---
+            # Group spans: (label, list of col names in group)
+            groups = [
+                ("", ["IDX", "TICK"]),
+                ("VALUE", ["P/E", "SI", "1Y", "CAP"]),
+                ("PROFIT", ["GM", "OM", "NM"]),
+                ("FLOWS", ["CFO", "FCF", "CFI", "CFF", "SELF?"]),
+                ("DEBT", ["CASH", "STD", "LTD", "C/D", "GW"]),
+                ("OPT", ["ΔOI", "OI"]),
+                ("", ["ANS"]),
+            ]
+            
+            def group_px(cols):
+                return sum(pixel_widths.get(c, 30) for c in cols)
+            
+            header_cells = ""
+            for label, cols in groups:
+                w = group_px(cols)
+                header_cells += f"""
+                    <th style="width:{w}px; min-width:{w}px; max-width:{w}px;
+                               text-align:center; font-size:12px; font-weight:600;
+                               color: var(--text-color, #888);
+                               border-bottom: 1px solid rgba(128,128,128,0.3);
+                               padding: 4px 2px;">
+                        {label}
+                    </th>"""
+            
+            fake_header_html = f"""
+            <div style="overflow-x:auto;">
+              <table style="border-collapse:collapse; table-layout:fixed; width:100%;">
+                <tr>{header_cells}</tr>
+              </table>
+            </div>
+            """
             
             st.markdown("<div style='height:10px;'></div>", unsafe_allow_html=True)
+            st.markdown(fake_header_html, unsafe_allow_html=True)
 
             
             # --- 4. RENDER NATIVE INTERACTIVE TABLE ---
