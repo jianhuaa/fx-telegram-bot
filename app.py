@@ -1421,6 +1421,7 @@ def show_global_birdseye(df_inds, df_all_ret):
             # --- 2. SATURDAY-AWARE IMPACT SCANNER (Fixed Maturity Filtering) ---
             # --- 2. TRUE-DELTA IMPACT SCANNER (Fixes Maturity Artifact without discarding) ---
             # --- 2. TRUE-DELTA IMPACT SCANNER (Fixed Duplicate Index Error) ---
+            # --- 2. SIMPLIFIED OPTIONS SCORES (Delta OI Hardcoded to 0) ---
             try:
                 import requests, io
                 opt_url = "https://raw.githubusercontent.com/jianhuaa/fx-telegram-bot/main/col4_options_history.parquet"
@@ -1429,54 +1430,26 @@ def show_global_birdseye(df_inds, df_all_ret):
                 if res_opt.status_code == 200:
                     df_opt_raw = pd.read_parquet(io.BytesIO(res_opt.content))
                     df_opt_raw['Date'] = pd.to_datetime(df_opt_raw['Date'])
-                    
-                    # CRITICAL FIX: reset_index(drop=True) wipes the duplicate labels 
-                    # so the Pandas .loc math below doesn't crash
                     df_opt_raw = df_opt_raw.sort_values(['Ticker', 'Date']).reset_index(drop=True)
                     
-                    # 1. MATHEMATICALLY REPAIR THE DELTA ON ROLL DAYS
-                    # Get Yesterday's M2 (e.g. May contract on Friday)
-                    df_opt_raw['Prev_M2_NetOI'] = df_opt_raw.groupby('Ticker')['M2_NetOI'].shift(1)
-                    
-                    # Identify the clearing/roll days (Weekends in the 15th-28th window)
-                    is_roll_day = df_opt_raw['Date'].dt.weekday.isin([5, 6]) & (df_opt_raw['Date'].dt.day >= 15) & (df_opt_raw['Date'].dt.day <= 28)
-                    
-                    # Replace the tainted Delta with the True Trading Delta (Today's M1 - Yesterday's M2)
-                    df_opt_raw.loc[is_roll_day, 'M1_DeltaNetOI'] = df_opt_raw['M1_NetOI'] - df_opt_raw['Prev_M2_NetOI']
-
-                    # 2. OI SCORE: Latest Active Snapshot
+                    # 1. OI SCORE: Latest Active Snapshot (M1 -> M2 Roll Support)
                     df_oi_latest = df_opt_raw.groupby('Ticker').last().reset_index()
+                    
                     def calc_oi_score(row):
                         val = row['M1_NetOI'] if row['M1_NetOI'] != 0 else row['M2_NetOI']
                         return 1 if val > 0 else (-1 if val < 0 else 0)
+                        
                     df_oi_latest['Opt_OI_Score'] = df_oi_latest.apply(calc_oi_score, axis=1)
 
-                    # 3. DELTA SCORE: 10-Day Impact Scanner (Keeping ALL days now!)
-                    def find_max_impact_deal(group):
-                        window = group.tail(10).reset_index(drop=True)
-                        if window.empty: return 0
-                        
-                        # Find the magnitude of the largest *true* move
-                        window['impact'] = window[['M1_DeltaNetOI', 'M2_DeltaNetOI']].abs().max(axis=1)
-                        max_idx = window['impact'].idxmax()
-                        max_row = window.iloc[max_idx]
-                        
-                        if max_row['impact'] > 0:
-                            d1, d2 = max_row['M1_DeltaNetOI'], max_row['M2_DeltaNetOI']
-                            dominant_delta = d1 if abs(d1) >= abs(d2) else d2
-                            return 1 if dominant_delta > 0 else -1
-                        return 0
-
-                    # Apply scanner to the fully repaired dataset (no rows discarded)
-                    df_delta_events = df_opt_raw.groupby('Ticker').apply(find_max_impact_deal).reset_index()
-                    df_delta_events.columns = ['Ticker', 'Opt_DeltaOI_Score']
+                    # 2. DELTA OI SCORE: Hardcoded to 0 as requested
+                    df_oi_latest['Opt_DeltaOI_Score'] = 0
                     
-                    # 4. FINAL MERGE
-                    opt_scores = df_oi_latest[['Ticker', 'Opt_OI_Score']].merge(df_delta_events, on='Ticker', how='left')
+                    # 3. FINAL MERGE
+                    opt_scores = df_oi_latest[['Ticker', 'Opt_OI_Score', 'Opt_DeltaOI_Score']]
                     alpha_df = alpha_df.merge(opt_scores, on='Ticker', how='left')
 
             except Exception as e:
-                st.error(f"Options True-Delta Error: {e}")
+                st.error(f"Options Processing Error: {e}")
                 
             # Translation functions
             def s_blk(val):
