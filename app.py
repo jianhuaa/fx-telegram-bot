@@ -1306,70 +1306,70 @@ def show_global_birdseye(df_inds, df_all_ret):
             df_losers = df_all_ret[df_all_ret['Sector'].isin(active_etfs)].copy()
             if not df_losers.empty:
                 
-                # Apply Sub-Industry Filter if Clicked
-                if target_ind:
-                    df_losers = df_losers[df_losers['Industry'].str.replace('<br>', ' ') == target_ind]
-                
-                # --- SMART PRICE FILTER ---
-                # Only restrict to bleeding tickers if we are NOT in Catalyst mode
-                if not is_catalyst_mode:
-                    df_losers = df_losers[(df_losers['1W_raw'] < 0) | (df_losers['1M_raw'] < 0)]
-
-                # --- 7D EARNINGS TOGGLE LOGIC ---
-                if tgl_earn:
-                    import time
-                    now_epoch = time.time()
-                    seven_days_epoch = now_epoch + (7 * 24 * 60 * 60) 
-                    
-                    df_losers = df_losers[
-                        (df_losers['Upcoming Earnings Date'] >= now_epoch) & 
-                        (df_losers['Upcoming Earnings Date'] <= seven_days_epoch)
-                    ]
-                    
-                # --- OI TOGGLE LOGIC (Placeholder for next step) ---
-                if tgl_flow:
-                    pass 
-                
-                if not df_losers.empty:
-                
-                # Apply Sub-Industry Filter if Clicked
-                if target_ind:
-                    df_losers = df_losers[df_losers['Industry'].str.replace('<br>', ' ') == target_ind]
-                
+            # Apply Sub-Industry Filter if Clicked
+            if target_ind:
+                df_losers = df_losers[df_losers['Industry'].str.replace('<br>', ' ') == target_ind]
+            
+            # --- SMART PRICE FILTER ---
+            # Only restrict to bleeding tickers if we are NOT in Catalyst mode
+            if not is_catalyst_mode:
                 df_losers = df_losers[(df_losers['1W_raw'] < 0) | (df_losers['1M_raw'] < 0)]
 
-                # --- NEW: 7D EARNINGS TOGGLE LOGIC ---
-                if tgl_earn:
-                    import time
-                    now_epoch = time.time()
-                    # 7 days * 24 hours * 60 minutes * 60 seconds
-                    seven_days_epoch = now_epoch + (7 * 24 * 60 * 60) 
-                    
-                    # Filter for rows where the earnings timestamp is between now and 7 days from now
-                    df_losers = df_losers[
-                        (df_losers['Upcoming Earnings Date'] >= now_epoch) & 
-                        (df_losers['Upcoming Earnings Date'] <= seven_days_epoch)
-                    ]
+            # --- 7D EARNINGS TOGGLE LOGIC ---
+            if tgl_earn:
+                import time
+                now_epoch = time.time()
+                seven_days_epoch = now_epoch + (7 * 24 * 60 * 60) 
                 
-                if not df_losers.empty:
-                    sort_col_losers = f'{sort_choice}_raw' if f'{sort_choice}_raw' in df_losers.columns else '1M_raw'
-                    df_losers = df_losers.sort_values(by=sort_col_losers, ascending=True).head(50)
-                    
-                    df_losers['1W'] = df_losers['1W_raw'].apply(lambda x: f"{x:+.1f}%" if pd.notna(x) else "-")
-                    df_losers['1M'] = df_losers['1M_raw'].apply(lambda x: f"{x:+.1f}%" if pd.notna(x) else "-")
-                    
-                    fig_losers = go.Figure(data=[go.Table(
-                        columnwidth=[35, 30, 90, 35, 35],
-                        header=dict(values=['<b>TICK</b>','<b>IDX</b>','<b>INDUSTRY</b>','<b>1W</b>','<b>1M</b>'], fill_color='#161616', font=dict(color='#ff5252',size=10), align=['left','center','left','right','right']),
-                        cells=dict(values=[df_losers['Ticker'], df_losers['Index'], df_losers['Industry'], df_losers['1W'], df_losers['1M']], fill_color='#0d0d0d', font=dict(color='white',size=10), align=['left','center','left','right','right'], height=28)
-                    )])
-                    # Margin set to 0 because the HTML spacer div handles the drop perfectly
-                    fig_losers.update_layout(margin=dict(l=0,r=0,t=0,b=0), height=380)
-                    st.plotly_chart(fig_losers, use_container_width=True)
-                else:
-                    st.success(f"No bleeding tickers found{filter_label}!")
+                df_losers = df_losers[
+                    (df_losers['Upcoming Earnings Date'] >= now_epoch) & 
+                    (df_losers['Upcoming Earnings Date'] <= seven_days_epoch)
+                ]
+                
+            # --- OI TOGGLE LOGIC (Placeholder for next step) ---
+            if tgl_flow:
+                pass 
+            
+            if not df_losers.empty:
+            
+            # Apply Sub-Industry Filter if Clicked
+            if target_ind:
+                df_losers = df_losers[df_losers['Industry'].str.replace('<br>', ' ') == target_ind]
+            
+            df_losers = df_losers[(df_losers['1W_raw'] < 0) | (df_losers['1M_raw'] < 0)]
+
+            # --- NEW: 7D EARNINGS TOGGLE LOGIC ---
+            if tgl_earn:
+                import time
+                now_epoch = time.time()
+                # 7 days * 24 hours * 60 minutes * 60 seconds
+                seven_days_epoch = now_epoch + (7 * 24 * 60 * 60) 
+                
+                # Filter for rows where the earnings timestamp is between now and 7 days from now
+                df_losers = df_losers[
+                    (df_losers['Upcoming Earnings Date'] >= now_epoch) & 
+                    (df_losers['Upcoming Earnings Date'] <= seven_days_epoch)
+                ]
+            
+            if not df_losers.empty:
+                sort_col_losers = f'{sort_choice}_raw' if f'{sort_choice}_raw' in df_losers.columns else '1M_raw'
+                df_losers = df_losers.sort_values(by=sort_col_losers, ascending=True).head(50)
+                
+                df_losers['1W'] = df_losers['1W_raw'].apply(lambda x: f"{x:+.1f}%" if pd.notna(x) else "-")
+                df_losers['1M'] = df_losers['1M_raw'].apply(lambda x: f"{x:+.1f}%" if pd.notna(x) else "-")
+                
+                fig_losers = go.Figure(data=[go.Table(
+                    columnwidth=[35, 30, 90, 35, 35],
+                    header=dict(values=['<b>TICK</b>','<b>IDX</b>','<b>INDUSTRY</b>','<b>1W</b>','<b>1M</b>'], fill_color='#161616', font=dict(color='#ff5252',size=10), align=['left','center','left','right','right']),
+                    cells=dict(values=[df_losers['Ticker'], df_losers['Index'], df_losers['Industry'], df_losers['1W'], df_losers['1M']], fill_color='#0d0d0d', font=dict(color='white',size=10), align=['left','center','left','right','right'], height=28)
+                )])
+                # Margin set to 0 because the HTML spacer div handles the drop perfectly
+                fig_losers.update_layout(margin=dict(l=0,r=0,t=0,b=0), height=380)
+                st.plotly_chart(fig_losers, use_container_width=True)
             else:
-                st.warning("No ticker data found for this sector.")
+                st.success(f"No bleeding tickers found{filter_label}!")
+        else:
+            st.warning("No ticker data found for this sector.")
 
     ## --- 2/3 RIGHT: ALPHA COMPARISON ENGINE (HTML Heatmap) ---
     #with c_bot_right:
