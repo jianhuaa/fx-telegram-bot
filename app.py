@@ -1274,7 +1274,7 @@ def show_global_birdseye(df_inds, df_all_ret):
     # ==========================================
     # ROW 2: BOTTOM HALF (1/3 Losers | 2/3 Alpha Engine)
     # ==========================================
-    c_bot_left, c_bot_right = st.columns([0.25, 0.75], gap="small")
+    c_bot_left, c_bot_right = st.columns([0.30, 0.70], gap="small")
     
     # Check if a specific sub-industry was clicked
     target_ind = st.session_state.get('selected_sub_ind', None)
@@ -1440,7 +1440,7 @@ def show_global_birdseye(df_inds, df_all_ret):
                 def g(col): return row.get(col, 0)
 
                 # Combine the scores into single strings separated by a small space
-                val_str  = f"{s_blk(g('P/E Ratio_Score'))} · {s_blk(g('Short Interest %_Score'))} · {s_blk(g('1Y%_Score'))} · {s_blk(g('Mkt Cap (M)_Score'))}"
+                val_str  = f"{s_blk(g('P/E Ratio_Score'))}  ·  {s_blk(g('Short Interest %_Score'))}  ·  {s_blk(g('1Y%_Score'))}  ·  {s_blk(g('Mkt Cap (M)_Score'))}"
                 prof_str = f"{s_blk(g('Gross Marg %_Score'))} · {s_blk(g('Op Marg %_Score'))} · {s_blk(g('Net Marg %_Score'))}"
                 #flow_str = f"{s_blk(g('Op CF (M)_Score'))} {s_blk(g('FCF (M)_Score'))} {s_bin(g('Inv CF (M)_Score'))} {s_blk(g('Fin CF (M)_Score'))} {s_bin(g('Self-Funding_Score'))}"
                 #debt_str = f"{s_blk(g('Cash & STI (M)_Score'))} {s_blk(g('ST Debt (M)_Score'))} {s_blk(g('LT Debt (M)_Score'))} {s_blk(g('Cash/Debt Ratio_Score'))} {s_blk(g('Goodwill, Net (M)_Score'))}"
