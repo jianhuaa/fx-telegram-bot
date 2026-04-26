@@ -1472,10 +1472,7 @@ def show_global_birdseye(df_inds, df_all_ret):
                 ("OPT", "ΔOI"), ("OPT", "OI"),
                 (" ", "ANS")
             ]
-            
-            # Flatten tuples → plain strings that Streamlit can serialize
-            flat_cols = [b.strip() if not a.strip() else f"{a}|{b}" for a, b in header_tuples]
-            display_df.columns = flat_cols  # ← plain strings, no MultiIndex
+            display_df.columns = pd.MultiIndex.from_tuples(header_tuples)  # ← keep MultiIndex for 2-row header
             
             # --- COLUMN CONFIGURATION ---
             pixel_widths = {
