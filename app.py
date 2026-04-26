@@ -1473,6 +1473,16 @@ def show_global_birdseye(df_inds, df_all_ret):
 
             st.markdown("<div style='height:10px;'></div>", unsafe_allow_html=True)
 
+            st.markdown("""
+            <style>
+            [data-testid="stDataFrame"] td, [data-testid="stDataFrame"] th {
+                padding: 2px 4px !important;
+                font-size: 11px !important;
+                min-width: unset !important;
+                max-width: 60px !important;
+            }
+            </style>
+            """, unsafe_allow_html=True)
             # --- 4. RENDER NATIVE INTERACTIVE TABLE ---
             alpha_event = st.dataframe(
                 display_df,
