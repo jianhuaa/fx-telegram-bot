@@ -60,24 +60,63 @@ def get_options_snapshot(ticker, index_name):
         if not expirations:
             return None
 
+        # --- NEW: Get the Live Price to find ATM strikes ---
+        try:
+            live_price = float(tkr.history(period="1d")['Close'].iloc[-1])
+        except:
+            return None # Skip if we can't find a live price
+
         now = datetime.datetime.now()
         m1_prefix = now.strftime("%Y-%m")
         m2_prefix = (now + relativedelta(months=1)).strftime("%Y-%m")
 
-        data = {'Date': now.strftime('%Y-%m-%d'), 'Ticker': ticker, 'Index': index_name}
-        stats = {"M1_C": 0, "M1_P": 0, "M2_C": 0, "M2_P": 0}
+        data = {'Date': now.strftime('%Y-%m-%d'), 'Ticker': ticker, 'Index': index_name, 'Live_Price': round(live_price, 2)}
+        
+        # Added M1_IVs and M2_IVs lists to store the interpolated IV for each expiration day
+        stats = {"M1_C": 0, "M1_P": 0, "M2_C": 0, "M2_P": 0, "M1_IVs": [], "M2_IVs": []}
         
         for d in expirations[:8]:
             target = "M1" if d.startswith(m1_prefix) else ("M2" if d.startswith(m2_prefix) else None)
             if target:
                 chain = tkr.option_chain(d)
+                calls = chain.calls
+                puts = chain.puts
+
+                # Add to total OI
                 stats[f"{target}_C"] += chain.calls['openInterest'].fillna(0).sum()
                 stats[f"{target}_P"] += chain.puts['openInterest'].fillna(0).sum()
 
+                # --- NEW: ATM IV Interpolation Logic ---
+                if not calls.empty:
+                    # Calculate distance from live price to find the 2 closest strikes
+                    calls['dist'] = abs(calls['strike'] - live_price)
+                    closest = calls.nsmallest(2, 'dist').sort_values('strike')
+                    
+                    if len(closest) == 2:
+                        s1, s2 = closest['strike'].iloc[0], closest['strike'].iloc[1]
+                        iv1, iv2 = closest['impliedVolatility'].iloc[0], closest['impliedVolatility'].iloc[1]
+                        
+                        # Linear Interpolation Math
+                        if s2 != s1:
+                            atm_iv = iv1 + (live_price - s1) * (iv2 - iv1) / (s2 - s1)
+                        else:
+                            atm_iv = iv1
+                    elif len(closest) == 1:
+                        atm_iv = closest['impliedVolatility'].iloc[0]
+                    else:
+                        atm_iv = 0
+                        
+                    if atm_iv > 0:
+                        stats[f"{target}_IVs"].append(atm_iv)
+        
         data['M1_NetOI'] = int(stats['M1_C'] - stats['M1_P'])
         data['M2_NetOI'] = int(stats['M2_C'] - stats['M2_P'])
         data['M1_PC'] = stats['M1_P'] / stats['M1_C'] if stats['M1_C'] > 0 else 0
         data['M2_PC'] = stats['M2_P'] / stats['M2_C'] if stats['M2_C'] > 0 else 0
+
+        # --- NEW: Average the interpolated IVs across the month ---
+        data['M1_ATM_IV'] = sum(stats['M1_IVs']) / len(stats['M1_IVs']) if stats['M1_IVs'] else 0.0
+        data['M2_ATM_IV'] = sum(stats['M2_IVs']) / len(stats['M2_IVs']) if stats['M2_IVs'] else 0.0
         
         return data
     except Exception as e:
