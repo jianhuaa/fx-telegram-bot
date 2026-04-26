@@ -1459,11 +1459,7 @@ def show_global_birdseye(df_inds, df_all_ret):
             
             # --- 3. BUILD THE ORIGINAL 2-TIER HEADER ---
             # Restored your original names exactly as you had them
-            
-
-
             # --- 3. BUILD THE ORIGINAL 2-TIER HEADER ---
-            # --- 3. BUILD FLAT COLUMNS (for column_config compatibility) ---
             header_tuples = [
                 (" ", "IDX"), (" ", "TICK"),
                 ("VALUE", "P/E"), ("VALUE", "SI"), ("VALUE", "1Y"), ("VALUE", "CAP"),
@@ -1473,47 +1469,18 @@ def show_global_birdseye(df_inds, df_all_ret):
                 ("OPT", "ΔOI"), ("OPT", "OI"),
                 (" ", "ANS")
             ]
-            
-            flat_cols = [b.strip() for _, b in header_tuples]
-            display_df.columns = flat_cols
-            
-            col_cfg = {
-                "IDX":   st.column_config.TextColumn(width="small"),
-                "TICK":  st.column_config.TextColumn(width="small"),
-                "P/E":   st.column_config.TextColumn(width="small"),
-                "SI":    st.column_config.TextColumn(width="small"),
-                "1Y":    st.column_config.TextColumn(width="small"),
-                "CAP":   st.column_config.TextColumn(width="small"),
-                "GM":    st.column_config.TextColumn(width="small"),
-                "OM":    st.column_config.TextColumn(width="small"),
-                "NM":    st.column_config.TextColumn(width="small"),
-                "CFO":   st.column_config.TextColumn(width="small"),
-                "FCF":   st.column_config.TextColumn(width="small"),
-                "CFI":   st.column_config.TextColumn(width="small"),
-                "CFF":   st.column_config.TextColumn(width="small"),
-                "SELF?": st.column_config.TextColumn(width="small"),
-                "CASH":  st.column_config.TextColumn(width="small"),
-                "STD":   st.column_config.TextColumn(width="small"),
-                "LTD":   st.column_config.TextColumn(width="small"),
-                "C/D":   st.column_config.TextColumn(width="small"),
-                "GW":    st.column_config.TextColumn(width="small"),
-                "ΔOI":   st.column_config.TextColumn(width="small"),
-                "OI":    st.column_config.TextColumn(width="small"),
-                "ANS":   st.column_config.TextColumn(width="small"),
-            }
+            display_df.columns = pd.MultiIndex.from_tuples(header_tuples)
+
             st.markdown("<div style='height:10px;'></div>", unsafe_allow_html=True)
 
-            st.write(display_df.columns.tolist())
             # --- 4. RENDER NATIVE INTERACTIVE TABLE ---
             alpha_event = st.dataframe(
                 display_df,
-                #use_container_width=True,
                 width='stretch',
                 hide_index=True,
                 height=350,
-                selection_mode="multi-row", 
+                selection_mode="multi-row",
                 on_select="rerun",
-                column_config=col_cfg,
                 key="alpha_table_native"
             )
             
