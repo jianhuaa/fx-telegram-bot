@@ -1437,20 +1437,26 @@ def show_global_birdseye(df_inds, df_all_ret):
                     # --- B. OI SCORE (Latest Snapshot) ---
                     # Simply grab the absolute latest NetOI status for the 🟩/🟥 toggle
                     df_oi_latest = df_opt_raw.sort_values('Date').groupby('Ticker').last().reset_index()
-                    df_oi_latest['Opt_OI_Score'] = df_oi_latest['M1_NetOI'].apply(lambda x: 1 if x > 0 else (-1 if x < 0 else 0))
+                    def calc_oi_score(row):
+                        # Use M1 if it has value, else use M2 (May)
+                        val = row['M1_NetOI'] if row['M1_NetOI'] != 0 else row['M2_NetOI']
+                        return 1 if val > 0 else (-1 if val < 0 else 0)
+                    
+                    df_oi_latest['Opt_OI_Score'] = df_oi_latest.apply(calc_oi_score, axis=1)
 
-                    # --- C. DELTA EVENT SCORE (10-Day Window) ---
-                    # 1. Filter out expiries to avoid "false" massive delta events
+                    # 3. Opt_DeltaOI_Score: 10-Day "Deal" Scanner
+                    # Logic: Scan last 10 days (no expiries) for non-zero Delta in EITHER M1 or M2
                     df_no_expiry = df_opt_raw[df_opt_raw['Is_Expiry'] == False].sort_values(['Ticker', 'Date'])
                     
-                    def find_recent_event(group):
-                        # Look at the last 10 available trading days
+                    def find_deal_event(group):
                         window = group.tail(10)
-                        # Find the most recent day where Delta was not zero
-                        significant_days = window[window['M1_DeltaNetOI'] != 0]
-                        if not significant_days.empty:
-                            last_val = significant_days.iloc[-1]['M1_DeltaNetOI']
-                            return 1 if last_val > 0 else -1
+                        # Iterate backward from the latest day
+                        for i in range(len(window)-1, -1, -1):
+                            row = window.iloc[i]
+                            # Prioritize M1 then M2 for the most recent directional move
+                            d1, d2 = row['M1_DeltaNetOI'], row['M2_DeltaNetOI']
+                            if d1 != 0: return 1 if d1 > 0 else -1
+                            if d2 != 0: return 1 if d2 > 0 else -1
                         return 0
 
                     df_delta_events = df_no_expiry.groupby('Ticker').apply(find_recent_event).reset_index()
