@@ -1502,14 +1502,14 @@ def show_global_birdseye(df_inds, df_all_ret):
                 "ΔOI": st.column_config.TextColumn(width="small"),
                 "OI": st.column_config.TextColumn(width="small"),
             }
-            print(display_df.columns.tolist())
             st.markdown("<div style='height:10px;'></div>", unsafe_allow_html=True)
 
-            
+            st.write(display_df.columns.tolist())
             # --- 4. RENDER NATIVE INTERACTIVE TABLE ---
             alpha_event = st.dataframe(
                 display_df,
-                use_container_width=True,
+                #use_container_width=True,
+                width='stretch',
                 hide_index=True,
                 height=350,
                 selection_mode="multi-row", 
