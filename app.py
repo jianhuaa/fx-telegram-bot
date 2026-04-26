@@ -1476,20 +1476,22 @@ def show_global_birdseye(df_inds, df_all_ret):
 
             strict_col_config = {}
             for col_tuple in display_df.columns:
-                # Give TICK slightly more room, crush everything else down to 40-45 pixels
+                # ---> FIX 1: Convert the tuple to a string so JSON doesn't crash
+                col_key = str(col_tuple)
+                
+                # Give TICK slightly more room, crush everything else down to 40 pixels
                 if col_tuple[1] == "TICK":
-                    strict_col_config[col_tuple] = st.column_config.TextColumn(width=50)
+                    strict_col_config[col_key] = st.column_config.TextColumn(width=50)
                 elif col_tuple[1] == "IDX":
-                    strict_col_config[col_tuple] = st.column_config.TextColumn(width=40)
+                    strict_col_config[col_key] = st.column_config.TextColumn(width=40)
                 else:
                     # Force all score columns to be tiny
-                    strict_col_config[col_tuple] = st.column_config.TextColumn(width=40)
+                    strict_col_config[col_key] = st.column_config.TextColumn(width=40)
             
             # --- 4. RENDER NATIVE INTERACTIVE TABLE ---
             alpha_event = st.dataframe(
                 display_df,
-                #width='stretch',
-                use_container_width=False,
+                width="content", # ---> FIX 2: Prevents Streamlit from stretching and clears the warning
                 hide_index=True,
                 height=350,
                 selection_mode="multi-row",
