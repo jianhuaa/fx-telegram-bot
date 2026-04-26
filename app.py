@@ -1416,10 +1416,9 @@ def show_global_birdseye(df_inds, df_all_ret):
 
             # --- 2. MERGE THE OPTIONS SCORES ---
             # --- 2. GENERATE WINDOWED OPTIONS SCORES (Corrected for Expiries) ---
+            # --- 2. GENERATE OPTIONS SCORES (Optimized for Most Impactful "Deal") ---
             try:
                 import requests, io
-                from datetime import timedelta
-                
                 opt_url = "https://raw.githubusercontent.com/jianhuaa/fx-telegram-bot/main/col4_options_history.parquet"
                 res_opt = requests.get(opt_url)
                 
@@ -1427,49 +1426,50 @@ def show_global_birdseye(df_inds, df_all_ret):
                     df_opt_raw = pd.read_parquet(io.BytesIO(res_opt.content))
                     df_opt_raw['Date'] = pd.to_datetime(df_opt_raw['Date'])
                     
-                    # --- A. EXPIRY EXCLUSION LOGIC ---
+                    # 1. Expiry Detection (Ignore noise from standard 3rd Fridays)
                     def is_third_friday(d):
-                        # Standard monthly expiries are the 3rd Friday
                         return d.weekday() == 4 and 15 <= d.day <= 21
-
                     df_opt_raw['Is_Expiry'] = df_opt_raw['Date'].apply(is_third_friday)
-                    
-                    # --- B. OI SCORE (Latest Snapshot) ---
-                    # Simply grab the absolute latest NetOI status for the 🟩/🟥 toggle
+
+                    # 2. Opt_OI_Score: Current Net Bias (M1 -> M2 Roll Support)
+                    # Takes the latest snapshot of the current positioning
                     df_oi_latest = df_opt_raw.sort_values('Date').groupby('Ticker').last().reset_index()
                     def calc_oi_score(row):
-                        # Use M1 if it has value, else use M2 (May)
                         val = row['M1_NetOI'] if row['M1_NetOI'] != 0 else row['M2_NetOI']
                         return 1 if val > 0 else (-1 if val < 0 else 0)
-                    
                     df_oi_latest['Opt_OI_Score'] = df_oi_latest.apply(calc_oi_score, axis=1)
 
-                    # 3. Opt_DeltaOI_Score: 10-Day "Deal" Scanner
-                    # Logic: Scan last 10 days (no expiries) for non-zero Delta in EITHER M1 or M2
+                    # 3. Opt_DeltaOI_Score: 10-Day "Most Impactful Deal" Scanner
+                    # Filters expiries and identifies the largest move in the 10-day window
                     df_no_expiry = df_opt_raw[df_opt_raw['Is_Expiry'] == False].sort_values(['Ticker', 'Date'])
                     
-                    def find_deal_event(group):
+                    def find_max_impact_deal(group):
                         window = group.tail(10)
-                        # Iterate backward from the latest day
-                        for i in range(len(window)-1, -1, -1):
-                            row = window.iloc[i]
-                            # Prioritize M1 then M2 for the most recent directional move
-                            d1, d2 = row['M1_DeltaNetOI'], row['M2_DeltaNetOI']
-                            if d1 != 0: return 1 if d1 > 0 else -1
-                            if d2 != 0: return 1 if d2 > 0 else -1
+                        if window.empty: return 0
+                        
+                        # Find the magnitude of the largest move in either M1 or M2
+                        window['impact'] = window[['M1_DeltaNetOI', 'M2_DeltaNetOI']].abs().max(axis=1)
+                        
+                        # Identify the day with the absolute highest impact
+                        max_row = window.loc[window['impact'].idxmax()]
+                        
+                        if max_row['impact'] > 0:
+                            # Get the sign of the actual move on that specific day
+                            d1, d2 = max_row['M1_DeltaNetOI'], max_row['M2_DeltaNetOI']
+                            # If both contracts moved, use the one with larger magnitude
+                            dominant_delta = d1 if abs(d1) >= abs(d2) else d2
+                            return 1 if dominant_delta > 0 else -1
                         return 0
 
-                    df_delta_events = df_no_expiry.groupby('Ticker').apply(find_deal_event).reset_index()
+                    df_delta_events = df_no_expiry.groupby('Ticker').apply(find_max_impact_deal).reset_index()
                     df_delta_events.columns = ['Ticker', 'Opt_DeltaOI_Score']
                     
-                    # --- D. FINAL MERGE ---
-                    # Combine the latest OI status with the 10-day Delta event result
+                    # 4. Final Merge into Alpha Engine
                     opt_scores = df_oi_latest[['Ticker', 'Opt_OI_Score']].merge(df_delta_events, on='Ticker', how='left')
-                    
                     alpha_df = alpha_df.merge(opt_scores, on='Ticker', how='left')
 
             except Exception as e:
-                st.error(f"Options Windowing Error: {e}")
+                st.error(f"Options Impact Scan Error: {e}")
 
             # Translation functions
             def s_blk(val):
