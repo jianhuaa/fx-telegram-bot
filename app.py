@@ -1420,6 +1420,7 @@ def show_global_birdseye(df_inds, df_all_ret):
             # --- 2. GENERATE OPTIONS SCORES (Fixed for Series Ambiguity Error) ---
             # --- 2. SATURDAY-AWARE IMPACT SCANNER (Fixed Maturity Filtering) ---
             # --- 2. TRUE-DELTA IMPACT SCANNER (Fixes Maturity Artifact without discarding) ---
+            # --- 2. TRUE-DELTA IMPACT SCANNER (Fixed Duplicate Index Error) ---
             try:
                 import requests, io
                 opt_url = "https://raw.githubusercontent.com/jianhuaa/fx-telegram-bot/main/col4_options_history.parquet"
@@ -1428,7 +1429,10 @@ def show_global_birdseye(df_inds, df_all_ret):
                 if res_opt.status_code == 200:
                     df_opt_raw = pd.read_parquet(io.BytesIO(res_opt.content))
                     df_opt_raw['Date'] = pd.to_datetime(df_opt_raw['Date'])
-                    df_opt_raw = df_opt_raw.sort_values(['Ticker', 'Date'])
+                    
+                    # CRITICAL FIX: reset_index(drop=True) wipes the duplicate labels 
+                    # so the Pandas .loc math below doesn't crash
+                    df_opt_raw = df_opt_raw.sort_values(['Ticker', 'Date']).reset_index(drop=True)
                     
                     # 1. MATHEMATICALLY REPAIR THE DELTA ON ROLL DAYS
                     # Get Yesterday's M2 (e.g. May contract on Friday)
@@ -1438,7 +1442,6 @@ def show_global_birdseye(df_inds, df_all_ret):
                     is_roll_day = df_opt_raw['Date'].dt.weekday.isin([5, 6]) & (df_opt_raw['Date'].dt.day >= 15) & (df_opt_raw['Date'].dt.day <= 28)
                     
                     # Replace the tainted Delta with the True Trading Delta (Today's M1 - Yesterday's M2)
-                    # This perfectly "reduces the value by the maturity" artifact
                     df_opt_raw.loc[is_roll_day, 'M1_DeltaNetOI'] = df_opt_raw['M1_NetOI'] - df_opt_raw['Prev_M2_NetOI']
 
                     # 2. OI SCORE: Latest Active Snapshot
@@ -1474,7 +1477,7 @@ def show_global_birdseye(df_inds, df_all_ret):
 
             except Exception as e:
                 st.error(f"Options True-Delta Error: {e}")
-
+                
             # Translation functions
             def s_blk(val):
                 if pd.isna(val): return '⬛'
