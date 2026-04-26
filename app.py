@@ -1475,8 +1475,33 @@ def show_global_birdseye(df_inds, df_all_ret):
             ]
             
             display_df.columns = pd.MultiIndex.from_tuples(header_tuples)
+
+            # Streamlit actually accepts the SECOND level string as the key when MultiIndex is used
+            col_cfg = {
+                "IDX": st.column_config.TextColumn(width="small"),
+                "TICK": st.column_config.TextColumn(width="small"),
+                "ANS": st.column_config.TextColumn(width="small"),
+                "P/E": st.column_config.TextColumn(width="small"),
+                "SI": st.column_config.TextColumn(width="small"),
+                "1Y": st.column_config.TextColumn(width="small"),
+                "CAP": st.column_config.TextColumn(width="small"),
+                "GM": st.column_config.TextColumn(width="small"),
+                "OM": st.column_config.TextColumn(width="small"),
+                "NM": st.column_config.TextColumn(width="small"),
+                "CFO": st.column_config.TextColumn(width="small"),
+                "FCF": st.column_config.TextColumn(width="small"),
+                "CFI": st.column_config.TextColumn(width="small"),
+                "CFF": st.column_config.TextColumn(width="small"),
+                "SELF?": st.column_config.TextColumn(width="small"),
+                "CASH": st.column_config.TextColumn(width="small"),
+                "STD": st.column_config.TextColumn(width="small"),
+                "LTD": st.column_config.TextColumn(width="small"),
+                "C/D": st.column_config.TextColumn(width="small"),
+                "GW": st.column_config.TextColumn(width="small"),
+                "ΔOI": st.column_config.TextColumn(width="small"),
+                "OI": st.column_config.TextColumn(width="small"),
+            }
             
-            # No col_cfg — let Streamlit auto-size columns
             st.markdown("<div style='height:10px;'></div>", unsafe_allow_html=True)
 
             
