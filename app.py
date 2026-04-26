@@ -1463,7 +1463,7 @@ def show_global_birdseye(df_inds, df_all_ret):
                             return 1 if dominant_delta > 0 else -1
                         return 0
 
-                    df_delta_events = df_no_expiry.groupby('Ticker').apply(find_max_impact_deal).reset_index()
+                    df_delta_events = df_clean_delta.groupby('Ticker').apply(find_max_impact_deal).reset_index()
                     df_delta_events.columns = ['Ticker', 'Opt_DeltaOI_Score']
                     
                     # 4. Final Merge
