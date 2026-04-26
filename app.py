@@ -1091,6 +1091,25 @@ def get_live_col4_data():
         return df_sec, df_transcripts, df_all_ret
     except: return pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
 
+@st.cache_data(ttl=3600)
+def get_fsli_master_data():
+    try:
+        # Try local first
+        try: 
+            df = pd.read_parquet('fsli_master.parquet')
+            if not df.empty: return df
+        except: pass
+        
+        # Fallback to GitHub
+        import requests, io
+        res = requests.get("https://raw.githubusercontent.com/jianhuaa/fx-telegram-bot/main/fsli_master.parquet")
+        if res.status_code == 200:
+            return pd.read_parquet(io.BytesIO(res.content))
+        return pd.DataFrame()
+    except Exception as e:
+        print(f"FSLI Master Load Error: {e}")
+        return pd.DataFrame()
+        
 # ---------------------------------------------------------
 # DIALOG 0: GLOBAL BIRD'S EYE VIEW
 # ---------------------------------------------------------
@@ -1360,21 +1379,60 @@ def show_global_birdseye(df_inds, df_all_ret):
             sort_col_alpha = f'{sort_choice}_raw' if f'{sort_choice}_raw' in alpha_df.columns else '1M_raw'
             alpha_df = alpha_df.sort_values(by=['SortIndex', sort_col_alpha]).head(25)
             
-            # --- 1. DUMMY GENERATOR ---
-            import random
-            def get_blk(): return random.choice(['🟩', '⬛', '🟥'])
-            def get_bin(): return random.choice(['🟩', '🟥'])
+            ## --- 1. DUMMY GENERATOR ---
+            #import random
+            #def get_blk(): return random.choice(['🟩', '⬛', '🟥'])
+            #def get_bin(): return random.choice(['🟩', '🟥'])
             
+            #display_data = []
+            #for _, row in alpha_df.iterrows():
+            #    display_data.append([
+            #        row['Index'], row['Ticker'],
+            #        get_blk(), get_blk(), get_blk(), get_blk(),  
+            #        get_blk(), get_blk(), get_blk(),             
+            #        get_blk(), get_blk(), get_bin(), get_blk(), get_bin(), 
+            #        get_blk(), get_blk(), get_blk(), get_blk(), get_blk(), 
+            #        get_blk(), get_blk(),                        
+            #        random.choice(['🔥', '⏳', '🧊'])            
+            #    ])
+
+            # --- 1. FSLI SCORING ENGINE ---
+            df_fsli = get_fsli_master_data()
+            
+            if not df_fsli.empty:
+                # Merge the FSLI scores into our active Alpha DataFrame
+                alpha_df = alpha_df.merge(df_fsli, on='Ticker', how='left')
+
+            # Translation functions
+            def s_blk(val):
+                if pd.isna(val): return '⬛'
+                if val == 1: return '🟩'
+                elif val == -1: return '🟥'
+                return '⬛'
+            
+            def s_bin(val):
+                if pd.isna(val): return '⬛'
+                return '🟩' if val == 1 else '🟥'
+
             display_data = []
             for _, row in alpha_df.iterrows():
+                # Safe getter in case a column is missing
+                def g(col): return row[col] if col in alpha_df.columns else 0
+
                 display_data.append([
                     row['Index'], row['Ticker'],
-                    get_blk(), get_blk(), get_blk(), get_blk(),  
-                    get_blk(), get_blk(), get_blk(),             
-                    get_blk(), get_blk(), get_bin(), get_blk(), get_bin(), 
-                    get_blk(), get_blk(), get_blk(), get_blk(), get_blk(), 
-                    get_blk(), get_blk(),                        
-                    random.choice(['🔥', '⏳', '🧊'])            
+                    # VALUE
+                    s_blk(g('P/E Ratio_Score')), s_blk(g('Short Interest %_Score')), s_blk(g('1Y%_Score')), s_blk(g('Mkt Cap (M)_Score')),  
+                    # PROFIT
+                    s_blk(g('Gross Marg %_Score')), s_blk(g('Op Marg %_Score')), s_blk(g('Net Marg %_Score')),             
+                    # FLOWS
+                    s_blk(g('Op CF (M)_Score')), s_blk(g('FCF (M)_Score')), s_bin(g('Inv CF (M)_Score')), '⬛', s_bin(g('Self-Funding_Score')), 
+                    # DEBT
+                    s_blk(g('Cash & STI (M)_Score')), s_blk(g('ST Debt (M)_Score')), s_blk(g('LT Debt (M)_Score')), s_blk(g('Cash/Debt Ratio_Score')), s_blk(g('Goodwill, Net (M)_Score')), 
+                    # OPT (Placeholders for now)
+                    '⬛', '⬛',                        
+                    # ANS (Placeholder)
+                    '⏳'            
                 ])
             
             display_df = pd.DataFrame(display_data)
