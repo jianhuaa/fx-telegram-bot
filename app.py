@@ -1506,22 +1506,9 @@ def show_global_birdseye(df_inds, df_all_ret):
             header_cells = ""
             for label, cols in groups:
                 w = group_px(cols)
-                header_cells += f"""
-                    <th style="width:{w}px; min-width:{w}px; max-width:{w}px;
-                               text-align:center; font-size:12px; font-weight:600;
-                               color: var(--text-color, #888);
-                               border-bottom: 1px solid rgba(128,128,128,0.3);
-                               padding: 4px 2px;">
-                        {label}
-                    </th>"""
+                header_cells += f'<th style="width:{w}px; min-width:{w}px; max-width:{w}px; text-align:center; font-size:12px; font-weight:600; color: var(--text-color, #888); border-bottom: 1px solid rgba(128,128,128,0.3); padding: 4px 2px;">{label}</th>'
             
-            fake_header_html = f"""
-            <div style="overflow-x:auto;">
-              <table style="border-collapse:collapse; table-layout:fixed; width:100%;">
-                <tr>{header_cells}</tr>
-              </table>
-            </div>
-            """
+            fake_header_html = f'<div style="overflow-x:auto;"><table style="border-collapse:collapse; table-layout:fixed; width:100%;"><tr>{header_cells}</tr></table></div>'
             
             st.markdown("<div style='height:10px;'></div>", unsafe_allow_html=True)
             st.markdown(fake_header_html, unsafe_allow_html=True)
