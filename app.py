@@ -1473,9 +1473,9 @@ def show_global_birdseye(df_inds, df_all_ret):
             # --- COLUMN CONFIGURATION: EXACT PIXEL WIDTHS ---
             # FIX: We wrap the tuple keys in str() so JSON can serialize them safely
             col_cfg = {
-                str((" ", "IDX")): st.column_config.TextColumn(width=30),
-                str((" ", "TICK")): st.column_config.TextColumn(width=45),
-                str((" ", "ANS")): st.column_config.TextColumn(width=30),
+                str(" ", "IDX"): st.column_config.TextColumn(width=30),
+                str(" ", "TICK"): st.column_config.TextColumn(width=45),
+                str(" ", "ANS"): st.column_config.TextColumn(width=30),
             }
             
             # Custom mapping to surgically kill dead space based on word length
