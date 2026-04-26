@@ -1440,7 +1440,7 @@ def show_global_birdseye(df_inds, df_all_ret):
                 def g(col): return row.get(col, 0)
 
                 # Combine the scores into single strings separated by a small space
-                #val_str  = f"{s_blk(g('P/E Ratio_Score'))} {s_blk(g('Short Interest %_Score'))} {s_blk(g('1Y%_Score'))} {s_blk(g('Mkt Cap (M)_Score'))}"
+                val_str  = f"{s_blk(g('P/E Ratio_Score'))} · {s_blk(g('Short Interest %_Score'))} · {s_blk(g('1Y%_Score'))} · {s_blk(g('Mkt Cap (M)_Score'))}"
                 prof_str = f"{s_blk(g('Gross Marg %_Score'))} · {s_blk(g('Op Marg %_Score'))} · {s_blk(g('Net Marg %_Score'))}"
                 #flow_str = f"{s_blk(g('Op CF (M)_Score'))} {s_blk(g('FCF (M)_Score'))} {s_bin(g('Inv CF (M)_Score'))} {s_blk(g('Fin CF (M)_Score'))} {s_bin(g('Self-Funding_Score'))}"
                 #debt_str = f"{s_blk(g('Cash & STI (M)_Score'))} {s_blk(g('ST Debt (M)_Score'))} {s_blk(g('LT Debt (M)_Score'))} {s_blk(g('Cash/Debt Ratio_Score'))} {s_blk(g('Goodwill, Net (M)_Score'))}"
@@ -1449,7 +1449,8 @@ def show_global_birdseye(df_inds, df_all_ret):
                 display_data.append([
                     row.get('Index', 'UNK'), row.get('Ticker', 'UNK'),
                     # VALUE (Split back to individual cells)
-                    s_blk(g('P/E Ratio_Score')), s_blk(g('Short Interest %_Score')), s_blk(g('1Y%_Score')), s_blk(g('Mkt Cap (M)_Score')),  
+                    val_str,
+                    #s_blk(g('P/E Ratio_Score')), s_blk(g('Short Interest %_Score')), s_blk(g('1Y%_Score')), s_blk(g('Mkt Cap (M)_Score')),  
                     # PROFIT (Concatenated)
                     prof_str,
                     # FLOWS (Split back to individual cells)
@@ -1469,7 +1470,8 @@ def show_global_birdseye(df_inds, df_all_ret):
             # Using · (middle dot) as a visually clean separator for the headers
             header_tuples = [
                 (" ", "IDX"), (" ", "TICK"),
-                ("VALUE", "P/E"), ("VALUE", "SI"), ("VALUE", "1Y"), ("VALUE", "CAP"),
+                #("VALUE", "P/E"), ("VALUE", "SI"), ("VALUE", "1Y"), ("VALUE", "CAP"),
+                ("VALUE", "P/E" · "SI" · "1Y" · "CAP"),
                 ("PROFIT", "GM · OM · NM"),
                 ("FLOWS", "CFO"), ("FLOWS", "FCF"), ("FLOWS", "CFI"), ("FLOWS", "CFF"), ("FLOWS", "SLF"),
                 ("DEBT", "CSH"), ("DEBT", "STD"), ("DEBT", "LTD"), ("DEBT", "C/D"), ("DEBT", "GW"),
@@ -1494,7 +1496,7 @@ def show_global_birdseye(df_inds, df_all_ret):
                 elif col_tuple[1] == "ANS":
                     strict_col_config[col_key] = st.column_config.TextColumn(width=30)
                 # Let the concatenated columns scale naturally
-                elif col_tuple[0] in ["PROFIT", "OPT"]:
+                elif col_tuple[0] in ["VALUE", "PROFIT", "OPT"]:
                     strict_col_config[col_key] = st.column_config.TextColumn(width="content")
                 # Crush the single emoji columns to absolute minimum width (1 pixel hack)
                 else:
