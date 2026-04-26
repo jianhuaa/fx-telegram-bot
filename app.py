@@ -1417,6 +1417,7 @@ def show_global_birdseye(df_inds, df_all_ret):
             # --- 2. MERGE THE OPTIONS SCORES ---
             # --- 2. GENERATE WINDOWED OPTIONS SCORES (Corrected for Expiries) ---
             # --- 2. GENERATE OPTIONS SCORES (Optimized for Most Impactful "Deal") ---
+            # --- 2. GENERATE OPTIONS SCORES (Fixed for Series Ambiguity Error) ---
             try:
                 import requests, io
                 opt_url = "https://raw.githubusercontent.com/jianhuaa/fx-telegram-bot/main/col4_options_history.parquet"
@@ -1426,37 +1427,41 @@ def show_global_birdseye(df_inds, df_all_ret):
                     df_opt_raw = pd.read_parquet(io.BytesIO(res_opt.content))
                     df_opt_raw['Date'] = pd.to_datetime(df_opt_raw['Date'])
                     
-                    # 1. Expiry Detection (Ignore noise from standard 3rd Fridays)
+                    # 1. Expiry Detection
                     def is_third_friday(d):
                         return d.weekday() == 4 and 15 <= d.day <= 21
                     df_opt_raw['Is_Expiry'] = df_opt_raw['Date'].apply(is_third_friday)
 
-                    # 2. Opt_OI_Score: Current Net Bias (M1 -> M2 Roll Support)
-                    # Takes the latest snapshot of the current positioning
+                    # 2. Opt_OI_Score: Latest Snapshot
                     df_oi_latest = df_opt_raw.sort_values('Date').groupby('Ticker').last().reset_index()
                     def calc_oi_score(row):
                         val = row['M1_NetOI'] if row['M1_NetOI'] != 0 else row['M2_NetOI']
                         return 1 if val > 0 else (-1 if val < 0 else 0)
                     df_oi_latest['Opt_OI_Score'] = df_oi_latest.apply(calc_oi_score, axis=1)
 
-                    # 3. Opt_DeltaOI_Score: 10-Day "Most Impactful Deal" Scanner
-                    # Filters expiries and identifies the largest move in the 10-day window
+                    # 3. Opt_DeltaOI_Score: Robust 10-Day Impact Scanner
                     df_no_expiry = df_opt_raw[df_opt_raw['Is_Expiry'] == False].sort_values(['Ticker', 'Date'])
                     
                     def find_max_impact_deal(group):
-                        window = group.tail(10)
+                        # Force a clean, unique integer index for this specific stock's window
+                        window = group.tail(10).reset_index(drop=True)
                         if window.empty: return 0
                         
-                        # Find the magnitude of the largest move in either M1 or M2
+                        # Calculate impact magnitude
                         window['impact'] = window[['M1_DeltaNetOI', 'M2_DeltaNetOI']].abs().max(axis=1)
                         
-                        # Identify the day with the absolute highest impact
-                        max_row = window.loc[window['impact'].idxmax()]
+                        # Identify the position of the largest deal
+                        max_idx = window['impact'].idxmax()
                         
-                        if max_row['impact'] > 0:
-                            # Get the sign of the actual move on that specific day
-                            d1, d2 = max_row['M1_DeltaNetOI'], max_row['M2_DeltaNetOI']
-                            # If both contracts moved, use the one with larger magnitude
+                        # Extract the single row using .iloc to ensure we get a scalar row (Series)
+                        max_row = window.iloc[max_idx]
+                        
+                        impact_val = max_row['impact']
+                        
+                        if impact_val > 0:
+                            d1 = max_row['M1_DeltaNetOI']
+                            d2 = max_row['M2_DeltaNetOI']
+                            # Determine direction from the contract with the bigger move
                             dominant_delta = d1 if abs(d1) >= abs(d2) else d2
                             return 1 if dominant_delta > 0 else -1
                         return 0
@@ -1464,12 +1469,12 @@ def show_global_birdseye(df_inds, df_all_ret):
                     df_delta_events = df_no_expiry.groupby('Ticker').apply(find_max_impact_deal).reset_index()
                     df_delta_events.columns = ['Ticker', 'Opt_DeltaOI_Score']
                     
-                    # 4. Final Merge into Alpha Engine
+                    # 4. Final Merge
                     opt_scores = df_oi_latest[['Ticker', 'Opt_OI_Score']].merge(df_delta_events, on='Ticker', how='left')
                     alpha_df = alpha_df.merge(opt_scores, on='Ticker', how='left')
 
             except Exception as e:
-                st.error(f"Options Impact Scan Error: {e}")
+                st.error(f"Options Processing Error: {e}")
 
             # Translation functions
             def s_blk(val):
