@@ -1258,25 +1258,79 @@ def show_global_birdseye(df_inds, df_all_ret):
     with c_bot_left:
 
         # Create 3 mini-columns for the Title and the 2 Toggles
+        #h_los_1, h_los_2, h_los_3 = st.columns([0.40, 0.30, 0.30])
+        
+        #with h_los_1:
+        #    st.markdown(f"<div style='color:#ff4b4b; font-size:12px; font-weight:bold; margin-top:2px;'>🔴 LOSERS</div>", unsafe_allow_html=True)
+        #with h_los_2:
+        #    tgl_earn = st.checkbox("⏱️ 7D", key="tgl_earn")
+        #with h_los_3:
+        #    tgl_flow = st.checkbox("🔄 OI", key="tgl_flow")
+        
+        #st.markdown(f"<div style='color:#ff4b4b; font-size:12px; font-weight:bold; margin-bottom:5px;'>🔴 LOSERS{filter_label}</div>", unsafe_allow_html=True)
+        # Push the table itself down an additional 30px, leaving the header fixed
+        #st.markdown("<div style='height:30px;'></div>", unsafe_allow_html=True)
+        
+        #if not active_etfs and 'SPX' in active_list:
+        #    st.info("Select a Sector above to view its losers.")
+        #    df_losers = pd.DataFrame()
+        #elif not df_all_ret.empty:
+        #    df_losers = df_all_ret[df_all_ret['Sector'].isin(active_etfs)].copy()
+        #    if not df_losers.empty:
+
+        # Create 3 mini-columns for the Title and the 2 Toggles
         h_los_1, h_los_2, h_los_3 = st.columns([0.40, 0.30, 0.30])
         
-        with h_los_1:
-            st.markdown(f"<div style='color:#ff4b4b; font-size:12px; font-weight:bold; margin-top:2px;'>🔴 LOSERS</div>", unsafe_allow_html=True)
+        # 1. Render the toggles FIRST so we can capture their state instantly
         with h_los_2:
             tgl_earn = st.checkbox("⏱️ 7D", key="tgl_earn")
         with h_los_3:
             tgl_flow = st.checkbox("🔄 OI", key="tgl_flow")
+            
+        is_catalyst_mode = tgl_earn or tgl_flow
         
-        #st.markdown(f"<div style='color:#ff4b4b; font-size:12px; font-weight:bold; margin-bottom:5px;'>🔴 LOSERS{filter_label}</div>", unsafe_allow_html=True)
+        # 2. Render the Title dynamically based on the toggles
+        with h_los_1:
+            if is_catalyst_mode:
+                st.markdown(f"<div style='color:#00ff00; font-size:12px; font-weight:bold; margin-top:2px;'>🟢 CATALYSTS</div>", unsafe_allow_html=True)
+            else:
+                st.markdown(f"<div style='color:#ff4b4b; font-size:12px; font-weight:bold; margin-top:2px;'>🔴 LOSERS</div>", unsafe_allow_html=True)
+        
         # Push the table itself down an additional 30px, leaving the header fixed
         st.markdown("<div style='height:30px;'></div>", unsafe_allow_html=True)
         
         if not active_etfs and 'SPX' in active_list:
-            st.info("Select a Sector above to view its losers.")
+            st.info("Select a Sector above to view its data.")
             df_losers = pd.DataFrame()
         elif not df_all_ret.empty:
             df_losers = df_all_ret[df_all_ret['Sector'].isin(active_etfs)].copy()
             if not df_losers.empty:
+                
+                # Apply Sub-Industry Filter if Clicked
+                if target_ind:
+                    df_losers = df_losers[df_losers['Industry'].str.replace('<br>', ' ') == target_ind]
+                
+                # --- SMART PRICE FILTER ---
+                # Only restrict to bleeding tickers if we are NOT in Catalyst mode
+                if not is_catalyst_mode:
+                    df_losers = df_losers[(df_losers['1W_raw'] < 0) | (df_losers['1M_raw'] < 0)]
+
+                # --- 7D EARNINGS TOGGLE LOGIC ---
+                if tgl_earn:
+                    import time
+                    now_epoch = time.time()
+                    seven_days_epoch = now_epoch + (7 * 24 * 60 * 60) 
+                    
+                    df_losers = df_losers[
+                        (df_losers['Upcoming Earnings Date'] >= now_epoch) & 
+                        (df_losers['Upcoming Earnings Date'] <= seven_days_epoch)
+                    ]
+                    
+                # --- OI TOGGLE LOGIC (Placeholder for next step) ---
+                if tgl_flow:
+                    pass 
+                
+                if not df_losers.empty:
                 
                 # Apply Sub-Industry Filter if Clicked
                 if target_ind:
