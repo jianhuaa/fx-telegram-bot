@@ -1478,7 +1478,6 @@ def show_global_birdseye(df_inds, df_all_ret):
             
             # No col_cfg — let Streamlit auto-size columns
             st.markdown("<div style='height:10px;'></div>", unsafe_allow_html=True)
-            st.markdown(fake_header_html, unsafe_allow_html=True)
 
             
             # --- 4. RENDER NATIVE INTERACTIVE TABLE ---
