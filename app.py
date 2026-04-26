@@ -1419,6 +1419,7 @@ def show_global_birdseye(df_inds, df_all_ret):
             # --- 2. GENERATE OPTIONS SCORES (Optimized for Most Impactful "Deal") ---
             # --- 2. GENERATE OPTIONS SCORES (Fixed for Series Ambiguity Error) ---
             # --- 2. SATURDAY-AWARE IMPACT SCANNER (Fixed Maturity Filtering) ---
+            # --- 2. TRUE-DELTA IMPACT SCANNER (Fixes Maturity Artifact without discarding) ---
             try:
                 import requests, io
                 opt_url = "https://raw.githubusercontent.com/jianhuaa/fx-telegram-bot/main/col4_options_history.parquet"
@@ -1429,35 +1430,31 @@ def show_global_birdseye(df_inds, df_all_ret):
                     df_opt_raw['Date'] = pd.to_datetime(df_opt_raw['Date'])
                     df_opt_raw = df_opt_raw.sort_values(['Ticker', 'Date'])
                     
-                    # 1. SMART EXPIRY DETECTION (Threshold Based)
-                    # Instead of just Friday, we flag any day in the 3rd week where OI 'crashes' (Maturity)
-                    def is_maturity_event(row):
-                        # Standard Expiry Window: 15th to 22nd (covers Fri/Sat/Sun/Mon roll)
-                        in_window = 15 <= row['Date'].day <= 22
-                        # Maturity Signature: Delta is negative and nearly equal to the total previous OI
-                        # We use a threshold: if Delta is < -500 or removes >80% of OI
-                        is_massive_drop = row['M1_DeltaNetOI'] < -100 
-                        return in_window and is_massive_drop
+                    # 1. MATHEMATICALLY REPAIR THE DELTA ON ROLL DAYS
+                    # Get Yesterday's M2 (e.g. May contract on Friday)
+                    df_opt_raw['Prev_M2_NetOI'] = df_opt_raw.groupby('Ticker')['M2_NetOI'].shift(1)
                     
-                    df_opt_raw['Is_Maturity'] = df_opt_raw.apply(is_maturity_event, axis=1)
+                    # Identify the clearing/roll days (Weekends in the 15th-28th window)
+                    is_roll_day = df_opt_raw['Date'].dt.weekday.isin([5, 6]) & (df_opt_raw['Date'].dt.day >= 15) & (df_opt_raw['Date'].dt.day <= 28)
+                    
+                    # Replace the tainted Delta with the True Trading Delta (Today's M1 - Yesterday's M2)
+                    # This perfectly "reduces the value by the maturity" artifact
+                    df_opt_raw.loc[is_roll_day, 'M1_DeltaNetOI'] = df_opt_raw['M1_NetOI'] - df_opt_raw['Prev_M2_NetOI']
 
-                    # 2. OI SCORE: Latest snapshot (Post-roll reality)
+                    # 2. OI SCORE: Latest Active Snapshot
                     df_oi_latest = df_opt_raw.groupby('Ticker').last().reset_index()
                     def calc_oi_score(row):
                         val = row['M1_NetOI'] if row['M1_NetOI'] != 0 else row['M2_NetOI']
                         return 1 if val > 0 else (-1 if val < 0 else 0)
                     df_oi_latest['Opt_OI_Score'] = df_oi_latest.apply(calc_oi_score, axis=1)
 
-                    # 3. DELTA SCORE: Scan 10-day window EXCLUDING Maturity Events
-                    df_clean_delta = df_opt_raw[df_opt_raw['Is_Maturity'] == False]
-                    
+                    # 3. DELTA SCORE: 10-Day Impact Scanner (Keeping ALL days now!)
                     def find_max_impact_deal(group):
                         window = group.tail(10).reset_index(drop=True)
                         if window.empty: return 0
                         
-                        # Magnitude check for both months
+                        # Find the magnitude of the largest *true* move
                         window['impact'] = window[['M1_DeltaNetOI', 'M2_DeltaNetOI']].abs().max(axis=1)
-                        
                         max_idx = window['impact'].idxmax()
                         max_row = window.iloc[max_idx]
                         
@@ -1467,7 +1464,8 @@ def show_global_birdseye(df_inds, df_all_ret):
                             return 1 if dominant_delta > 0 else -1
                         return 0
 
-                    df_delta_events = df_clean_delta.groupby('Ticker').apply(find_max_impact_deal).reset_index()
+                    # Apply scanner to the fully repaired dataset (no rows discarded)
+                    df_delta_events = df_opt_raw.groupby('Ticker').apply(find_max_impact_deal).reset_index()
                     df_delta_events.columns = ['Ticker', 'Opt_DeltaOI_Score']
                     
                     # 4. FINAL MERGE
@@ -1475,7 +1473,7 @@ def show_global_birdseye(df_inds, df_all_ret):
                     alpha_df = alpha_df.merge(opt_scores, on='Ticker', how='left')
 
             except Exception as e:
-                st.error(f"Options Maturity Error: {e}")
+                st.error(f"Options True-Delta Error: {e}")
 
             # Translation functions
             def s_blk(val):
