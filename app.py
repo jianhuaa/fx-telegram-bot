@@ -1441,10 +1441,10 @@ def show_global_birdseye(df_inds, df_all_ret):
 
                 # Combine the scores into single strings separated by a small space
                 #val_str  = f"{s_blk(g('P/E Ratio_Score'))} {s_blk(g('Short Interest %_Score'))} {s_blk(g('1Y%_Score'))} {s_blk(g('Mkt Cap (M)_Score'))}"
-                prof_str = f"{s_blk(g('Gross Marg %_Score'))} {s_blk(g('Op Marg %_Score'))} {s_blk(g('Net Marg %_Score'))}"
+                prof_str = f"{s_blk(g('Gross Marg %_Score'))} · {s_blk(g('Op Marg %_Score'))} · {s_blk(g('Net Marg %_Score'))}"
                 #flow_str = f"{s_blk(g('Op CF (M)_Score'))} {s_blk(g('FCF (M)_Score'))} {s_bin(g('Inv CF (M)_Score'))} {s_blk(g('Fin CF (M)_Score'))} {s_bin(g('Self-Funding_Score'))}"
                 #debt_str = f"{s_blk(g('Cash & STI (M)_Score'))} {s_blk(g('ST Debt (M)_Score'))} {s_blk(g('LT Debt (M)_Score'))} {s_blk(g('Cash/Debt Ratio_Score'))} {s_blk(g('Goodwill, Net (M)_Score'))}"
-                opt_str  = f"{s_blk(g('Opt_DeltaOI_Score'))} {s_blk(g('Opt_OI_Score'))}"
+                opt_str  = f"{s_blk(g('Opt_DeltaOI_Score'))} · {s_blk(g('Opt_OI_Score'))}"
 
                 display_data.append([
                     row.get('Index', 'UNK'), row.get('Ticker', 'UNK'),
