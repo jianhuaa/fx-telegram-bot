@@ -82,6 +82,8 @@ tv_fields = [
 ]
 
 query = Query().select(*tv_fields).where(col('exchange').isin(['AMEX', 'NASDAQ', 'NYSE']))
+# Add set_range to pull up to 10,000 tickers, effectively bypassing the limit
+query.set_range(0, 10000)
 _, df_tv = query.get_scanner_data()
 df_tv['Ticker'] = df_tv['ticker'].str.split(':').str[1]
 df_tv['Ticker'] = df_tv['Ticker'].replace({'P': 'PSTG'}).str.replace('.', '-')
