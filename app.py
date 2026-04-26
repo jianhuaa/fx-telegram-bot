@@ -1439,54 +1439,51 @@ def show_global_birdseye(df_inds, df_all_ret):
                 # Safe getter in case a column is missing
                 def g(col): return row.get(col, 0)
 
+                # Combine the scores into single strings separated by a small space
+                val_str  = f"{s_blk(g('P/E Ratio_Score'))} {s_blk(g('Short Interest %_Score'))} {s_blk(g('1Y%_Score'))} {s_blk(g('Mkt Cap (M)_Score'))}"
+                prof_str = f"{s_blk(g('Gross Marg %_Score'))} {s_blk(g('Op Marg %_Score'))} {s_blk(g('Net Marg %_Score'))}"
+                flow_str = f"{s_blk(g('Op CF (M)_Score'))} {s_blk(g('FCF (M)_Score'))} {s_bin(g('Inv CF (M)_Score'))} {s_blk(g('Fin CF (M)_Score'))} {s_bin(g('Self-Funding_Score'))}"
+                debt_str = f"{s_blk(g('Cash & STI (M)_Score'))} {s_blk(g('ST Debt (M)_Score'))} {s_blk(g('LT Debt (M)_Score'))} {s_blk(g('Cash/Debt Ratio_Score'))} {s_blk(g('Goodwill, Net (M)_Score'))}"
+                opt_str  = f"{s_blk(g('Opt_DeltaOI_Score'))} {s_blk(g('Opt_OI_Score'))}"
+
                 display_data.append([
                     row.get('Index', 'UNK'), row.get('Ticker', 'UNK'),
-                    # VALUE
-                    s_blk(g('P/E Ratio_Score')), s_blk(g('Short Interest %_Score')), s_blk(g('1Y%_Score')), s_blk(g('Mkt Cap (M)_Score')),  
-                    # PROFIT
-                    s_blk(g('Gross Marg %_Score')), s_blk(g('Op Marg %_Score')), s_blk(g('Net Marg %_Score')),             
-                    # FLOWS
-                    s_blk(g('Op CF (M)_Score')), s_blk(g('FCF (M)_Score')), s_bin(g('Inv CF (M)_Score')), s_blk(g('Fin CF (M)_Score')), s_bin(g('Self-Funding_Score')), 
-                    # DEBT
-                    s_blk(g('Cash & STI (M)_Score')), s_blk(g('ST Debt (M)_Score')), s_blk(g('LT Debt (M)_Score')), s_blk(g('Cash/Debt Ratio_Score')), s_blk(g('Goodwill, Net (M)_Score')), 
-                    # OPT (Now Linked to your Options Harvester!)
-                    s_blk(g('Opt_DeltaOI_Score')), s_blk(g('Opt_OI_Score')),                        
-                    # ANS (Left hardcoded for now)
-                    '⏳'            
+                    val_str, prof_str, flow_str, debt_str, opt_str, '⏳'            
                 ])
             
             display_df = pd.DataFrame(display_data)
             
-            # --- 3. BUILD THE ORIGINAL 2-TIER HEADER ---
-            # Restored your original names exactly as you had them
-            # --- 3. BUILD THE ORIGINAL 2-TIER HEADER ---
+            # --- 3. BUILD THE COMPACT 2-TIER HEADER ---
+            # Using · (middle dot) as a visually clean separator for the headers
             header_tuples = [
                 (" ", "IDX"), (" ", "TICK"),
-                ("VALUE", "P/E"), ("VALUE", "SI"), ("VALUE", "1Y"), ("VALUE", "CAP"),
-                ("PROFIT", "GM"), ("PROFIT", "OM"), ("PROFIT", "NM"),
-                ("FLOWS", "CFO"), ("FLOWS", "FCF"), ("FLOWS", "CFI"), ("FLOWS", "CFF"), ("FLOWS", "SELF?"),
-                ("DEBT", "CASH"), ("DEBT", "STD"), ("DEBT", "LTD"), ("DEBT", "C/D"), ("DEBT", "GW"),
-                ("OPT", "ΔOI"), ("OPT", "OI"),
+                ("VALUE", "P/E · SI · 1Y · CAP"),
+                ("PROFIT", "GM · OM · NM"),
+                ("FLOWS", "CFO · FCF · CFI · CFF · SLF"),
+                ("DEBT", "CSH · STD · LTD · C/D · GW"),
+                ("OPT", "ΔOI · OI"),
                 (" ", "ANS")
             ]
             display_df.columns = pd.MultiIndex.from_tuples(header_tuples)
 
             st.markdown("<div style='height:10px;'></div>", unsafe_allow_html=True)
-            st.markdown("<style>div[data-testid='stDataFrame'] div[role='columnheader'], div[data-testid='stDataFrame'] div[role='gridcell'] { min-width: 40px !important; max-width: 60px !important; padding: 0px 2px !important; font-size: 11px !important; }</style>", unsafe_allow_html=True)
-
+            st.markdown("<style>div[data-testid='stDataFrame'] div[role='columnheader'], div[data-testid='stDataFrame'] div[role='gridcell'] { padding: 0px 4px !important; font-size: 11px !important; }</style>", unsafe_allow_html=True)
+            
+            # --- 4. COLUMN CONFIGURATION ---
             strict_col_config = {}
             for col_tuple in display_df.columns:
-                # ---> FIX 1: Convert the tuple to a string so JSON doesn't crash
                 col_key = str(col_tuple)
                 
-                # Give TICK slightly more room, crush everything else down to 40 pixels
+                # Lock the left columns tightly
                 if col_tuple[1] == "TICK":
-                    strict_col_config[col_key] = st.column_config.TextColumn(width=40)
+                    strict_col_config[col_key] = st.column_config.TextColumn(width=45)
                 elif col_tuple[1] == "IDX":
+                    strict_col_config[col_key] = st.column_config.TextColumn(width=35)
+                elif col_tuple[1] == "ANS":
                     strict_col_config[col_key] = st.column_config.TextColumn(width=30)
                 else:
-                    # Force all score columns to be tiny
-                    strict_col_config[col_key] = st.column_config.TextColumn(width=1)
+                    # Let Streamlit naturally fit the concatenated strings without stretching
+                    strict_col_config[col_key] = st.column_config.TextColumn(width="content")
             
             # --- 4. RENDER NATIVE INTERACTIVE TABLE ---
             alpha_event = st.dataframe(
