@@ -1481,12 +1481,12 @@ def show_global_birdseye(df_inds, df_all_ret):
                 
                 # Give TICK slightly more room, crush everything else down to 40 pixels
                 if col_tuple[1] == "TICK":
-                    strict_col_config[col_key] = st.column_config.TextColumn(width=50)
-                elif col_tuple[1] == "IDX":
                     strict_col_config[col_key] = st.column_config.TextColumn(width=40)
+                elif col_tuple[1] == "IDX":
+                    strict_col_config[col_key] = st.column_config.TextColumn(width=30)
                 else:
                     # Force all score columns to be tiny
-                    strict_col_config[col_key] = st.column_config.TextColumn(width=40)
+                    strict_col_config[col_key] = st.column_config.TextColumn(width=1)
             
             # --- 4. RENDER NATIVE INTERACTIVE TABLE ---
             alpha_event = st.dataframe(
