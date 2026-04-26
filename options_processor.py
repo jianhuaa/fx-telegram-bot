@@ -176,6 +176,64 @@ def run_harvest():
         df_new = pd.DataFrame(new_results)
         df_final = pd.concat([df_hist, df_new]).drop_duplicates(subset=['Ticker', 'Date'], keep='last')
         df_final.sort_values(by=['Date', 'Ticker'], ascending=[False, True]).to_parquet(FILE_NAME)
+
+        # ==========================================
+        # ---> PASTE THIS ENTIRE BLOCK HERE <---
+        # ==========================================
+        print("\n[+] Calculating Z-Scores and OI Polarity for Alpha Engine...")
+        
+        # 1. Load the full history we just saved
+        df_history = pd.read_parquet(FILE_NAME)
+        df_history['Date'] = pd.to_datetime(df_history['Date'])
+        
+        # 2. Define the scoring logic for each ticker group
+        def score_options(group):
+            # Sort chronologically to ensure rolling math is accurate
+            group = group.sort_values('Date')
+            
+            # --- OI (Net Polarity) ---
+            # Positive NetOI = 1 (Green), Negative NetOI = -1 (Red), 0 = 0 (Black)
+            group['Opt_OI_Score'] = group['M2_NetOI'].apply(lambda x: 1 if x > 0 else (-1 if x < 0 else 0))
+            
+            # --- ΔOI (10-Day Z-Score) ---
+            # Calculate 10-day rolling Mean and Standard Deviation
+            mean_10d = group['M2_DeltaNetOI'].rolling(window=10, min_periods=1).mean()
+            std_10d = group['M2_DeltaNetOI'].rolling(window=10, min_periods=1).std().replace(0, 1) # Prevent div by zero
+            
+            # Z-Score formula: (Current - Mean) / StdDev
+            group['Z_Score'] = (group['M2_DeltaNetOI'] - mean_10d) / std_10d
+            
+            # Identify Saturdays (dayofweek: Monday=0, Sunday=6)
+            is_saturday = group['Date'].dt.dayofweek == 5
+            
+            # Apply the +2 / -2 Standard Deviation rule
+            delta_scores = []
+            for z, is_sat in zip(group['Z_Score'], is_saturday):
+                if is_sat:
+                    delta_scores.append(0) # Exclude Saturday expiries entirely (Force Black)
+                elif z > 2:
+                    delta_scores.append(1) # +2 SD Spike (Green)
+                elif z < -2:
+                    delta_scores.append(-1) # -2 SD Crash (Red)
+                else:
+                    delta_scores.append(0) # Normal daily flow (Black)
+                    
+            group['Opt_DeltaOI_Score'] = delta_scores
+            return group
+
+        # 3. Apply the scoring math per ticker
+        df_scored = df_history.groupby('Ticker', group_keys=False).apply(score_options)
+        
+        # 4. Isolate the most recent day's scores to feed the Alpha Engine
+        latest_date = df_scored['Date'].max()
+        df_latest_scores = df_scored[df_scored['Date'] == latest_date][['Ticker', 'Opt_OI_Score', 'Opt_DeltaOI_Score']]
+        
+        # 5. Save a lightweight parquet just for the Streamlit UI to read
+        df_latest_scores.to_parquet('options_scores_latest.parquet')
+        print(f"  [✓] Scored {len(df_latest_scores)} tickers and saved to 'options_scores_latest.parquet'")
+        # ==========================================
+        # ---> END OF PASTE <---
+        # ==========================================
         
         end_time = time.time()
         print("\n" + "="*50)
