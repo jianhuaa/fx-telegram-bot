@@ -1260,19 +1260,26 @@ def show_global_birdseye(df_inds, df_all_ret):
         # Create 3 mini-columns for the Title and the 2 Toggles
         h_los_1, h_los_2, h_los_3 = st.columns([0.40, 0.30, 0.30])
         
-        with h_los_1:
-            st.markdown(f"<div style='color:#ff4b4b; font-size:12px; font-weight:bold; margin-top:2px;'>🔴 LOSERS</div>", unsafe_allow_html=True)
+        # 1. Render the toggles FIRST so we can capture their state instantly
         with h_los_2:
             tgl_earn = st.checkbox("⏱️ 7D", key="tgl_earn")
         with h_los_3:
             tgl_flow = st.checkbox("🔄 OI", key="tgl_flow")
+            
+        is_catalyst_mode = tgl_earn or tgl_flow
         
-        #st.markdown(f"<div style='color:#ff4b4b; font-size:12px; font-weight:bold; margin-bottom:5px;'>🔴 LOSERS{filter_label}</div>", unsafe_allow_html=True)
+        # 2. Render the Title dynamically based on the toggles
+        with h_los_1:
+            if is_catalyst_mode:
+                st.markdown(f"<div style='color:#00ff00; font-size:12px; font-weight:bold; margin-top:2px;'>🟢 CATALYSTS</div>", unsafe_allow_html=True)
+            else:
+                st.markdown(f"<div style='color:#ff4b4b; font-size:12px; font-weight:bold; margin-top:2px;'>🔴 LOSERS</div>", unsafe_allow_html=True)
+        
         # Push the table itself down an additional 30px, leaving the header fixed
         st.markdown("<div style='height:30px;'></div>", unsafe_allow_html=True)
         
         if not active_etfs and 'SPX' in active_list:
-            st.info("Select a Sector above to view its losers.")
+            st.info("Select a Sector above to view its data.")
             df_losers = pd.DataFrame()
         elif not df_all_ret.empty:
             df_losers = df_all_ret[df_all_ret['Sector'].isin(active_etfs)].copy()
@@ -1282,21 +1289,27 @@ def show_global_birdseye(df_inds, df_all_ret):
                 if target_ind:
                     df_losers = df_losers[df_losers['Industry'].str.replace('<br>', ' ') == target_ind]
                 
-                df_losers = df_losers[(df_losers['1W_raw'] < 0) | (df_losers['1M_raw'] < 0)]
+                # --- SMART PRICE FILTER ---
+                # Only restrict to bleeding tickers if we are NOT in Catalyst mode
+                if not is_catalyst_mode:
+                    df_losers = df_losers[(df_losers['1W_raw'] < 0) | (df_losers['1M_raw'] < 0)]
 
-                # --- NEW: 7D EARNINGS TOGGLE LOGIC ---
+                # --- 7D EARNINGS TOGGLE LOGIC ---
                 if tgl_earn:
                     import time
                     now_epoch = time.time()
-                    # 7 days * 24 hours * 60 minutes * 60 seconds
                     seven_days_epoch = now_epoch + (7 * 24 * 60 * 60) 
                     
-                    # Filter for rows where the earnings timestamp is between now and 7 days from now
                     df_losers = df_losers[
                         (df_losers['Upcoming Earnings Date'] >= now_epoch) & 
                         (df_losers['Upcoming Earnings Date'] <= seven_days_epoch)
                     ]
                 
+                # --- OI TOGGLE LOGIC (Placeholder for next step) ---
+                if tgl_flow:
+                    pass 
+                
+                # --- FINAL DISPLAY LOGIC ---
                 if not df_losers.empty:
                     sort_col_losers = f'{sort_choice}_raw' if f'{sort_choice}_raw' in df_losers.columns else '1M_raw'
                     df_losers = df_losers.sort_values(by=sort_col_losers, ascending=True).head(50)
@@ -1306,14 +1319,14 @@ def show_global_birdseye(df_inds, df_all_ret):
                     
                     fig_losers = go.Figure(data=[go.Table(
                         columnwidth=[35, 30, 90, 35, 35],
-                        header=dict(values=['<b>TICK</b>','<b>IDX</b>','<b>INDUSTRY</b>','<b>1W</b>','<b>1M</b>'], fill_color='#161616', font=dict(color='#ff5252',size=10), align=['left','center','left','right','right']),
+                        header=dict(values=['<b>TICK</b>','<b>IDX</b>','<b>INDUSTRY</b>','<b>1W</b>','<b>1M</b>'], fill_color='#161616', font=dict(color='#00ff00' if is_catalyst_mode else '#ff4b4b',size=10), align=['left','center','left','right','right']),
                         cells=dict(values=[df_losers['Ticker'], df_losers['Index'], df_losers['Industry'], df_losers['1W'], df_losers['1M']], fill_color='#0d0d0d', font=dict(color='white',size=10), align=['left','center','left','right','right'], height=28)
                     )])
                     # Margin set to 0 because the HTML spacer div handles the drop perfectly
                     fig_losers.update_layout(margin=dict(l=0,r=0,t=0,b=0), height=380)
                     st.plotly_chart(fig_losers, use_container_width=True)
                 else:
-                    st.success(f"No bleeding tickers found{filter_label}!")
+                    st.success(f"No tickers found matching criteria{filter_label}!")
             else:
                 st.warning("No ticker data found for this sector.")
 
