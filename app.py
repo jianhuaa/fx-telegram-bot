@@ -613,6 +613,11 @@ def get_historical_options_data(ticker):
         dates = pd.to_datetime(df_tick['Date']).dt.strftime('%d %b').tolist()
 
         from dateutil.relativedelta import relativedelta # Ensure this is imported
+
+        # Safely fetch IVs (in case the file hasn't synced to GitHub yet, it won't crash)
+        m1_ivs = df_tick['M1_ATM_IV'].tolist() if 'M1_ATM_IV' in df_tick.columns else [0.0]*len(df_tick)
+        m2_ivs = df_tick['M2_ATM_IV'].tolist() if 'M2_ATM_IV' in df_tick.columns else [0.0]*len(df_tick)
+        
         return {
             "m1_name": pd.to_datetime(latest['Date']).strftime("%b%y").upper(),
             "m2_name": (pd.to_datetime(latest['Date']) + relativedelta(months=1)).strftime("%b%y").upper(),
@@ -620,9 +625,11 @@ def get_historical_options_data(ticker):
             "m1_net": df_tick['M1_NetOI'].tolist(),
             "m1_delta": df_tick['M1_DeltaNetOI'].tolist(),
             "m1_pc": df_tick['M1_PC'].tolist(),
+            "m1_iv": m1_ivs,
             "m2_net": df_tick['M2_NetOI'].tolist(),
             "m2_delta": df_tick['M2_DeltaNetOI'].tolist(),
-            "m2_pc": df_tick['M2_PC'].tolist()
+            "m2_pc": df_tick['M2_PC'].tolist(),
+            "m2_iv": m2_ivs
         }
     except Exception as e:
         print(f"Error loading options from GitHub: {e}")
@@ -2157,24 +2164,29 @@ def show_industry_overview_overlay(df_all_returns, df_industries, selected_secto
                             dates = opt_data["dates"]
 
                             y_labels = [
-                                f"NetOI&nbsp;&nbsp;{m1}", f"ΔOI&nbsp;&nbsp;&nbsp;&nbsp;{m1}", f"P/C&nbsp;&nbsp;&nbsp;&nbsp;{m1}",
-                                f"NetOI&nbsp;&nbsp;{m2}", f"ΔOI&nbsp;&nbsp;&nbsp;&nbsp;{m2}", f"P/C&nbsp;&nbsp;&nbsp;&nbsp;{m2}"
+                                f"NetOI&nbsp;&nbsp;{m1}", f"ΔOI&nbsp;&nbsp;&nbsp;&nbsp;{m1}", f"P/C&nbsp;&nbsp;&nbsp;&nbsp;{m1}", f"IV&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;{m1}",
+                                f"NetOI&nbsp;&nbsp;{m2}", f"ΔOI&nbsp;&nbsp;&nbsp;&nbsp;{m2}", f"P/C&nbsp;&nbsp;&nbsp;&nbsp;{m2}", f"IV&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;{m2}"
                             ]
 
                             raw_z = [
-                                opt_data["m1_net"], opt_data["m1_delta"], opt_data["m1_pc"],
-                                opt_data["m2_net"], opt_data["m2_delta"], opt_data["m2_pc"]
+                                opt_data["m1_net"], opt_data["m1_delta"], opt_data["m1_pc"], opt_data["m1_iv"],
+                                opt_data["m2_net"], opt_data["m2_delta"], opt_data["m2_pc"], opt_data["m2_iv"]
                             ]
 
                             text_mat = []
                             for row_idx, row_vals in enumerate(raw_z):
-                                if row_idx in [2, 5]:
+                                if row_idx in [2, 6]:
+                                    # P/C Formatting (2 decimal places)
                                     text_mat.append([f"{v:.2f}" for v in row_vals])
+                                elif row_idx in [3, 7]:
+                                    # IV Formatting (1 decimal place, multiply by 100, hide 0s as '-')
+                                    text_mat.append([f"{v*100:.1f}%" if v > 0 else "-" for v in row_vals])
                                 else:
+                                    # NetOI and Delta Formatting (1.5k)
                                     text_mat.append([format_k(v) for v in row_vals])
 
                             fig_opt = go.Figure(data=go.Heatmap(
-                                z=[[0]*len(dates)]*6,
+                                z=[[0]*len(dates)]*8,
                                 x=dates,
                                 y=y_labels,
                                 customdata=raw_z,
@@ -2186,7 +2198,9 @@ def show_industry_overview_overlay(df_all_returns, df_industries, selected_secto
                                 hovertemplate="<b>%{x}</b><br>%{y}: %{customdata}<extra></extra>"
                             ))
 
-                            fig_opt.add_hline(y=2.5, line_width=2, line_color="#333333")
+                            #fig_opt.add_hline(y=2.5, line_width=2, line_color="#333333")
+                            # Shifted the dividing line down from 2.5 to 3.5 to account for the new IV row
+                            fig_opt.add_hline(y=3.5, line_width=2, line_color="#333333")
                             fig_opt.update_layout(
                                 title=dict(text=f"{tick} Open Interest Trend", x=0.02, y=0.98, font=dict(size=12, color="white")),
                                 margin=dict(l=0, r=10, t=30, b=0),
