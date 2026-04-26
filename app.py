@@ -1431,7 +1431,7 @@ def show_global_birdseye(df_inds, df_all_ret):
                     # PROFIT
                     s_blk(g('Gross Marg %_Score')), s_blk(g('Op Marg %_Score')), s_blk(g('Net Marg %_Score')),             
                     # FLOWS
-                    s_blk(g('Op CF (M)_Score')), s_blk(g('FCF (M)_Score')), s_bin(g('Inv CF (M)_Score')), '⬛', s_bin(g('Self-Funding_Score')), 
+                    s_blk(g('Op CF (M)_Score')), s_blk(g('FCF (M)_Score')), s_bin(g('Inv CF (M)_Score')), s_blk(g('Fin CF (M)_Score')), s_bin(g('Self-Funding_Score')), 
                     # DEBT
                     s_blk(g('Cash & STI (M)_Score')), s_blk(g('ST Debt (M)_Score')), s_blk(g('LT Debt (M)_Score')), s_blk(g('Cash/Debt Ratio_Score')), s_blk(g('Goodwill, Net (M)_Score')), 
                     # OPT (Placeholders for now)
