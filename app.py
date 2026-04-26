@@ -1459,6 +1459,10 @@ def show_global_birdseye(df_inds, df_all_ret):
             
             # --- 3. BUILD THE ORIGINAL 2-TIER HEADER ---
             # Restored your original names exactly as you had them
+            
+
+
+            # --- 3. BUILD THE ORIGINAL 2-TIER HEADER ---
             header_tuples = [
                 (" ", "IDX"), (" ", "TICK"),
                 ("VALUE", "P/E"), ("VALUE", "SI"), ("VALUE", "1Y"), ("VALUE", "CAP"),
@@ -1466,33 +1470,30 @@ def show_global_birdseye(df_inds, df_all_ret):
                 ("FLOWS", "CFO"), ("FLOWS", "FCF"), ("FLOWS", "CFI"), ("FLOWS", "CFF"), ("FLOWS", "SELF?"),
                 ("DEBT", "CASH"), ("DEBT", "STD"), ("DEBT", "LTD"), ("DEBT", "C/D"), ("DEBT", "GW"),
                 ("OPT", "ΔOI"), ("OPT", "OI"),
-                (" ", "ANS") 
+                (" ", "ANS")
             ]
-            display_df.columns = pd.MultiIndex.from_tuples(header_tuples)
-
-            # --- COLUMN CONFIGURATION: EXACT PIXEL WIDTHS ---
-            # FIX: We wrap the tuple keys in str() so JSON can serialize them safely
-            col_cfg = {
-                ".*IDX.*": st.column_config.TextColumn(width=25),
-                ".*TICK.*": st.column_config.TextColumn(width=40),
-                ".*ANS.*": st.column_config.TextColumn(width=25),
-            }
             
-            # Custom mapping to surgically kill dead space based on word length
+            # Flatten tuples → plain strings that Streamlit can serialize
+            flat_cols = [b.strip() if not a.strip() else f"{a}|{b}" for a, b in header_tuples]
+            display_df.columns = flat_cols  # ← plain strings, no MultiIndex
+            
+            # --- COLUMN CONFIGURATION ---
             pixel_widths = {
-                "1Y": 15, "SI": 15, "GM": 15, "OM": 15, "NM": 15, "GW": 15, 
+                "IDX": 30, "TICK": 45, "ANS": 30,
+                "1Y": 15, "SI": 15, "GM": 15, "OM": 15, "NM": 15, "GW": 15,
                 "P/E": 20, "C/D": 20,
-                "CAP": 25, "CFO": 25, "FCF": 25, "CFI": 25, "CFF": 25, "STD": 25, "LTD": 25, "ΔOI": 25, "OI": 25,
-                "CASH": 45, 
-                "SELF?": 50
+                "CAP": 25, "CFO": 25, "FCF": 25, "CFI": 25, "CFF": 25,
+                "STD": 25, "LTD": 25, "ΔOI": 25, "OI": 25,
+                "CASH": 45, "SELF?": 50
             }
             
-            # Apply the specific pixel widths using str(col)
-            for col in header_tuples[2:-1]:
-                exact_w = pixel_widths.get(col[1], 30) 
-                col_cfg[f".*{col[1]}.*"] = st.column_config.TextColumn(width=exact_w)
+            col_cfg = {}
+            for flat, (_, short) in zip(flat_cols, header_tuples):
+                w = pixel_widths.get(short.strip(), 30)
+                col_cfg[flat] = st.column_config.TextColumn(width=w)
             
             st.markdown("<div style='height:10px;'></div>", unsafe_allow_html=True)
+
             
             # --- 4. RENDER NATIVE INTERACTIVE TABLE ---
             alpha_event = st.dataframe(
