@@ -1404,8 +1404,9 @@ def show_global_birdseye(df_inds, df_all_ret):
                 # This prevents Pandas from creating 'Index_x' and 'Index_y'
                 cols_to_drop = [c for c in ['Index', 'Sector', 'Industry', 'ticker', 'name'] if c in df_fsli.columns]
                 df_fsli_clean = df_fsli.drop(columns=cols_to_drop)
+                
                 # Merge the FSLI scores into our active Alpha DataFrame
-                alpha_df = alpha_df.merge(df_fsli, on='Ticker', how='left')
+                alpha_df = alpha_df.merge(df_fsli_clean, on='Ticker', how='left')
 
             # Translation functions
             def s_blk(val):
