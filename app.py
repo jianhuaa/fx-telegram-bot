@@ -872,9 +872,18 @@ def format_k(val):
 
 @st.cache_data(ttl=3600)
 def get_all_insider_trades():
+    import requests
+    import io
     try:
         GITHUB_RAW_URL = "https://raw.githubusercontent.com/jianhuaa/fx-telegram-bot/main/col4_insider_trades.parquet"
-        return pd.read_parquet(GITHUB_RAW_URL)
+        res = requests.get(GITHUB_RAW_URL)
+        
+        if res.status_code == 200:
+            return pd.read_parquet(io.BytesIO(res.content))
+        else:
+            print(f"Error: GitHub returned status code {res.status_code}")
+            return pd.DataFrame()
+            
     except Exception as e:
         print(f"Error loading insider trades from GitHub: {e}")
         return pd.DataFrame()
