@@ -600,9 +600,22 @@ def get_marketbeat_news_live(ticker):
 
 @st.cache_data(ttl=3600)
 def get_historical_options_data(ticker):
+    import requests
+    import io
+    import pandas as pd
+    from dateutil.relativedelta import relativedelta
+    
     try:
         GITHUB_RAW_URL = "https://raw.githubusercontent.com/jianhuaa/fx-telegram-bot/main/col4_options_history.parquet"
-        df = pd.read_parquet(GITHUB_RAW_URL)
+        
+        # --- THE BULLETPROOF NETWORK FETCH ---
+        res = requests.get(GITHUB_RAW_URL)
+        if res.status_code == 200:
+            df = pd.read_parquet(io.BytesIO(res.content))
+        else:
+            print(f"Error: GitHub returned status code {res.status_code} for options data.")
+            return None
+
         df_tick = df[df['Ticker'] == ticker].sort_values('Date', ascending=False).head(10)
 
         if df_tick.empty:
@@ -611,8 +624,6 @@ def get_historical_options_data(ticker):
         df_tick = df_tick.iloc[::-1]
         latest = df_tick.iloc[-1]
         dates = pd.to_datetime(df_tick['Date']).dt.strftime('%d %b').tolist()
-
-        from dateutil.relativedelta import relativedelta # Ensure this is imported
 
         # Safely fetch IVs (in case the file hasn't synced to GitHub yet, it won't crash)
         m1_ivs = df_tick['M1_ATM_IV'].tolist() if 'M1_ATM_IV' in df_tick.columns else [0.0]*len(df_tick)
