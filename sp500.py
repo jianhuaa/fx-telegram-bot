@@ -18,8 +18,8 @@ PDF_URLS = {
     "SEC_50_BIG_PUTS": "https://www.cmegroup.com/daily_bulletin/current/Section50_S_And_P_500_Put_Options.pdf"
 }
 
-TELEGRAM_TOKEN = "8577879935:AAEpSjAz4wdcZ9Lb7AJpURRk8haADlPCbHo"
-CHAT_ID = "876384974"
+TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN", "")
+CHAT_ID        = os.environ.get("TELEGRAM_CHAT_ID", "")
 
 WANTED_OPTIONS = [
     "EMINI S&P CALL", "EMINI S&P PUT", "S&P 500 CALL", "S&P 500 PUT",
