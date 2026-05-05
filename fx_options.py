@@ -13,8 +13,8 @@ from itertools import combinations
 from pathlib import Path
 
 # ===== CONFIGURATION =====
-TELEGRAM_TOKEN = "8577879935:AAEpSjAz4wdcZ9Lb7AJpURRk8haADlPCbHo"
-CHAT_ID = "876384974"
+TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN", "")
+CHAT_ID        = os.environ.get("TELEGRAM_CHAT_ID", "")
 
 GITHUB_TOKEN   =  os.environ.get("GIST_TOKEN", "")
 CSV_FILE       = "fx_options_history.csv"
