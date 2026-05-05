@@ -19,8 +19,8 @@ from webdriver_manager.chrome import ChromeDriverManager
 from selenium_stealth import stealth
 
 # ===== CONFIGURATION =====
-TELEGRAM_TOKEN = "8577879935:AAEpSjAz4wdcZ9Lb7AJpURRk8haADlPCbHo"
-CHAT_ID = "876384974"
+TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN", "")
+CHAT_ID        = os.environ.get("TELEGRAM_CHAT_ID", "")
 
 # IANA Timezone Objects
 SGT = ZoneInfo("Asia/Singapore")
