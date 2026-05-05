@@ -29,15 +29,15 @@ jobs:
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
         run: |
-          python fx_feed.py || true
-          python fx_options.py || true
+          #python fx_feed.py || true
+          #python fx_options.py || true
           python spdr_sectors.py || true
-          python sp500.py || true
-          python nasdaq.py || true
-          python russell.py || true
-          python bitcoin.py || true
-          python metals.py || true
-          python energy.py || true
+          #python sp500.py || true
+          #python nasdaq.py || true
+          #python russell.py || true
+          #python bitcoin.py || true
+          #python metals.py || true
+          #python energy.py || true
 
       - name: Commit and Push History
         run: |
