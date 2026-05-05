@@ -14,8 +14,8 @@ from pathlib import Path
 FUT_URL = "https://www.cmegroup.com/daily_bulletin/current/Section61_Energy_Futures_Products.pdf"
 OPT_URL = "https://www.cmegroup.com/daily_bulletin/current/Section63_Energy_Options_Products.pdf"
 
-TELEGRAM_TOKEN = "8577879935:AAEpSjAz4wdcZ9Lb7AJpURRk8haADlPCbHo"
-CHAT_ID = "876384974"
+TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN", "")
+CHAT_ID        = os.environ.get("TELEGRAM_CHAT_ID", "")
 
 GITHUB_TOKEN   = os.environ.get("GIST_TOKEN", "")
 CSV_FILE       = "energy_history.csv"
