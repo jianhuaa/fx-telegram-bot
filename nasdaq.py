@@ -12,8 +12,8 @@ from pathlib import Path
 
 # --- CONFIGURATION ---
 PDF_URL        = "https://www.cmegroup.com/daily_bulletin/current/Section40_Nasdaq_100_And_E_Mini_Nasdaq_100_Options.pdf"
-TELEGRAM_TOKEN = "8577879935:AAEpSjAz4wdcZ9Lb7AJpURRk8haADlPCbHo"
-CHAT_ID        = "876384974"
+TELEGRAM_TOKEN = os.environ.get("TELEGRAM_TOKEN", "")
+CHAT_ID        = os.environ.get("TELEGRAM_CHAT_ID", "")
 
 GITHUB_TOKEN   = os.environ.get("GIST_TOKEN", "")
 CSV_FILE       = "nasdaq_history.csv"
