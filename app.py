@@ -1417,9 +1417,13 @@ def show_global_birdseye(df_inds, df_all_ret):
             # 2. If an industry is clicked in the top-right table, isolate it completely
             if target_ind:
                 alpha_df = alpha_df[alpha_df['Industry'].str.replace('<br>', ' ') == target_ind]
-
-            # 3. If ONLY 7D is checked, filter the Alpha Engine to match the left table
-            if tgl_earn and not tgl_flow:
+                
+            # 3. SYNC LOGIC: Match Alpha Engine to Left Table's Mode
+            if tgl_flow:
+                # "ALL" is checked -> Show everything, no filters!
+                pass
+            elif tgl_earn:
+                # ONLY "7D" is checked -> Filter strictly to earnings
                 import time
                 now_epoch = time.time()
                 seven_days_epoch = now_epoch + (7 * 24 * 60 * 60) 
@@ -1427,6 +1431,9 @@ def show_global_birdseye(df_inds, df_all_ret):
                     (alpha_df['Upcoming Earnings Date'] >= now_epoch) & 
                     (alpha_df['Upcoming Earnings Date'] <= seven_days_epoch)
                 ]
+            else:
+                # Default State -> Restrict the Alpha Engine to Losers only!
+                alpha_df = alpha_df[(alpha_df['1W_raw'] < 0) | (alpha_df['1M_raw'] < 0)]
                 
             # 4. Sort cleanly across your 3 indexes (SPX -> RMC -> RTY)
             idx_map = {'SPX': 1, 'RMC': 2, 'RTY': 3}
