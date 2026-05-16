@@ -2086,7 +2086,10 @@ def show_industry_overview_overlay(df_all_returns, df_industries, selected_secto
     INS_H  = 250
 
     left_col, right_col = st.columns([0.5, 0.5], gap="small")
-    selected_tickers = [lbl.split(' ')[0] for lbl in selected_labels] if selected_labels else []
+
+    # Safely extract and perfectly deduplicate the tickers so BF-B doesn't crash the loop
+    raw_tickers = [lbl.split(' ')[0] for lbl in selected_labels] if selected_labels else []
+    selected_tickers = list(dict.fromkeys(raw_tickers))
 
     # LEFT COLUMN: FSLI TABLE
     with left_col:
@@ -2235,7 +2238,7 @@ def show_industry_overview_overlay(df_all_returns, df_industries, selected_secto
                                 else: col_widths.append(50)
                             fig_ins = go.Figure(data=[go.Table(columnwidth=col_widths, header=dict(values=hdr_vals, fill_color='#161616', font=dict(color='#ff5252', size=11), align='left', height=24), cells=dict(values=cell_vals, fill_color='#0d0d0d', font=dict(color='white', size=11), align='left', height=26))])
                             fig_ins.update_layout(margin=dict(l=0, r=4, t=0, b=0), height=INS_H)
-                            st.plotly_chart(fig_ins, use_container_width=True)
+                            st.plotly_chart(fig_ins, use_container_width=True, key=f"insider_chart_{tick}_{i}")
                         else:
                             st.markdown(f"<div style='height:{INS_H}px; display:flex; align-items:center; justify-content:center; color:#ff5252; font-size:12px; border:1px dashed #444; border-radius:4px;'>🕵️ No recent insider trades found for {tick}</div>", unsafe_allow_html=True)
             else:
@@ -2300,7 +2303,7 @@ def show_industry_overview_overlay(df_all_returns, df_industries, selected_secto
                                 height=INS_H,
                                 yaxis=dict(autorange="reversed")
                             )
-                            st.plotly_chart(fig_opt, use_container_width=True)
+                            st.plotly_chart(fig_opt, use_container_width=True, key=f"options_chart_{tick}_{i}")
                         else:
                             st.markdown(f"<div style='height:{INS_H}px; display:flex; align-items:center; justify-content:center; color:#ab63fa; font-size:12px; border:1px dashed #444; border-radius:4px;'>⚠️ No Historical Options Data for {tick}</div>", unsafe_allow_html=True)
             else:
