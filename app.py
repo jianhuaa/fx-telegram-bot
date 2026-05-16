@@ -1310,7 +1310,7 @@ def show_global_birdseye(df_inds, df_all_ret):
         with h_los_2:
             tgl_earn = st.checkbox("⏱️ 7D", key="tgl_earn")
         with h_los_3:
-            tgl_flow = st.checkbox("🔄 OI", key="tgl_flow")
+            tgl_flow = st.checkbox("♾️ ALL", key="tgl_flow") # Swapped to ALL
             
         is_catalyst_mode = tgl_earn or tgl_flow
         
