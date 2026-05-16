@@ -1404,7 +1404,7 @@ def show_global_birdseye(df_inds, df_all_ret):
             idx_map = {'SPX': 1, 'RMC': 2, 'RTY': 3}
             alpha_df['SortIndex'] = alpha_df['Index'].map(idx_map).fillna(4)
             sort_col_alpha = f'{sort_choice}_raw' if f'{sort_choice}_raw' in alpha_df.columns else '1M_raw'
-            alpha_df = alpha_df.sort_values(by=['SortIndex', sort_col_alpha]).head(25)
+            alpha_df = alpha_df.sort_values(by=['SortIndex', sort_col_alpha]).head(999)
             
             ## --- 1. DUMMY GENERATOR ---
             #import random
