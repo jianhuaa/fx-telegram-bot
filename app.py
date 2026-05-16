@@ -1389,8 +1389,8 @@ def show_global_birdseye(df_inds, df_all_ret):
     #        idx_map = {'SPX': 1, 'RMC': 2, 'RTY': 3}
     #        alpha_df['SortIndex'] = alpha_df['Index'].map(idx_map).fillna(4)
     #        sort_col_alpha = f'{sort_choice}_raw' if f'{sort_choice}_raw' in alpha_df.columns else '1M_raw'
-    #        # Pull top 999 to show off the scrollable container
-    #        alpha_df = alpha_df.sort_values(by=['SortIndex', sort_col_alpha]).head(999) 
+    #        # Pull top 9999 to show off the scrollable container
+    #        alpha_df = alpha_df.sort_values(by=['SortIndex', sort_col_alpha]).head(9999) 
 
 # --- 2/3 RIGHT: ALPHA COMPARISON ENGINE (Pixel-Perfect MultiIndex) ---
     with c_bot_right:
