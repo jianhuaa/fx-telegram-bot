@@ -1358,7 +1358,10 @@ def show_global_birdseye(df_inds, df_all_ret):
                 # --- FINAL DISPLAY LOGIC ---
                 if not df_losers.empty:
                     sort_col_losers = f'{sort_choice}_raw' if f'{sort_choice}_raw' in df_losers.columns else '1M_raw'
-                    df_losers = df_losers.sort_values(by=sort_col_losers, ascending=True).head(50)
+                    
+                    # Expand the view limit if ALL is checked so you can scroll to the winners
+                    view_limit = 9999 if tgl_flow else 50
+                    df_losers = df_losers.sort_values(by=sort_col_losers, ascending=True).head(view_limit)
                     
                     df_losers['1W'] = df_losers['1W_raw'].apply(lambda x: f"{x:+.1f}%" if pd.notna(x) else "-")
                     df_losers['1M'] = df_losers['1M_raw'].apply(lambda x: f"{x:+.1f}%" if pd.notna(x) else "-")
@@ -1414,8 +1417,18 @@ def show_global_birdseye(df_inds, df_all_ret):
             # 2. If an industry is clicked in the top-right table, isolate it completely
             if target_ind:
                 alpha_df = alpha_df[alpha_df['Industry'].str.replace('<br>', ' ') == target_ind]
+
+            # 3. If ONLY 7D is checked, filter the Alpha Engine to match the left table
+            if tgl_earn and not tgl_flow:
+                import time
+                now_epoch = time.time()
+                seven_days_epoch = now_epoch + (7 * 24 * 60 * 60) 
+                alpha_df = alpha_df[
+                    (alpha_df['Upcoming Earnings Date'] >= now_epoch) & 
+                    (alpha_df['Upcoming Earnings Date'] <= seven_days_epoch)
+                ]
                 
-            # 3. Sort cleanly across your 3 indexes (SPX -> RMC -> RTY)
+            # 4. Sort cleanly across your 3 indexes (SPX -> RMC -> RTY)
             idx_map = {'SPX': 1, 'RMC': 2, 'RTY': 3}
             alpha_df['SortIndex'] = alpha_df['Index'].map(idx_map).fillna(4)
             sort_col_alpha = f'{sort_choice}_raw' if f'{sort_choice}_raw' in alpha_df.columns else '1M_raw'
