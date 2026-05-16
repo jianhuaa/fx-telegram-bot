@@ -1300,7 +1300,7 @@ def show_global_birdseye(df_inds, df_all_ret):
     target_ind = st.session_state.get('selected_sub_ind', None)
     filter_label = f" ({target_ind})" if target_ind else ""
     
-    # --- 1/3 LEFT: THE LOSERS TABLE (Unchanged) ---
+    # --- 1/3 LEFT: THE LOSERS TABLE ---
     with c_bot_left:
 
         # Create 3 mini-columns for the Title and the 2 Toggles
@@ -1310,14 +1310,14 @@ def show_global_birdseye(df_inds, df_all_ret):
         with h_los_2:
             tgl_earn = st.checkbox("⏱️ 7D", key="tgl_earn")
         with h_los_3:
-            tgl_flow = st.checkbox("♾️ ALL", key="tgl_flow") # Swapped to ALL
+            tgl_flow = st.checkbox("♾️ ALL", key="tgl_flow")
             
-        is_catalyst_mode = tgl_earn or tgl_flow
-        
         # 2. Render the Title dynamically based on the toggles
         with h_los_1:
-            if is_catalyst_mode:
-                st.markdown(f"<div style='color:#00ff00; font-size:12px; font-weight:bold; margin-top:2px;'>🟢 CATALYSTS</div>", unsafe_allow_html=True)
+            if tgl_flow:
+                st.markdown(f"<div style='color:#00aaff; font-size:12px; font-weight:bold; margin-top:2px;'>♾️ ALL TICKERS</div>", unsafe_allow_html=True)
+            elif tgl_earn:
+                st.markdown(f"<div style='color:#00ff00; font-size:12px; font-weight:bold; margin-top:2px;'>🟢 7D EARNINGS</div>", unsafe_allow_html=True)
             else:
                 st.markdown(f"<div style='color:#ff4b4b; font-size:12px; font-weight:bold; margin-top:2px;'>🔴 LOSERS</div>", unsafe_allow_html=True)
         
@@ -1335,25 +1335,22 @@ def show_global_birdseye(df_inds, df_all_ret):
                 if target_ind:
                     df_losers = df_losers[df_losers['Industry'].str.replace('<br>', ' ') == target_ind]
                 
-                # --- SMART PRICE FILTER ---
-                # Only restrict to bleeding tickers if we are NOT in Catalyst mode
-                if not is_catalyst_mode:
-                    df_losers = df_losers[(df_losers['1W_raw'] < 0) | (df_losers['1M_raw'] < 0)]
-
-                # --- 7D EARNINGS TOGGLE LOGIC ---
-                if tgl_earn:
+                # --- SMART FILTER LOGIC ---
+                if tgl_flow:
+                    # ALL is clicked -> Do nothing, show every ticker in the industry
+                    pass 
+                elif tgl_earn:
+                    # Only 7D is clicked -> Filter strictly to upcoming 7-day earnings
                     import time
                     now_epoch = time.time()
                     seven_days_epoch = now_epoch + (7 * 24 * 60 * 60) 
-                    
                     df_losers = df_losers[
                         (df_losers['Upcoming Earnings Date'] >= now_epoch) & 
                         (df_losers['Upcoming Earnings Date'] <= seven_days_epoch)
                     ]
-                
-                # --- OI TOGGLE LOGIC (Placeholder for next step) ---
-                if tgl_flow:
-                    pass 
+                else:
+                    # Default State (Nothing clicked) -> Show Bleeding Losers
+                    df_losers = df_losers[(df_losers['1W_raw'] < 0) | (df_losers['1M_raw'] < 0)]
                 
                 # --- FINAL DISPLAY LOGIC ---
                 if not df_losers.empty:
@@ -1408,7 +1405,7 @@ def show_global_birdseye(df_inds, df_all_ret):
 
         # --- AFTER ---
         if not df_all_ret.empty and active_etfs:
-            # 1. Start clean from the master return sheet
+            # 1. Start clean from the master return sheet (IMMUNE to left column filters)
             alpha_df = df_all_ret[df_all_ret['Sector'].isin(active_etfs)].copy()
             
             # 2. If an industry is clicked in the top-right table, isolate it completely
@@ -1420,8 +1417,8 @@ def show_global_birdseye(df_inds, df_all_ret):
             alpha_df['SortIndex'] = alpha_df['Index'].map(idx_map).fillna(4)
             sort_col_alpha = f'{sort_choice}_raw' if f'{sort_choice}_raw' in alpha_df.columns else '1M_raw'
             
-            # 4. Use the 999 headroom cap so nothing gets dropped
-            alpha_df = alpha_df.sort_values(by=['SortIndex', sort_col_alpha]).head(999)
+            # 4. Use the 9999 headroom cap so nothing gets dropped
+            alpha_df = alpha_df.sort_values(by=['SortIndex', sort_col_alpha]).head(9999)
 
 
             ## --- 1. DUMMY GENERATOR ---
