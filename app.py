@@ -1601,7 +1601,8 @@ def show_global_birdseye(df_inds, df_all_ret):
             
             # --- 5. GRAB THE SELECTED TICKERS ---
             selected_rows = alpha_event.selection.rows
-            selected_tickers = [display_df.iloc[i][(" ", "TICK")] for i in selected_rows] if selected_rows else []
+            # Added a safety check (i < len(display_df)) to ignore stale ghost clicks on empty tables
+            selected_tickers = [display_df.iloc[i][(" ", "TICK")] for i in selected_rows if i < len(display_df)] if selected_rows else []
 
             # --- 6. THE ROUTER BUTTON ---
             with h_col2:
