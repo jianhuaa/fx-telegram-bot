@@ -1399,13 +1399,31 @@ def show_global_birdseye(df_inds, df_all_ret):
         with h_col1:
             st.markdown(f"<div style='color:#f4ca16; font-size:12px; font-weight:bold; margin-top:2px;'>⚖️ ALPHA COMPARISON ENGINE <span style='color:#888; font-size:10px; font-weight:normal;'>(Select 1 industry to dive)</span></div>", unsafe_allow_html=True)
             
-        if 'df_losers' in locals() and not df_losers.empty and active_etfs:
-            alpha_df = df_losers.copy()
+        #if 'df_losers' in locals() and not df_losers.empty and active_etfs:
+        #    alpha_df = df_losers.copy()
+        #    idx_map = {'SPX': 1, 'RMC': 2, 'RTY': 3}
+        #    alpha_df['SortIndex'] = alpha_df['Index'].map(idx_map).fillna(4)
+        #    sort_col_alpha = f'{sort_choice}_raw' if f'{sort_choice}_raw' in alpha_df.columns else '1M_raw'
+        #    alpha_df = alpha_df.sort_values(by=['SortIndex', sort_col_alpha]).head(999)
+
+        # --- AFTER ---
+        if not df_all_ret.empty and active_etfs:
+            # 1. Start clean from the master return sheet
+            alpha_df = df_all_ret[df_all_ret['Sector'].isin(active_etfs)].copy()
+            
+            # 2. If an industry is clicked in the top-right table, isolate it completely
+            if target_ind:
+                alpha_df = alpha_df[alpha_df['Industry'].str.replace('<br>', ' ') == target_ind]
+                
+            # 3. Sort cleanly across your 3 indexes (SPX -> RMC -> RTY)
             idx_map = {'SPX': 1, 'RMC': 2, 'RTY': 3}
             alpha_df['SortIndex'] = alpha_df['Index'].map(idx_map).fillna(4)
             sort_col_alpha = f'{sort_choice}_raw' if f'{sort_choice}_raw' in alpha_df.columns else '1M_raw'
-            alpha_df = alpha_df.sort_values(by=['SortIndex', sort_col_alpha]).head(999)
             
+            # 4. Use the 999 headroom cap so nothing gets dropped
+            alpha_df = alpha_df.sort_values(by=['SortIndex', sort_col_alpha]).head(999)
+
+
             ## --- 1. DUMMY GENERATOR ---
             #import random
             #def get_blk(): return random.choice(['🟩', '⬛', '🟥'])
