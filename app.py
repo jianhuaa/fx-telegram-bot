@@ -1557,11 +1557,16 @@ def show_global_birdseye(df_inds, df_all_ret):
                 ("OPT", "ΔOI · OI"),
                 (" ", "ANS")
             ]
-            display_df.columns = pd.MultiIndex.from_tuples(header_tuples)
+            # SAFE DATAFRAME CREATION (Fixes the Length Mismatch Error)
+            if len(display_data) > 0:
+                display_df = pd.DataFrame(display_data)
+                display_df.columns = pd.MultiIndex.from_tuples(header_tuples)
+            else:
+                display_df = pd.DataFrame(columns=pd.MultiIndex.from_tuples(header_tuples))
 
             st.markdown("<div style='height:10px;'></div>", unsafe_allow_html=True)
             st.markdown("<style>div[data-testid='stDataFrame'] div[role='columnheader'], div[data-testid='stDataFrame'] div[role='gridcell'] { padding: 0px 4px !important; font-size: 11px !important; }</style>", unsafe_allow_html=True)
-            
+
             # --- 4. COLUMN CONFIGURATION ---
             strict_col_config = {}
             for col_tuple in display_df.columns:
@@ -1585,7 +1590,7 @@ def show_global_birdseye(df_inds, df_all_ret):
             # --- 4. RENDER NATIVE INTERACTIVE TABLE ---
             alpha_event = st.dataframe(
                 display_df,
-                width="content", # ---> FIX 2: Prevents Streamlit from stretching and clears the warning
+                use_container_width=True,
                 hide_index=True,
                 height=350,
                 selection_mode="multi-row",
