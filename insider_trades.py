@@ -48,7 +48,7 @@ def get_insider_trades(ticker):
     # OpenInsider requires dots (BRK.B), but your sheets use hyphens (BRK-B)
     search_ticker = ticker.replace('-', '.')
     
-    url = f"http://openinsider.com/screener?s={search_ticker}&o=&pl=&ph=&ll=&lh=&fd=0&fdr=&td=0&tdr=&fdlyl=&fdlyh=&daysago=&xp=1&xs=1&xa=0&xd=0&xg=0&xf=0&xm=0&xx=0&xc=0&xw=0&excludeDerivRelated=1&tmult=1&sortcol=0&dir=d&cnt=5000&page=1"
+    url = f"http://openinsider.com/screener?s={search_ticker}&o=&pl=&ph=&ll=&lh=&fd=0&fdr=&td=0&tdr=&fdlyl=&fdlyh=&daysago=&xp=1&xs=1&xa=0&xd=0&xg=0&xf=0&xm=0&xx=0&xc=0&xw=0&excludeDerivRelated=1&sortcol=0&dir=d&cnt=5000&page=1"
     req_headers = {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
     }
