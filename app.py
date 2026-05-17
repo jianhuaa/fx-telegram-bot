@@ -885,19 +885,12 @@ def format_k(val):
 def get_all_insider_trades():
     import requests
     import io
-    import os
     import time
     import pandas as pd
     
-    # --- 1. LOCAL FIRST (Checks the file you just generated!) ---
-    if os.path.exists('col4_insider_trades.parquet'):
-        try:
-            return pd.read_parquet('col4_insider_trades.parquet')
-        except Exception as e:
-            print(f"Local read failed, falling back to GitHub: {e}")
-
-    # --- 2. GITHUB FALLBACK (With cache-buster) ---
+    # --- STRICT CLOUD FETCH (Bypasses stale local files on your Ngrok machine) ---
     try:
+        # The ?t= timestamp forces GitHub's CDN to give us the newest file instantly
         GITHUB_RAW_URL = f"https://raw.githubusercontent.com/jianhuaa/fx-telegram-bot/main/col4_insider_trades.parquet?t={int(time.time())}"
         res = requests.get(GITHUB_RAW_URL)
         
