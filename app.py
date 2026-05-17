@@ -885,9 +885,19 @@ def format_k(val):
 def get_all_insider_trades():
     import requests
     import io
-    import time # <-- Add this
+    import os
+    import time
+    import pandas as pd
+    
+    # --- 1. LOCAL FIRST (Checks the file you just generated!) ---
+    if os.path.exists('col4_insider_trades.parquet'):
+        try:
+            return pd.read_parquet('col4_insider_trades.parquet')
+        except Exception as e:
+            print(f"Local read failed, falling back to GitHub: {e}")
+
+    # --- 2. GITHUB FALLBACK (With cache-buster) ---
     try:
-        # The ?t=... tricks GitHub into thinking it's a brand new file request
         GITHUB_RAW_URL = f"https://raw.githubusercontent.com/jianhuaa/fx-telegram-bot/main/col4_insider_trades.parquet?t={int(time.time())}"
         res = requests.get(GITHUB_RAW_URL)
         
