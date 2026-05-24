@@ -121,10 +121,13 @@ if tickers_to_update_sec:
     res_m = requests.get("https://www.sec.gov/files/company_tickers.json", headers=headers_sec)
     cik_map = {v['ticker']: str(v['cik_str']).zfill(10) for v in res_m.json().values()} if res_m.status_code == 200 else {}
 
+    MAX_FILINGS_TO_FETCH = 5
+
     def fetch_sec(ticker, cik):
-        if not cik: return None
+        if not cik: return []
         sec_limiter.consume()
         url = f"https://data.sec.gov/submissions/CIK{cik}.json"
+        results = []
         try:
             resp = requests.get(url, headers=headers_sec, timeout=10)
             if resp.status_code == 200:
@@ -134,20 +137,25 @@ if tickers_to_update_sec:
                     if forms[i] in ['10-K', '10-Q', '10K', '10Q']:
                         dt_str = pd.to_datetime(p['filingDate'][i]).strftime("%d %b").lstrip('0')
                         link = f"<a href='https://www.sec.gov/Archives/edgar/data/{cik}/{p['accessionNumber'][i].replace('-', '')}/{p['primaryDocument'][i]}'>[Click!]</a>"
-                        return {'Date': dt_str, 'Ticker': ticker, 'Type': forms[i], 'Link': link}
+                        
+                        results.append({'Date': dt_str, 'Ticker': ticker, 'Type': forms[i], 'Link': link})
+                        
+                        if len(results) >= MAX_FILINGS_TO_FETCH:
+                            break
         except: pass
-        return None
+        return results
 
     with ThreadPoolExecutor(max_workers=FETCH_WORKERS_SEC) as ex:
         futures = {ex.submit(fetch_sec, t, cik_map.get(t)): t for t in tickers_to_update_sec}
         for f in as_completed(futures):
-            res = f.result()
-            if res:
-                row_info = df_universe[df_universe['Ticker'] == res['Ticker']].iloc[0]
-                res['Index'] = row_info['Index']
-                res['Sector'] = SEC_MAP.get(row_info['Sector'], row_info['Sector'])
-                res['Industry'] = row_info['Industry']
-                new_sec_data.append(res)
+            res_list = f.result()
+            if res_list:
+                for res in res_list:
+                    row_info = df_universe[df_universe['Ticker'] == res['Ticker']].iloc[0]
+                    res['Index'] = row_info['Index']
+                    res['Sector'] = SEC_MAP.get(row_info['Sector'], row_info['Sector'])
+                    res['Industry'] = row_info['Industry']
+                    new_sec_data.append(res)
 
     if new_sec_data:
         df_new_sec = pd.DataFrame(new_sec_data)
