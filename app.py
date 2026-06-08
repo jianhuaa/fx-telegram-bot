@@ -1192,7 +1192,12 @@ def show_global_birdseye(df_inds, df_all_ret):
         
         for i, ticker in enumerate(grid_items):
             col_idx = i % 4
-            w1, m1 = get_returns(df_hist['SPX']) if ticker == 'SPX' else get_returns(df_sec_px[ticker])
+            #w1, m1 = get_returns(df_hist['SPX']) if ticker == 'SPX' else get_returns(df_sec_px[ticker])
+
+            if ticker == 'SPX':
+                w1, m1 = get_returns(df_hist.get('SPX', pd.Series(dtype=float)))
+            else:
+                w1, m1 = get_returns(df_sec_px.get(ticker, pd.Series(dtype=float)))
                 
             c_w1 = "#00aaff" if ticker == 'SPX' else ("#00ff00" if w1 >= 0 else "#ff4b4b")
             c_m1 = "#00aaff" if ticker == 'SPX' else ("#00ff00" if m1 >= 0 else "#ff4b4b")
